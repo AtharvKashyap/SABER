@@ -47,41 +47,41 @@
 ## 2. System Architecture Overview
  
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    OPERATOR INTERFACE                    │
-│         scope.yaml  ·  targets.txt  ·  roe.yaml         │
-└───────────────────────┬─────────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│                    OPERATOR INTERFACE                  │
+│         scope.yaml  ·  targets.txt  ·  roe.yaml        │
+└───────────────────────┬────────────────────────────────┘
                         │
-┌───────────────────────▼─────────────────────────────────┐
-│              MISSION PLANNER AGENT (Claude)              │
-│   Reads scope → builds phase graph → dispatches agents   │
-│              gates phase progression                     │
-└──┬──────────┬──────────┬──────────┬──────────┬──────────┘
-   │          │          │          │          │
-┌──▼──┐  ┌───▼──┐  ┌────▼──┐  ┌───▼───┐  ┌──▼─────┐
-│Recon│  │ Web  │  │ Net   │  │Exploit│  │  Post  │
-│Agent│  │Agent │  │Agent  │  │Agent  │  │ Exploit│
-└──┬──┘  └───┬──┘  └────┬──┘  └───┬───┘  └──┬─────┘
-   │          │          │          │          │
-┌──▼──────────▼──────────▼──────────▼──────────▼─────────┐
-│              OUTPUT NORMALIZER                          │
+┌───────────────────────▼────────────────────────────────┐
+│              MISSION PLANNER AGENT (Claude)            │
+│   Reads scope → builds phase graph → dispatches agents │
+│              gates phase progression                   │
+└──┬─────────┬─────────┬──────────┬───────────┬──────────┘
+   │         │         │          │           │
+┌──▼──┐  ┌───▼──┐  ┌───▼───┐  ┌───▼────┐  ┌───▼────┐
+│Recon│  │ Web  │  │ Net   │  │Exploit │  │  Post  │
+│Agent│  │Agent │  │Agent  │  │Agent   │  │ Exploit│
+└──┬──┘  └───┬──┘  └────┬──┘  └────┬───┘  └───┬────┘
+   │         │          │          │          │
+┌──▼─────────▼──────────▼──────────▼──────────▼──────────┐
+│              OUTPUT NORMALIZER                         │
 │   Raw output → Finding schema → Evidence store         │
-└───────────────────────┬─────────────────────────────────┘
+└───────────────────────┬────────────────────────────────┘
                         │
-┌───────────────────────▼─────────────────────────────────┐
-│         TOOL EXECUTION LAYER (Python wrappers)          │
-│  nmap · amass · nuclei · feroxbuster · sqlmap · msf     │
-│  hashcat · responder · bettercap · mimikatz · ...       │
-└───────────────────────┬─────────────────────────────────┘
+┌───────────────────────▼────────────────────────────────┐
+│         TOOL EXECUTION LAYER (Python wrappers)         │
+│  nmap · amass · nuclei · feroxbuster · sqlmap · msf    │
+│  hashcat · responder · bettercap · mimikatz · ...      │
+└───────────────────────┬────────────────────────────────┘
                         │ (findings JSON fed back up)
-┌───────────────────────▼─────────────────────────────────┐
-│              REPORTING AGENT (Claude)                   │
-│  Reads all Finding JSON → CVSS scoring → narrative      │
-└──┬──────────┬──────────┬──────────────────────────────┘
-   │          │          │
-┌──▼──┐  ┌───▼──┐  ┌────▼──┐
-│ PDF │  │XLSX  │  │ JSON  │
-└─────┘  └──────┘  └───────┘
+┌───────────────────────▼────────────────────────────────┐
+│              REPORTING AGENT (Claude)                  │
+│  Reads all Finding JSON → CVSS scoring → narrative     │
+└──┬──────────┬─────────┬────────────────────────────────┘
+   │          │         │
+┌──▼──┐   ┌───▼──┐  ┌───▼──┐
+│ PDF │   │ XLSX │  │ JSON │
+└─────┘   └──────┘  └──────┘
 ```
  
 ### Technology Assignments (final decisions)
@@ -107,7 +107,7 @@
 phantom/
 │
 ├── README.md
-├── PHANTOM_PROJECT_PLAN.md          ← this document
+├── PROJECT_PLAN.md                  ← this document
 ├── requirements.txt
 ├── requirements-dev.txt
 ├── .env.example
@@ -983,11 +983,11 @@ LOG_LEVEL=INFO
  
 ---
  
-## 10. Build Phases (Chip-by-Chip)
+## 10. Build Phases (Piece-by-Piece)
  
 Build order is designed so every phase produces something testable before moving to the next.
  
-### Phase 1 — Foundation (weeks 1–2)
+### Phase 1 — Foundation
 **Goal:** schema + storage + scope enforcement working. No AI yet.
  
 - [ ] Define and test all Pydantic models (`models/`)
@@ -998,7 +998,7 @@ Build order is designed so every phase produces something testable before moving
 - [ ] Write unit tests for all of the above
 **Milestone:** `phantom/` package imports cleanly. Can create a session, save a mock finding, query it back.
  
-### Phase 2 — Recon Layer (weeks 3–4)
+### Phase 2 — Recon Layer
 **Goal:** nmap + amass wrappers working end-to-end on a test target.
  
 - [ ] Implement `NmapWrapper` with XML parsing via python-libnmap
@@ -1009,7 +1009,7 @@ Build order is designed so every phase produces something testable before moving
 - [ ] Add MasscanWrapper
 **Milestone:** `phantom run --scope examples/sample_scope.yaml --phase recon` runs against a test host, produces findings in SQLite, saves raw output to evidence dir.
  
-### Phase 3 — Recon Agent (week 5)
+### Phase 3 — Recon Agent
 **Goal:** Claude orchestrates the recon phase using tool wrappers.
  
 - [ ] Implement `BaseAgent` with Anthropic API client + retry logic
@@ -1018,7 +1018,7 @@ Build order is designed so every phase produces something testable before moving
 - [ ] Wire agent → tool wrapper → storage
 **Milestone:** Agent decides to run nmap + amass, dispatches both, findings appear in DB.
  
-### Phase 4 — Web Layer (weeks 6–7)
+### Phase 4 — Web Layer
 **Goal:** web scanning pipeline working.
  
 - [ ] Implement `FeroxbusterWrapper`
@@ -1028,7 +1028,7 @@ Build order is designed so every phase produces something testable before moving
 - [ ] Start ZAP daemon via `start_zap.sh`, implement `ZapApiWrapper`
 **Milestone:** web agent runs against DVWA (local), finds SQLi, saves finding + screenshot evidence.
  
-### Phase 5 — Network Layer (week 8)
+### Phase 5 — Network Layer
 **Goal:** internal network enumeration working.
  
 - [ ] Implement `Enum4linuxWrapper`
@@ -1037,7 +1037,7 @@ Build order is designed so every phase produces something testable before moving
 - [ ] Implement `SnmpwalkWrapper`
 **Milestone:** network agent runs against local test environment, captures SMB info + NTLMv2 hash.
  
-### Phase 6 — Exploitation Layer (weeks 9–10)
+### Phase 6 — Exploitation Layer
 **Goal:** Metasploit integration and exploit dispatch working.
  
 - [ ] Start MSFRPC via `start_msfrpc.sh`
@@ -1047,7 +1047,7 @@ Build order is designed so every phase produces something testable before moving
 - [ ] Implement screenshot capture post-exploitation
 **Milestone:** exploit agent matches a nuclei finding to a Metasploit module, launches it against test target, gets shell, screenshots session.
  
-### Phase 7 — Post-Exploitation Layer (week 11)
+### Phase 7 — Post-Exploitation Layer
 **Goal:** post-exploit chain working.
  
 - [ ] Implement `LinPEASWrapper` / `WinPEASWrapper`
@@ -1057,7 +1057,7 @@ Build order is designed so every phase produces something testable before moving
 - [ ] Implement `HashcatWrapper`
 **Milestone:** post-exploit agent runs linpeas on shell session, finds privesc vector, escalates, dumps creds, cracks hashes.
  
-### Phase 8 — Reporting (week 12)
+### Phase 8 — Reporting
 **Goal:** full report generation working.
  
 - [ ] Implement `ReportingAgent` with system prompt
@@ -1067,7 +1067,7 @@ Build order is designed so every phase produces something testable before moving
 - [ ] Wire to `phantom report` CLI command
 **Milestone:** `phantom report --session sessions/test/` produces executive PDF, technical PDF, and findings XLSX.
  
-### Phase 9 — Full Integration (week 13)
+### Phase 9 — Full Integration
 **Goal:** end-to-end run on a controlled lab (Metasploitable, HackTheBox, or internal VM).
  
 - [ ] Full pipeline test: recon → web → network → exploit → post-exploit → report
@@ -1076,7 +1076,7 @@ Build order is designed so every phase produces something testable before moving
 - [ ] Fix all integration bugs
 **Milestone:** complete run on Metasploitable produces full report with all phases.
  
-### Phase 10 — Hardening & Polish (week 14+)
+### Phase 10 — Hardening & Polish
 - [ ] Rate limiting on all tool wrappers
 - [ ] Parallel phase execution (web + network simultaneously)
 - [ ] Retry logic tuning on all agents
