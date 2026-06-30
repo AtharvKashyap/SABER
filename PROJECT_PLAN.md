@@ -1,18 +1,35 @@
+# SABER
+
+## Scoped Automated Breach, Exploitation & Reporting
+
+> A self-hosted, evidence-first internal-network and web/app penetration testing platform. Accepts a target scope and rules of engagement. Returns a full kill-chain execution, evidence bundle, and multi-format report — without the infrastructure weight of enterprise competitors.
+
+---
+
 ## Table of Contents
- 
+
 1. [Philosophy & Design Decisions](#1-philosophy--design-decisions)
+   - [Core Principles](#core-principles)
+   - [What This Is Not](#what-this-is-not)
 2. [System Architecture Overview](#2-system-architecture-overview)
+   - [Technology Assignments](#technology-assignments-updated)
 3. [Full Project Structure](#3-full-project-structure)
 4. [Layer-by-Layer Component Specs](#4-layer-by-layer-component-specs)
-   - 4.1 [Operator Interface](#41-operator-interface)
-   - 4.2 [Mission Planner Agent](#42-mission-planner-agent)
-   - 4.3 [Sub-Agents](#43-sub-agents)
-   - 4.4 [Tool Execution Layer](#44-tool-execution-layer)
-   - 4.5 [Output Normalizer & Evidence Store](#45-output-normalizer--evidence-store)
-   - 4.6 [Reporting Agent](#46-reporting-agent)
+   - [4.1 Operator Interface](#41-operator-interface)
+   - [4.2 Mission Planner Agent](#42-mission-planner-agent)
+   - [4.3 Sub-Agents](#43-sub-agents)
+   - [4.4 Tool Execution Layer — Now Sandbox-Aware](#44-tool-execution-layer--now-sandbox-aware)
+   - [4.5 Approval Gate — New Component](#45-approval-gate--new-component)
+   - [4.6 Output Normalizer & Evidence Store](#46-output-normalizer--evidence-store)
+   - [4.7 Phase Graph — Upgraded Hierarchy](#47-phase-graph--upgraded-hierarchy)
+   - [4.8 Reporting Agent](#48-reporting-agent)
 5. [Core Data Schemas](#5-core-data-schemas)
+   - [ADPrincipal — New](#adprincipal--new)
+   - [ApprovalRecord — New](#approvalrecord--new)
 6. [Agent System Prompt Designs](#6-agent-system-prompt-designs)
 7. [Tool Wrapper Inventory](#7-tool-wrapper-inventory)
+   - [Phase 4 — Active Directory](#phase-4--active-directory-new--formerly-listed-as-a-deferred-future-module)
+   - [Updated Phase Ordering](#updated-phase-ordering)
 8. [Storage & Database Design](#8-storage--database-design)
 9. [Configuration System](#9-configuration-system)
 10. [Build Phases (Chip-by-Chip)](#10-build-phases-chip-by-chip)
@@ -20,126 +37,159 @@
 12. [Security & Operational Safeguards](#12-security--operational-safeguards)
 13. [Future Modules](#13-future-modules)
 14. [Technology Decision Log](#14-technology-decision-log)
+15. [Requirements](#requirements-updated)
+   - [requirements.txt](#requirementstxt)
+   - [requirements-dev.txt](#requirements-devtxt)
+   - [Kali / Host Setup](#kali--host-setup)
+
 ---
- 
+
 ## 1. Philosophy & Design Decisions
- 
+
 ### Core Principles
- 
-**Separation of concerns over monolithic chains.** The AI never directly invokes tools. It reads normalized data, makes decisions, and issues structured commands. A deterministic Python execution layer handles all subprocess work. This means a crashed tool never crashes the AI orchestrator.
- 
+
+**Separation of concerns over monolithic chains.** The AI never directly invokes tools. It reads normalized data, makes decisions, and issues structured commands. A deterministic Python execution layer handles all subprocess work inside sandboxed containers. A crashed tool never crashes the AI orchestrator, and a misbehaving tool never escapes its container.
+
 **Schema-first design.** The `Finding` dataclass is the contract between every component. Tools produce it. Agents read it. The reporter synthesizes it. Nothing communicates via raw tool output strings.
- 
-**Every run is reproducible.** A complete session is saved to SQLite at every step. Any phase can be re-run or resumed without re-running prior phases. Raw tool output is always preserved alongside normalized findings.
- 
+
+**Every run is reproducible.** A complete session is saved to SQLite at every step, structured as flow → task → subtask → action. Any phase can be re-run or resumed without re-running prior phases. Raw tool output is always preserved alongside normalized findings.
+
 **Scope enforcement is non-negotiable.** A `ScopeGuard` class wraps every tool invocation. No IP, domain, or port outside the declared scope can be touched — at the Python level, not just by agent instruction.
- 
+
+**Containment is non-negotiable.** Every tool runs inside an ephemeral, per-session Docker container, not on the host. This is a hard architectural requirement, not a configurable convenience — it's the difference between "an AI agent that can theoretically be told to stay in scope" and "an AI agent that is physically unable to touch anything outside its sandbox and declared targets."
+
 **Evidence-first reporting.** Every finding must have attached evidence before it's reportable: a raw command, its output, a screenshot where applicable, and a timestamp. Unattested findings are flagged `UNVERIFIED` and excluded from the executive summary.
- 
+
+**Human authority is preserved, not assumed away.** Full autonomy is the default operating mode, but the operator can require explicit approval before any exploitation or post-exploitation action fires, without losing the rest of the automation.
+
 ### What This Is Not
- 
+
 - Not a single Claude agent calling `subprocess.run()` in a loop
-- Not an n8n workflow (n8n is a webhook/SaaS glue layer; this needs real subprocess control)
-- Not a tool that covers every Kali tool (it covers the kill chain with best-of-breed per phase)
+- Not an n8n workflow — n8n is a webhook/SaaS glue layer; this needs real subprocess and container control
+- Not a tool that covers every Kali tool — it covers the kill chain with best-of-breed tools per phase
+- Not a heavyweight multi-service platform requiring Postgres, Neo4j, Redis, ClickHouse, and MinIO just to run one engagement
+- Not a web-app-only scanner — internal network and Active Directory attack chains are first-class, not bolted on
 - Not a replacement for a human pentester — it generates verified, reproducible evidence that a human reviews and attests
+
 ---
- 
+
 ## 2. System Architecture Overview
- 
-```
-┌────────────────────────────────────────────────────────┐
-│                    OPERATOR INTERFACE                  │
-│         scope.yaml  ·  targets.txt  ·  roe.yaml        │
-└───────────────────────┬────────────────────────────────┘
+
+```text
+┌─────────────────────────────────────────────────────────┐
+│                    OPERATOR INTERFACE                   │
+│   scope.yaml · roe.yaml · --interactive flag (optional) │
+└───────────────────────┬─────────────────────────────────┘
                         │
-┌───────────────────────▼────────────────────────────────┐
-│              MISSION PLANNER AGENT (Claude)            │
-│   Reads scope → builds phase graph → dispatches agents │
-│              gates phase progression                   │
-└──┬─────────┬─────────┬──────────┬───────────┬──────────┘
-   │         │         │          │           │
-┌──▼──┐  ┌───▼──┐  ┌───▼───┐  ┌───▼────┐  ┌───▼────┐
-│Recon│  │ Web  │  │ Net   │  │Exploit │  │  Post  │
-│Agent│  │Agent │  │Agent  │  │Agent   │  │ Exploit│
-└──┬──┘  └───┬──┘  └────┬──┘  └────┬───┘  └───┬────┘
-   │         │          │          │          │
-┌──▼─────────▼──────────▼──────────▼──────────▼──────────┐
-│              OUTPUT NORMALIZER                         │
-│   Raw output → Finding schema → Evidence store         │
-└───────────────────────┬────────────────────────────────┘
+┌───────────────────────▼─────────────────────────────────┐
+│              MISSION PLANNER AGENT (Claude)             │
+│   Reads scope → builds flow/task/subtask graph          │
+│   dispatches agents → gates phase progression           │
+└──┬──────────┬──────────┬──────────┬──────────┬──────────┘
+   │          │          │          │          │
+┌──▼──┐  ┌────▼───┐  ┌───▼──────┐  ┌▼──────┐  ┌──▼─────┐
+│Recon│  │  Web   │  │Network/AD│  │Exploit│  │  Post  │
+│Agent│  │ Agent  │  │  Agent   │  │Agent  │  │ Exploit│
+└──┬──┘  └────┬───┘  └────┬─────┘  └───┬───┘  └──┬─────┘
+   │          │           │            │          │
+┌──▼──────────▼───────────▼────────────▼──────────▼────────┐
+│         APPROVAL GATE (optional, --interactive only)     │
+│   allow-once / allow-session / deny per sensitive action │
+└───────────────────────┬──────────────────────────────────┘
                         │
-┌───────────────────────▼────────────────────────────────┐
-│         TOOL EXECUTION LAYER (Python wrappers)         │
-│  nmap · amass · nuclei · feroxbuster · sqlmap · msf    │
-│  hashcat · responder · bettercap · mimikatz · ...      │
-└───────────────────────┬────────────────────────────────┘
-                        │ (findings JSON fed back up)
-┌───────────────────────▼────────────────────────────────┐
-│              REPORTING AGENT (Claude)                  │
-│  Reads all Finding JSON → CVSS scoring → narrative     │
-└──┬──────────┬─────────┬────────────────────────────────┘
-   │          │         │
-┌──▼──┐   ┌───▼──┐  ┌───▼──┐
-│ PDF │   │ XLSX │  │ JSON │
-└─────┘   └──────┘  └──────┘
+┌───────────────────────▼─────────────────────────────────┐
+│      EPHEMERAL DOCKER SANDBOX (per-session container)   │
+│   ScopeGuard validates target → tool runs in container  │
+└───────────────────────┬─────────────────────────────────┘
+                        │
+┌───────────────────────▼─────────────────────────────────┐
+│         TOOL EXECUTION LAYER (Python wrappers)          │
+│  nmap · amass · nuclei · feroxbuster · sqlmap · msf     │
+│  bloodhound · impacket · crackmapexec · hashcat · ...   │
+└───────────────────────┬─────────────────────────────────┘
+                        │
+┌───────────────────────▼─────────────────────────────────┐
+│              OUTPUT NORMALIZER                          │
+│   Raw output → Finding schema → Evidence store          │
+└───────────────────────┬─────────────────────────────────┘
+                        │
+                        │ findings JSON fed back up
+                        │
+┌───────────────────────▼─────────────────────────────────┐
+│              REPORTING AGENT (Claude)                   │
+│  Reads all Finding JSON → CVSS scoring → narrative      │
+└──┬─────────┬──────────┬─────────────────────────────────┘
+   │         │          │
+┌──▼──┐  ┌───▼──┐  ┌────▼──┐
+│ PDF │  │ XLSX │  │ JSON  │
+└─────┘  └──────┘  └───────┘
 ```
- 
-### Technology Assignments (final decisions)
- 
+
+### Technology Assignments (Updated)
+
 | Layer | Technology | Rationale |
 |---|---|---|
-| Agent orchestration | Anthropic API (claude-opus-4) with tool use | Direct control, no framework magic to debug |
-| Multi-agent coordination | Python async + queue | LangGraph adds complexity; async queues are transparent |
-| Tool execution | Python `asyncio.subprocess` | Full timeout/kill/stderr control |
-| Finding storage | SQLite (via `aiosqlite`) | Zero-config, file-portable, queryable |
+| Agent orchestration | Anthropic API (Claude) with tool use | Direct control, no framework magic to debug |
+| Multi-agent coordination | Python async + queue | Transparent, no hidden abstraction layers |
+| Tool execution | Python `asyncio.subprocess` **inside Docker container** | Timeout/kill/stderr control + host isolation |
+| Container runtime | Docker (Kali rolling base image) | Industry-standard isolation; matches every serious competitor |
+| Finding storage | SQLite via `aiosqlite` | Zero-config, file-portable, queryable — kept deliberately lightweight |
 | Evidence storage | Local filesystem, structured paths | Never goes to cloud; reproducible |
 | CLI interface | `click` + `rich` | Rich gives live progress panels |
 | Web UI (optional phase) | FastAPI + Jinja2 | Lightweight, no framework overhead |
 | Report PDF | `reportlab` | Programmatic, no LaTeX dependency |
 | Report XLSX | `openpyxl` | Industry standard for analyst handoff |
-| Config | YAML via `pyyaml` + Pydantic validation | Human-editable, machine-validated |
- 
+| Config | YAML via `pyyaml` + Pydantic validation | Human-readable, machine-validated |
+| Metasploit interface | `pymetasploit3` (MSFRPC) | Real API instead of fragile msfconsole subprocess |
+| ZAP interface | `python-owasp-zap-v2.4` official client | Avoid hand-rolling REST calls |
+| CVSS scoring | `cvss` pip package | Avoid writing your own vector parser/calculator |
+| AD attack tooling | `bloodhound-python`, `impacket`, `crackmapexec` / `netexec` | Industry-standard, reused not rebuilt |
+| Approval gating | Custom `ApprovalGate` state machine | PentesterFlow-inspired allow-once/allow-session/deny |
+
 ---
- 
+
 ## 3. Full Project Structure
- 
-```
-phantom/
+
+```text
+saber/
 │
 ├── README.md
-├── PROJECT_PLAN.md                  ← this document
+├── SABER_PROJECT_PLAN.md                 ← this document
+├── MARKET_RESEARCH.md                    ← competitive research reference
 ├── requirements.txt
 ├── requirements-dev.txt
 ├── .env.example
 ├── .gitignore
-├── pyproject.toml                   # project metadata + tool config
+├── pyproject.toml
 │
-├── phantom/                         # main package
+├── saber/                                # main package
 │   │
 │   ├── __init__.py
 │   │
-│   ├── core/                        # mission control, not AI-specific
+│   ├── core/                             # mission control, not AI-specific
 │   │   ├── __init__.py
-│   │   ├── mission.py               # MissionController: top-level run loop
-│   │   ├── session.py               # SessionManager: load/save/resume state
-│   │   ├── scope_guard.py           # ScopeGuard: enforce IP/domain/port limits
-│   │   ├── phase_graph.py           # PhaseGraph: DAG of phases + dependencies
-│   │   └── evidence_store.py        # EvidenceStore: screenshot + file management
+│   │   ├── mission.py                    # MissionController: top-level run loop
+│   │   ├── session.py                    # SessionManager: load/save/resume state
+│   │   ├── scope_guard.py                # ScopeGuard: enforce IP/domain/port limits
+│   │   ├── phase_graph.py                # PhaseGraph: flow → task → subtask → action DAG
+│   │   ├── sandbox.py                    # SandboxManager: ephemeral Docker container lifecycle
+│   │   ├── approval_gate.py              # ApprovalGate: allow-once/allow-session/deny gating
+│   │   └── evidence_store.py             # EvidenceStore: screenshot + file management
 │   │
-│   ├── agents/                      # Claude-powered decision layers
+│   ├── agents/                           # Claude-powered decision layers
 │   │   ├── __init__.py
-│   │   ├── base_agent.py            # BaseAgent: Anthropic API wrapper + retry logic
-│   │   ├── planner.py               # MissionPlannerAgent
-│   │   ├── recon.py                 # ReconAgent
-│   │   ├── web.py                   # WebAgent
-│   │   ├── network.py               # NetworkAgent
-│   │   ├── exploit.py               # ExploitAgent
-│   │   ├── post_exploit.py          # PostExploitAgent
-│   │   └── reporter.py              # ReportingAgent
+│   │   ├── base_agent.py                 # BaseAgent: Anthropic API wrapper + retry logic
+│   │   ├── planner.py                    # MissionPlannerAgent
+│   │   ├── recon.py                      # ReconAgent
+│   │   ├── web.py                        # WebAgent
+│   │   ├── network.py                    # NetworkAgent (now includes AD attack logic)
+│   │   ├── exploit.py                    # ExploitAgent
+│   │   ├── post_exploit.py               # PostExploitAgent
+│   │   └── reporter.py                   # ReportingAgent
 │   │
-│   ├── tools/                       # deterministic subprocess wrappers
+│   ├── tools/                            # deterministic subprocess wrappers
 │   │   ├── __init__.py
-│   │   ├── base_wrapper.py          # ToolWrapper base class
+│   │   ├── base_wrapper.py               # ToolWrapper base class (now sandbox-aware)
 │   │   │
 │   │   ├── recon/
 │   │   │   ├── __init__.py
@@ -157,19 +207,25 @@ phantom/
 │   │   │   ├── nuclei.py
 │   │   │   ├── sqlmap.py
 │   │   │   ├── nikto.py
-│   │   │   └── zap_api.py           # ZAP via REST API, not subprocess
+│   │   │   └── zap_api.py                # via python-owasp-zap-v2.4
 │   │   │
 │   │   ├── network/
 │   │   │   ├── __init__.py
-│   │   │   ├── openvas_api.py       # OpenVAS/GVM via python-gvm
+│   │   │   ├── openvas_api.py            # via python-gvm
 │   │   │   ├── responder.py
 │   │   │   ├── bettercap.py
 │   │   │   ├── enum4linux.py
 │   │   │   └── snmpwalk.py
 │   │   │
+│   │   ├── active_directory/             # NEW — promoted from future module to core
+│   │   │   ├── __init__.py
+│   │   │   ├── bloodhound.py             # bloodhound-python ingestor wrapper
+│   │   │   ├── impacket_tools.py         # secretsdump, GetUserSPNs, wmiexec wrappers
+│   │   │   └── netexec.py                # crackmapexec/netexec wrapper
+│   │   │
 │   │   ├── exploitation/
 │   │   │   ├── __init__.py
-│   │   │   ├── metasploit.py        # via pymetasploit3 (MSFRPC)
+│   │   │   ├── metasploit.py             # via pymetasploit3 (MSFRPC)
 │   │   │   └── searchsploit.py
 │   │   │
 │   │   ├── post_exploit/
@@ -177,33 +233,35 @@ phantom/
 │   │   │   ├── mimikatz.py
 │   │   │   ├── linpeas.py
 │   │   │   ├── winpeas.py
-│   │   │   └── chisel.py            # tunneling/pivoting
+│   │   │   └── chisel.py
 │   │   │
 │   │   └── password/
 │   │       ├── __init__.py
 │   │       ├── hashcat.py
 │   │       └── john.py
 │   │
-│   ├── models/                      # Pydantic dataclasses: the schema contract
+│   ├── models/                           # Pydantic dataclasses: the schema contract
 │   │   ├── __init__.py
-│   │   ├── finding.py               # Finding (the central model)
-│   │   ├── evidence.py              # Evidence (attached proof)
-│   │   ├── scope.py                 # Scope + RulesOfEngagement
-│   │   ├── session.py               # SessionState
-│   │   ├── target.py                # Target (host/service/url)
-│   │   └── credential.py            # Credential (captured creds vault)
+│   │   ├── finding.py                    # Finding (the central model)
+│   │   ├── evidence.py                   # Evidence (attached proof)
+│   │   ├── scope.py                      # Scope + RulesOfEngagement
+│   │   ├── session.py                    # SessionState
+│   │   ├── target.py                     # Target (host/service/url)
+│   │   ├── credential.py                 # Credential (captured creds vault)
+│   │   └── ad_principal.py               # NEW — AD user/group/computer/ACL relationship model
 │   │
 │   ├── storage/
 │   │   ├── __init__.py
-│   │   ├── database.py              # async SQLite via aiosqlite
+│   │   ├── database.py                   # async SQLite via aiosqlite
 │   │   └── migrations/
-│   │       └── 001_initial.sql
+│   │       ├── 001_initial.sql
+│   │       └── 002_ad_and_approvals.sql  # NEW — AD principals + approval log tables
 │   │
 │   ├── reporting/
 │   │   ├── __init__.py
-│   │   ├── pdf_exporter.py          # reportlab PDF builder
-│   │   ├── xlsx_exporter.py         # openpyxl workbook builder
-│   │   ├── json_exporter.py         # raw JSON dump
+│   │   ├── pdf_exporter.py               # reportlab PDF builder
+│   │   ├── xlsx_exporter.py              # openpyxl workbook builder
+│   │   ├── json_exporter.py              # raw JSON dump
 │   │   └── templates/
 │   │       ├── executive_summary.md.j2
 │   │       └── technical_report.md.j2
@@ -212,34 +270,40 @@ phantom/
 │       ├── __init__.py
 │       ├── cli/
 │       │   ├── __init__.py
-│       │   ├── main.py              # click entry point
-│       │   └── live_panel.py        # rich live dashboard
-│       └── web/                     # optional, phase 4+
+│       │   ├── main.py                   # click entry point (now with --interactive flag)
+│       │   ├── approval_prompt.py        # NEW — interactive approval UI
+│       │   └── live_panel.py             # rich live dashboard
+│       └── web/                          # optional, phase 4+
 │           ├── __init__.py
-│           ├── app.py               # FastAPI application
+│           ├── app.py
 │           └── routers/
 │               ├── sessions.py
 │               ├── findings.py
 │               └── reports.py
 │
-├── prompts/                         # externalized agent system prompts
+├── prompts/                              # externalized agent system prompts
 │   ├── planner.txt
 │   ├── recon_agent.txt
 │   ├── web_agent.txt
-│   ├── network_agent.txt
+│   ├── network_agent.txt                 # now includes AD attack methodology
 │   ├── exploit_agent.txt
 │   ├── post_exploit_agent.txt
 │   └── reporter.txt
 │
+├── docker/                               # NEW
+│   ├── Dockerfile.sandbox                # Kali rolling base + tool installs
+│   └── docker-compose.sandbox.yml        # optional multi-container setup
+│
 ├── config/
 │   ├── scope.yaml.example
-│   ├── roe.yaml.example             # rules of engagement
-│   └── tools.yaml                   # tool paths + default flags
+│   ├── roe.yaml.example
+│   └── tools.yaml
 │
 ├── scripts/
-│   ├── install_kali_deps.sh         # apt + pip setup on Kali
-│   ├── start_msfrpc.sh              # launch Metasploit RPC daemon
-│   └── start_zap.sh                 # launch ZAP in daemon mode
+│   ├── install_kali_deps.sh
+│   ├── start_msfrpc.sh
+│   ├── start_zap.sh
+│   └── build_sandbox_image.sh            # NEW — builds the Docker sandbox image
 │
 ├── tests/
 │   ├── __init__.py
@@ -248,13 +312,17 @@ phantom/
 │   │   ├── test_scope_guard.py
 │   │   ├── test_finding_schema.py
 │   │   ├── test_phase_graph.py
-│   │   └── test_tool_wrappers.py    # mocked subprocess
+│   │   ├── test_sandbox.py               # NEW — mocked Docker lifecycle
+│   │   ├── test_approval_gate.py         # NEW
+│   │   └── test_tool_wrappers.py
 │   ├── integration/
-│   │   ├── test_recon_agent.py      # against local test target
-│   │   └── test_full_pipeline.py    # end-to-end on DVWA
+│   │   ├── test_recon_agent.py
+│   │   ├── test_ad_attack_chain.py       # NEW — against a lab AD environment
+│   │   └── test_full_pipeline.py
 │   └── fixtures/
 │       ├── sample_nmap_output.xml
 │       ├── sample_nuclei_output.json
+│       ├── sample_bloodhound_output.json # NEW
 │       └── sample_scope.yaml
 │
 ├── examples/
@@ -263,930 +331,620 @@ phantom/
 │   ├── sample_findings.json
 │   └── sample_scope.yaml
 │
-├── output/                          # generated reports (gitignored)
+├── output/
 │   └── .gitkeep
 │
-└── sessions/                        # saved session state (gitignored)
+└── sessions/
     └── .gitkeep
 ```
- 
+
 ---
- 
+
 ## 4. Layer-by-Layer Component Specs
- 
+
 ### 4.1 Operator Interface
- 
-**File:** `phantom/ui/cli/main.py`, `config/scope.yaml`
- 
-The entry point. The operator never interacts with agents directly — they define a scope document and fire the mission.
- 
-#### scope.yaml structure
- 
-```yaml
-mission_name: "Q3 Internal Pentest - Web Tier"
-operator: "j.smith"
-date: "2026-06-04"
- 
-targets:
-  - type: ip_range
-    value: "10.10.10.0/24"
-  - type: domain
-    value: "internal.corp.example"
-  - type: url
-    value: "https://app.internal.corp.example"
- 
-out_of_scope:
-  - "10.10.10.1"           # firewall — do not touch
-  - "*.prod.example.com"   # production — out of scope
- 
-allowed_phases:
-  - recon
-  - web
-  - network
-  - exploitation
-  - post_exploitation
- 
-allowed_ttps:
-  - port_scan
-  - subdomain_enum
-  - web_directory_brute
-  - sqli_detection
-  - sqli_exploitation
-  - smb_enum
-  - hash_capture
-  - hash_crack
-  - metasploit_public_exploits
- 
-prohibited:
-  - dos_attacks
-  - destructive_payloads
-  - lateral_movement_outside_scope
- 
-evidence_path: "./sessions/q3-web-tier/"
-max_concurrent_tools: 3
-```
- 
-#### CLI commands
- 
+
+**Files:** `saber/ui/cli/main.py`, `config/scope.yaml`
+
+Unchanged in spirit from the original plan, with one addition: an `--interactive` flag.
+
 ```bash
-# Start a new mission
-phantom run --scope config/scope.yaml --roe config/roe.yaml
- 
+# Fully autonomous run (default — matches original vision)
+saber run --scope config/scope.yaml --roe config/roe.yaml
+
+# Interactive mode — exploitation/post-exploitation pause for approval
+saber run --scope config/scope.yaml --interactive
+
 # Resume an interrupted mission
-phantom resume --session sessions/q3-web-tier/
- 
+saber resume --session sessions/q3-web-tier/
+
 # Run a single phase only
-phantom run --scope config/scope.yaml --phase recon
- 
+saber run --scope config/scope.yaml --phase recon
+
 # Generate report from existing session (no re-scanning)
-phantom report --session sessions/q3-web-tier/ --format pdf,xlsx
- 
+saber report --session sessions/q3-web-tier/ --format pdf,xlsx
+
 # Live dashboard view
-phantom status --session sessions/q3-web-tier/
+saber status --session sessions/q3-web-tier/
 ```
- 
----
- 
+
+`scope.yaml` is unchanged in structure from the original plan. `allowed_ttps` now additionally supports AD-specific values:
+
+- `kerberoasting`
+- `asreproasting`
+- `smb_relay`
+- `bloodhound_collection`
+- `dcsync`
+
 ### 4.2 Mission Planner Agent
- 
-**File:** `phantom/agents/planner.py`
+
+**File:** `saber/agents/planner.py`  
 **Prompt:** `prompts/planner.txt`
- 
-This is the top-level Claude agent. It is NOT a general-purpose agent — it has a narrow, structured job:
- 
-1. Read the scope YAML and all prior-phase findings (if resuming)
-2. Output a `MissionPlan` (structured JSON): ordered phase list, per-phase targets, per-phase tool selection
-3. After each phase completes, read the findings and decide: proceed / re-run phase with different tools / escalate to exploit phase early / abort
-**What it does NOT do:**
-- Does not call tools
-- Does not parse raw tool output
-- Does not write reports
-- Does not make decisions about CVE severity (that's the reporting agent)
-**Key design:** the planner communicates via structured `tool_use` calls, not free text. It calls a `dispatch_phase(phase_name, targets, tools, flags)` tool, which is handled by the Python orchestrator.
- 
-**Phase gating logic:** The planner won't dispatch the exploit agent until the recon and web/network agents have returned findings. It uses a simple decision tree defined in its system prompt:
- 
-```
-IF recon_complete AND (web_findings OR network_findings):
-  → dispatch exploit agent with high-confidence findings only
-IF exploit_successful:
-  → dispatch post_exploit agent
-IF phase_returns_empty_findings AND retries_exhausted:
-  → mark phase SKIPPED and continue
-```
- 
----
- 
+
+Unchanged role from the original plan — reads scope, dispatches phases, gates progression — but now operates over a flow → task → subtask → action hierarchy instead of a flat phase list, and is aware of the `--interactive` flag when deciding whether to pause before dispatching exploitation actions.
+
+See [4.7 Phase Graph — Upgraded Hierarchy](#47-phase-graph--upgraded-hierarchy).
+
 ### 4.3 Sub-Agents
- 
-Each sub-agent inherits from `BaseAgent`. They receive:
-- Their phase scope (subset of full scope)
-- Prior-phase findings relevant to them
-- A list of permitted tools (from scope YAML)
-They output structured `ToolCall` commands, which the Python executor runs. They never see raw subprocess output — only normalized `Finding` objects returned by the executor.
- 
-#### ReconAgent (`agents/recon.py`)
-- Responsible for: port/service discovery, subdomain enum, DNS analysis, OSINT
-- Tools it can call: `nmap`, `masscan`, `amass`, `subfinder`, `theharvester`, `dnsrecon`, `whatweb`
-- Decision logic: run masscan first for speed, then targeted nmap on discovered ports for version/script data. Run subdomain enum in parallel.
-- Output: list of `Target` objects (host + port + service + banner) fed to web/network agents
-#### WebAgent (`agents/web.py`)
-- Responsible for: directory brute, tech fingerprint, vuln scanning, injection testing
-- Tools it can call: `feroxbuster`, `nuclei`, `sqlmap`, `nikto`, `zap_api`
-- Decision logic: feroxbuster first for map, then nuclei templates against discovered paths, then targeted sqlmap only on parameterized endpoints
-- Output: `Finding` objects for each confirmed vulnerability
-#### NetworkAgent (`agents/network.py`)
-- Responsible for: SMB/LDAP enum, SNMP, hash capture, service vulns
-- Tools it can call: `enum4linux`, `snmpwalk`, `responder`, `bettercap`, `openvas_api`
-- Decision logic: passive enum first, then Responder only if hash_capture is in allowed_ttps
-- Output: `Finding` objects + `Credential` objects for captured hashes
-#### ExploitAgent (`agents/exploit.py`)
-- Responsible for: matching findings to exploits, executing with Metasploit or manual PoC
-- Tools it can call: `searchsploit`, `metasploit` (via MSFRPC)
-- Decision logic: only act on findings with `confidence >= 0.85` and matching CVE or named vuln. Rank by CVSS. Try highest-scoring first. Record success/fail for each attempt.
-- **Critical:** always checks scope_guard before launching any exploit
-- Output: `Finding` with `exploited: True`, shell session ID if successful
-#### PostExploitAgent (`agents/post_exploit.py`)
-- Responsible for: privilege escalation, credential dumping, pivot setup, data exfil simulation
-- Tools it can call: `mimikatz`, `linpeas`, `winpeas`, `chisel`
-- Decision logic: enumerate then escalate. Never runs destructive commands. Screenshots every privilege escalation proof.
-- Output: `Finding` objects, `Credential` objects, screenshot evidence
----
- 
-### 4.4 Tool Execution Layer
- 
-**File:** `phantom/tools/base_wrapper.py`
- 
-The most important non-AI file in the project. Every tool wrapper inherits from this.
- 
+
+Unchanged in role split from the original plan, with one update:
+
+**NetworkAgent (`agents/network.py`)** now explicitly owns the AD attack chain as part of its responsibility, not a separate future agent. Decision logic: passive enum first using enum4linux and SMB share listing, then BloodHound collection if `bloodhound_collection` is in `allowed_ttps`, then Kerberoasting/ASREPRoasting against accounts BloodHound flags as high-value, then NetExec for credential validation/spraying across discovered hosts.
+
+This keeps the agent count the same as originally planned — five sub-agents — while expanding NetworkAgent's tool set significantly.
+
+### 4.4 Tool Execution Layer — Now Sandbox-Aware
+
+**Files:** `saber/tools/base_wrapper.py`, `saber/core/sandbox.py`
+
+This is the most significant architectural change in this revision. The original `ToolWrapper.run()` spawned subprocesses directly on the host. It now executes inside a per-session ephemeral Docker container.
+
 ```python
-# phantom/tools/base_wrapper.py  (spec, not final code)
- 
+# saber/core/sandbox.py  (spec, not final code)
+
+class SandboxManager:
+    """
+    Manages the lifecycle of the per-session Docker sandbox container.
+    
+    One container per session, created at session start, destroyed at
+    session end (or kept paused for resume). The container has network
+    access to the declared scope targets only — enforced via Docker
+    network policy as a second layer behind ScopeGuard, not a replacement
+    for it.
+    """
+    
+    image: str = "saber/sandbox:kali-latest"
+    
+    async def start_session_container(self, session_id: str) -> ContainerHandle:
+        # docker run -d --name saber-{session_id}
+        #   --network saber-session-net-{session_id}
+        #   saber/sandbox:kali-latest
+        ...
+    
+    async def exec_in_container(
+        self,
+        container: ContainerHandle,
+        command: List[str],
+        timeout: int
+    ) -> ToolResult:
+        # docker exec {container} {command}
+        # capture stdout/stderr, enforce timeout, never shell=True
+        ...
+    
+    async def stop_session_container(self, container: ContainerHandle) -> None:
+        ...
+```
+
+```python
+# saber/tools/base_wrapper.py  (spec, updated)
+
 class ToolWrapper:
     """
-    Base class for all tool wrappers.
-    
-    Responsibilities:
-    - Build the command from structured args (never string interpolation)
-    - Enforce timeout and kill
-    - Capture stdout, stderr, exit code
-    - Pass raw output to the tool's own parser
-    - Return a list of Finding objects
-    - Save raw output to evidence store
-    - Never raise on non-zero exit — always return findings (possibly empty)
+    Base class for all tool wrappers. Now requires a SandboxManager
+    and executes inside the session container rather than on the host.
     """
-    
-    tool_name: str           # e.g. "nmap"
-    binary_path: str         # from tools.yaml
-    default_flags: list      # safe defaults
-    timeout_seconds: int     # hard kill timeout
     
     async def run(
         self,
         target: Target,
         flags: dict,
         scope_guard: ScopeGuard,
+        sandbox: SandboxManager,
         evidence_store: EvidenceStore
     ) -> ToolResult:
         # 1. scope_guard.validate(target) — raises ScopeViolation if out of scope
-        # 2. build_command(target, flags) — returns List[str], never shell=True
-        # 3. asyncio.create_subprocess_exec(*cmd)
-        # 4. communicate(timeout=self.timeout_seconds)
-        # 5. evidence_store.save_raw(tool_name, target, stdout, stderr, cmd)
-        # 6. parse_output(stdout) → List[Finding]
-        # 7. return ToolResult(findings, raw_output_path, exit_code, duration)
+        # 2. build_command(target, flags) — returns List[str]
+        # 3. sandbox.exec_in_container(container, cmd, timeout=self.timeout_seconds)
+        # 4. evidence_store.save_raw(tool_name, target, stdout, stderr, cmd)
+        # 5. parse_output(stdout) → List[Finding]
+        # 6. return ToolResult(findings, raw_output_path, exit_code, duration)
+```
+
+The `docker/Dockerfile.sandbox` builds a Kali rolling base image with all tools from [Section 7](#7-tool-wrapper-inventory) pre-installed, so container startup doesn't require per-tool installation at runtime — matching the pattern PentAGI and PentestAgent both use.
+
+### 4.5 Approval Gate — New Component
+
+**Files:** `saber/core/approval_gate.py`, `saber/ui/cli/approval_prompt.py`
+
+Only active when `--interactive` is passed. Wraps the ExploitAgent and PostExploitAgent's dispatch calls.
+
+```python
+# saber/core/approval_gate.py  (spec)
+
+class ApprovalDecision(str, Enum):
+    ALLOW_ONCE = "allow_once"
+    ALLOW_SESSION = "allow_session"
+    DENY = "deny"
+
+class ApprovalGate:
+    """
+    Before a sensitive action (exploitation attempt, post-exploitation
+    command) fires, prompts the operator for approval if --interactive
+    is set. ALLOW_SESSION caches approval for the rest of the session
+    for that specific (tool, target) pair — not a blanket approval for
+    all future actions.
+    """
     
-    def build_command(self, target: Target, flags: dict) -> List[str]:
-        # MUST return a list, never a string
-        # NEVER use shell=True or f-string command building
-        raise NotImplementedError
-    
-    def parse_output(self, raw_output: str) -> List[Finding]:
-        # Tool-specific parsing into Finding objects
-        raise NotImplementedError
+    async def request_approval(
+        self,
+        action_description: str,
+        tool: str,
+        target: Target,
+        command: List[str]
+    ) -> ApprovalDecision:
+        # Check session cache for prior ALLOW_SESSION on (tool, target)
+        # If not cached, prompt operator via CLI, block until response
+        # Log decision to approvals table regardless of outcome
+        ...
 ```
- 
-**Key principle:** `shell=False` always. Command arguments are always a `List[str]`. This prevents shell injection from AI-generated parameters.
- 
-#### NmapWrapper example spec
- 
+
+This directly mirrors PentesterFlow's gating model: permission-gated tools require allow-once, allow-session, or deny, and scoped session caching never licenses a second host or command. An `ALLOW_SESSION` on one target's Metasploit module does not silently authorize the same module against a different target.
+
+### 4.6 Output Normalizer & Evidence Store
+
+Unchanged from the original plan — this part of the design held up against all competitive research.
+
+### 4.7 Phase Graph — Upgraded Hierarchy
+
+**File:** `saber/core/phase_graph.py`
+
+The original flat phase list:
+
+```text
+recon → web → network → exploit → post_exploit → report
 ```
-binary: nmap
-default_flags: ["-sV", "-sC", "--open", "-oX", "-"]  # XML to stdout
-parse_output: uses python-libnmap to parse XML → extract hosts/ports/services
-Finding fields populated:
-  - target.host, target.port, target.service, target.banner
-  - finding.phase = "recon"
-  - finding.title = "Open port: {port}/{service}"
-  - finding.severity = "info"
-  - finding.evidence.raw_command = full nmap command string
-  - finding.evidence.raw_output_path = path to saved XML
+
+is upgraded to a four-level hierarchy modeled on PentAGI's flow/task/subtask/action structure, without adopting PentAGI's infrastructure:
+
+```text
+Flow: "Q3 Internal Pentest - Web Tier"
+├── Task: Reconnaissance
+│   ├── Subtask: Port/service discovery
+│   │   ├── Action: nmap -sV --open 10.10.10.0/24
+│   │   └── Action: masscan -p1-65535 10.10.10.0/24
+│   └── Subtask: Subdomain enumeration
+│       └── Action: amass enum -passive -d internal.corp.example
+├── Task: Web Assessment
+│   └── ...
+├── Task: Network & Active Directory
+│   ├── Subtask: SMB enumeration
+│   ├── Subtask: BloodHound collection
+│   └── Subtask: Kerberoasting
+├── Task: Exploitation
+└── Task: Post-Exploitation
 ```
- 
+
+This is a pure data-modeling change — same SQLite backend, no Neo4j — but gives the Mission Planner finer-grained resumability and gives the live CLI dashboard a meaningful progress tree to render.
+
+### 4.8 Reporting Agent
+
+Unchanged from the original plan.
+
 ---
- 
-### 4.5 Output Normalizer & Evidence Store
- 
-**Files:** `phantom/core/evidence_store.py`, `phantom/models/finding.py`
- 
-The normalizer is not a separate service — it's the `parse_output()` method of each tool wrapper, which always returns the same `Finding` schema regardless of which tool produced it.
- 
-#### Evidence directory structure
- 
-```
-sessions/
-└── q3-web-tier-2026-06-04/
-    ├── session.db                   # SQLite — all findings, targets, creds
-    ├── session.json                 # human-readable session summary
-    ├── evidence/
-    │   ├── recon/
-    │   │   ├── nmap_10.10.10.5_raw.xml
-    │   │   ├── nmap_10.10.10.5_cmd.txt
-    │   │   ├── amass_corp_raw.txt
-    │   │   └── ...
-    │   ├── web/
-    │   │   ├── feroxbuster_app_raw.txt
-    │   │   ├── nuclei_app_raw.json
-    │   │   ├── sqlmap_login_raw.txt
-    │   │   ├── screenshots/
-    │   │   │   ├── sqli_proof_001.png
-    │   │   │   └── xss_proof_001.png
-    │   │   └── ...
-    │   ├── network/
-    │   ├── exploitation/
-    │   │   ├── msf_session_001.txt
-    │   │   └── screenshots/
-    │   │       └── shell_access_001.png
-    │   └── post_exploit/
-    │       ├── privesc_proof.png
-    │       └── creds_dump.txt
-    └── reports/
-        ├── executive_summary.pdf
-        ├── technical_report.pdf
-        ├── findings.json
-        └── findings.xlsx
-```
- 
----
- 
-### 4.6 Reporting Agent
- 
-**File:** `phantom/agents/reporter.py`
-**Prompt:** `prompts/reporter.txt`
- 
-Runs after all phases are complete (or on demand via `phantom report`). Reads the SQLite findings database and all evidence metadata. Produces a structured report.
- 
-**Two output narratives:**
- 
-1. **Executive summary** (for management/clients): risk summary, top 5 critical findings, business impact, recommended priorities. No technical jargon. Includes key screenshots.
-2. **Technical report** (for remediation teams): full finding-by-finding walkthrough, exact reproduction steps, tool commands used, raw evidence references, CVSS scores, CVE references, fix recommendations.
-**What the reporter does NOT do:**
-- Does not re-run any tools
-- Does not make new vulnerability discoveries
-- Does not assign severity without a CVSS base score or known CVE reference
-- Does not include unverified findings (missing evidence) in executive output
----
- 
+
 ## 5. Core Data Schemas
- 
-### Finding (the central contract)
- 
+
+The `Finding`, `Evidence`, `Credential`, `Scope`, and `ToolResult` schemas are unchanged from the original plan — they held up against the competitive research without modification.
+
+Two additions:
+
+### ADPrincipal — New
+
 ```python
-# phantom/models/finding.py
- 
-from enum import Enum
-from pydantic import BaseModel
-from typing import Optional, List
-from datetime import datetime
- 
-class Severity(str, Enum):
-    CRITICAL = "critical"
-    HIGH     = "high"
-    MEDIUM   = "medium"
-    LOW      = "low"
-    INFO     = "info"
- 
-class FindingStatus(str, Enum):
-    CONFIRMED    = "confirmed"    # tool confirmed + evidence attached
-    UNVERIFIED   = "unverified"   # detected but not exploited/proven
-    FALSE_POSITIVE = "false_positive"
-    EXPLOITED    = "exploited"    # full PoC achieved
- 
-class Evidence(BaseModel):
-    raw_command:     str                    # exact command that produced this
-    raw_output_path: str                    # path to saved raw output file
-    screenshots:     List[str] = []         # paths to screenshot files
-    timestamp:       datetime
- 
-class Finding(BaseModel):
-    id:              str                    # uuid4
-    session_id:      str
-    phase:           str                    # recon | web | network | exploit | post_exploit
-    tool:            str                    # nmap | nuclei | sqlmap | etc.
-    
-    # Target
-    host:            str                    # IP or hostname
-    port:            Optional[int]
-    service:         Optional[str]          # http | smb | ssh | etc.
-    url:             Optional[str]          # full URL if web finding
-    
-    # Finding
-    title:           str                    # short, human-readable
-    description:     str                    # what was found
-    severity:        Severity
-    status:          FindingStatus
-    confidence:      float                  # 0.0–1.0 (tool-assigned)
-    
-    # CVE / Reference
-    cve:             Optional[str]          # CVE-YYYY-NNNNN
-    cvss_score:      Optional[float]        # 0.0–10.0
-    cvss_vector:     Optional[str]
-    references:      List[str] = []
-    
-    # Exploitation result (if applicable)
-    exploited:       bool = False
-    exploit_module:  Optional[str]          # e.g. "exploit/multi/handler"
-    shell_session:   Optional[str]          # msf session ID or description
-    
-    # Credentials obtained
-    credentials:     List["Credential"] = []
-    
-    # Evidence
-    evidence:        Evidence
-    
-    # Reporting
-    reporter_notes:  Optional[str]          # Claude-generated analyst note
-    remediation:     Optional[str]          # Claude-generated fix recommendation
-    
-    created_at:      datetime
-    updated_at:      datetime
+# saber/models/ad_principal.py
+
+class PrincipalType(str, Enum):
+    USER = "user"
+    GROUP = "group"
+    COMPUTER = "computer"
+    GPO = "gpo"
+    OU = "ou"
+
+class ADPrincipal(BaseModel):
+    id: str
+    session_id: str
+    sam_account_name: str
+    principal_type: PrincipalType
+    domain: str
+    distinguished_name: Optional[str]
+    member_of: List[str] = []        # group SIDs
+    admin_on: List[str] = []         # computer hostnames this principal has admin on
+    high_value: bool = False         # flagged by BloodHound as high-value target
+    kerberoastable: bool = False
+    asreproastable: bool = False
+    source_tool: str                 # bloodhound | netexec | manual
+    discovered_at: datetime
 ```
- 
-### Credential
- 
+
+### ApprovalRecord — New
+
 ```python
-class CredentialType(str, Enum):
-    PLAINTEXT   = "plaintext"
-    NTLM_HASH   = "ntlm_hash"
-    NET_NTLMv2  = "net_ntlmv2"
-    KERBEROS    = "kerberos"
-    SSH_KEY     = "ssh_key"
-    API_KEY     = "api_key"
- 
-class Credential(BaseModel):
-    id:           str
-    session_id:   str
-    finding_id:   str              # which finding produced this
-    host:         str
-    service:      str
-    username:     Optional[str]
-    secret:       str              # hash or plaintext
-    type:         CredentialType
-    cracked:      bool = False
-    plaintext:    Optional[str]    # populated if cracked
-    evidence_path: str
-    timestamp:    datetime
+class ApprovalRecord(BaseModel):
+    id: str
+    session_id: str
+    action_description: str
+    tool: str
+    target: str
+    command: List[str]
+    decision: ApprovalDecision
+    decided_at: datetime
 ```
- 
-### Scope & RulesOfEngagement
- 
-```python
-class ScopeTarget(BaseModel):
-    type:  str                     # ip | ip_range | domain | url
-    value: str
- 
-class RulesOfEngagement(BaseModel):
-    allowed_phases:   List[str]
-    allowed_ttps:     List[str]
-    prohibited:       List[str]
-    max_concurrent_tools: int = 3
-    rate_limit_rps:   float = 10.0  # requests per second cap
-    
-class Scope(BaseModel):
-    mission_name:  str
-    operator:      str
-    date:          str
-    targets:       List[ScopeTarget]
-    out_of_scope:  List[str]        # IPs, domains, CIDR ranges
-    roe:           RulesOfEngagement
-    evidence_path: str
-```
- 
-### ToolResult
- 
-```python
-class ToolResult(BaseModel):
-    tool:           str
-    target:         str
-    command:        List[str]       # exact command executed
-    exit_code:      int
-    duration_seconds: float
-    findings:       List[Finding]
-    raw_output_path: str
-    error:          Optional[str]   # stderr if non-zero exit
-```
- 
+
 ---
- 
+
 ## 6. Agent System Prompt Designs
- 
-### planner.txt (structure)
- 
+
+The `planner.txt` and `exploit_agent.txt` structures are unchanged from the original plan in their core logic.
+
+One addition to each:
+
+### planner.txt
+
+```text
+INTERACTIVE MODE: If the session config has interactive=true, you must flag
+every exploitation and post-exploitation dispatch as requiring approval_gate
+review before execution. This does not change your planning logic — you still
+decide what to attempt and in what order — it only changes whether the
+Python orchestrator pauses for operator confirmation before each dispatch fires.
 ```
-You are the Mission Planner for PHANTOM, an automated penetration testing platform.
- 
-ROLE: You read scope definitions and finding summaries. You issue structured 
-dispatch commands for sub-agents. You never call tools directly. You never 
-interpret raw tool output — only normalized Finding JSON.
- 
-INPUT FORMAT: You receive a JSON object containing:
-  - scope: the full scope definition
-  - completed_phases: list of phase names already run
-  - findings_summary: aggregated findings from completed phases
-  - session_id: current session identifier
- 
-OUTPUT FORMAT: You must respond ONLY with a JSON object using the dispatch_phase 
-tool. Never respond with free text.
- 
-PHASE ORDERING RULES:
-  1. recon always runs first
-  2. web and network run in parallel after recon
-  3. exploitation runs only after web OR network returns confirmed findings
-  4. post_exploitation runs only after a successful exploit
-  5. reporting always runs last
- 
-DECISION GATES:
-  - Do not dispatch exploitation if recon_findings is empty
-  - Do not dispatch exploitation against targets outside scope
-  - Mark a phase SKIPPED if: it has run twice and returned zero findings
-  - Escalate to exploitation early if a finding has cvss_score >= 9.0
- 
-SCOPE ENFORCEMENT: You may only dispatch phases and tools that appear in 
-scope.allowed_phases and scope.roe.allowed_ttps.
+
+### network_agent.txt
+
+```text
+ACTIVE DIRECTORY METHODOLOGY: When bloodhound_collection is in allowed_ttps
+and a domain controller is identified in scope:
+  1. Run passive SMB/LDAP enumeration first (enum4linux, no auth required)
+  2. If valid credentials exist (from recon or earlier captures), run
+     bloodhound-python collection
+  3. Read BloodHound output for high-value targets and Kerberoastable/
+     ASREPRoastable accounts before attempting any AD-specific exploitation
+  4. Only attempt Kerberoasting/ASREPRoasting if kerberoasting/asreproasting
+     appear in allowed_ttps
+  5. Never attempt DCSync or domain admin escalation unless dcsync explicitly
+     appears in allowed_ttps — this is a high-impact action requiring explicit
+     authorization even in fully autonomous mode
 ```
- 
-### exploit_agent.txt (structure, most critical to get right)
- 
-```
-You are the Exploitation Agent for PHANTOM.
- 
-ROLE: You receive a list of confirmed, high-confidence findings from the recon, 
-web, and network phases. You decide which findings to attempt exploitation on, 
-in what order, and with which tools/modules.
- 
-CONSTRAINTS (non-negotiable):
-  - You only attempt exploitation on findings with confidence >= 0.85
-  - You only use exploit modules that appear in scope.roe.allowed_ttps
-  - You do not attempt destructive payloads (format, delete, encrypt)
-  - You attempt at most 3 exploit modules per finding before marking it FAILED
-  - You record the exact command used for every attempt, success or fail
- 
-ORDERING:
-  Rank findings by: (cvss_score * confidence) DESC
-  Attempt highest-ranked first.
- 
-OUTPUT FORMAT: structured ToolCall JSON only. No free text.
-```
- 
+
 ---
- 
+
 ## 7. Tool Wrapper Inventory
- 
-### Phase 1 — Recon
- 
+
+Phases 1–3 — Recon, Web, Network — and Phases 5–6 — Post-Exploitation, Password — are unchanged from the original plan.
+
+The Active Directory module is new.
+
+### Phase 4 — Active Directory (NEW — Formerly Listed as a Deferred Future Module)
+
 | Tool | Wrapper File | Parse Format | Key Output |
 |---|---|---|---|
-| nmap | `tools/recon/nmap.py` | XML via python-libnmap | host/port/service/banner |
-| masscan | `tools/recon/masscan.py` | JSON (`-oJ`) | open ports (fast sweep) |
-| amass | `tools/recon/amass.py` | JSON (`-json`) | subdomains + IPs |
-| subfinder | `tools/recon/subfinder.py` | JSON (`-json`) | subdomains |
-| theHarvester | `tools/recon/theharvester.py` | JSON (`-f -b all`) | emails, hosts, IPs |
-| dnsrecon | `tools/recon/dnsrecon.py` | JSON (`-j`) | DNS records, zone transfer |
-| whatweb | `tools/recon/whatweb.py` | JSON (`--log-json`) | tech fingerprint |
- 
-### Phase 2 — Web
- 
-| Tool | Wrapper File | Parse Format | Key Output |
-|---|---|---|---|
-| feroxbuster | `tools/web/feroxbuster.py` | JSON (`--json`) | discovered paths |
-| nuclei | `tools/web/nuclei.py` | JSON (`-json`) | template-matched vulns |
-| sqlmap | `tools/web/sqlmap.py` | text + JSON (`--batch --json-out`) | SQLi findings + data |
-| nikto | `tools/web/nikto.py` | XML (`-Format xml`) | web misconfigs |
-| ZAP | `tools/web/zap_api.py` | REST API JSON | active scan findings |
- 
-**Note on ZAP:** ZAP runs as a daemon (`start_zap.sh`). The wrapper calls its REST API rather than spawning it as a subprocess. This is intentional — ZAP needs to run persistently and cannot be respawned per scan.
- 
-### Phase 3 — Network
- 
-| Tool | Wrapper File | Parse Format | Key Output |
-|---|---|---|---|
-| enum4linux-ng | `tools/network/enum4linux.py` | JSON (`-oJ`) | SMB users/shares/policies |
-| snmpwalk | `tools/network/snmpwalk.py` | text | SNMP OID dump |
-| Responder | `tools/network/responder.py` | log file parse | captured NTLMv2 hashes |
-| Bettercap | `tools/network/bettercap.py` | REST API + events log | MITM, ARP poison data |
-| OpenVAS | `tools/network/openvas_api.py` | python-gvm XML | network vulns |
- 
-**Note on Responder:** Responder writes to `/usr/share/responder/logs/`. The wrapper starts it, monitors the log directory for new hash files, captures them, then kills the process. It does not parse Responder's stdout.
- 
-### Phase 4 — Exploitation
- 
-| Tool | Wrapper File | Parse Format | Key Output |
-|---|---|---|---|
-| Metasploit | `tools/exploitation/metasploit.py` | MSFRPC / pymetasploit3 | session IDs, shell output |
-| searchsploit | `tools/exploitation/searchsploit.py` | JSON (`--json`) | matching exploit paths/titles |
- 
-**Note on Metasploit:** Uses `pymetasploit3` to communicate with the MSFRPC daemon (started via `start_msfrpc.sh`). Never spawns `msfconsole` as a subprocess — MSFRPC provides a structured API for module loading, option setting, and session management.
- 
-### Phase 5 — Post-Exploitation
- 
-| Tool | Wrapper File | Parse Format | Key Output |
-|---|---|---|---|
-| Mimikatz | `tools/post_exploit/mimikatz.py` | text parse | NTLM hashes, plaintext creds |
-| LinPEAS | `tools/post_exploit/linpeas.py` | text parse + ANSI strip | privesc vectors |
-| WinPEAS | `tools/post_exploit/winpeas.py` | text parse | privesc vectors |
-| Chisel | `tools/post_exploit/chisel.py` | subprocess + log | pivot tunnel setup |
- 
-### Phase 6 — Password
- 
-| Tool | Wrapper File | Parse Format | Key Output |
-|---|---|---|---|
-| Hashcat | `tools/password/hashcat.py` | `--outfile` parse + `--status-json` | cracked plaintext |
-| John the Ripper | `tools/password/john.py` | `--show` output parse | cracked plaintext |
- 
+| bloodhound-python | `tools/active_directory/bloodhound.py` | JSON (BloodHound ingest format) | Users/groups/computers/ACLs/sessions graph data |
+| Impacket — secretsdump | `tools/active_directory/impacket_tools.py` | text parse | NTLM hashes, Kerberos keys |
+| Impacket — GetUserSPNs | `tools/active_directory/impacket_tools.py` | text parse | Kerberoastable account tickets |
+| Impacket — wmiexec | `tools/active_directory/impacket_tools.py` | interactive shell capture | Remote command execution evidence |
+| CrackMapExec / NetExec | `tools/active_directory/netexec.py` | JSON (`--log` parse) | Credential validation across host ranges, share enumeration |
+
+**Note on BloodHound:** the wrapper runs `bloodhound-python` as the collector, with no GUI dependency, and stores the raw JSON output in the evidence store. Graph analysis of the output — finding shortest paths to Domain Admin — is done in Python using the `bloodhound-python` library's own graph utilities, or in a lightweight in-memory graph such as `networkx`, rather than standing up Neo4j.
+
+This is the specific point where SABER deliberately stays lighter than PentAGI.
+
+### Updated Phase Ordering
+
+```text
+1. Recon
+2. Web
+3. Network (general enumeration)
+4. Active Directory (if domain environment detected)
+5. Exploitation
+6. Post-Exploitation
+7. Password Cracking (can run in parallel with Post-Exploitation)
+8. Reporting
+```
+
 ---
- 
+
 ## 8. Storage & Database Design
- 
-**File:** `phantom/storage/database.py`
-**Engine:** SQLite via `aiosqlite`
-**Schema file:** `phantom/storage/migrations/001_initial.sql`
- 
-### Tables
- 
+
+The original `sessions`, `findings`, `credentials`, and `tool_runs` tables are unchanged.
+
+Two new tables:
+
 ```sql
--- sessions
-CREATE TABLE sessions (
-    id           TEXT PRIMARY KEY,
-    name         TEXT NOT NULL,
-    operator     TEXT,
-    scope_json   TEXT NOT NULL,       -- full scope YAML serialized
-    status       TEXT NOT NULL,       -- running | paused | complete | failed
-    started_at   TIMESTAMP,
-    updated_at   TIMESTAMP,
-    completed_at TIMESTAMP
-);
- 
--- findings
-CREATE TABLE findings (
-    id            TEXT PRIMARY KEY,
-    session_id    TEXT NOT NULL,
-    phase         TEXT NOT NULL,
-    tool          TEXT NOT NULL,
-    host          TEXT NOT NULL,
-    port          INTEGER,
-    service       TEXT,
-    url           TEXT,
-    title         TEXT NOT NULL,
-    description   TEXT,
-    severity      TEXT NOT NULL,
-    status        TEXT NOT NULL,
-    confidence    REAL,
-    cve           TEXT,
-    cvss_score    REAL,
-    cvss_vector   TEXT,
-    exploited     BOOLEAN DEFAULT FALSE,
-    exploit_module TEXT,
-    reporter_notes TEXT,
-    remediation   TEXT,
-    evidence_json TEXT NOT NULL,      -- serialized Evidence object
-    created_at    TIMESTAMP,
-    updated_at    TIMESTAMP,
+-- ad_principals
+CREATE TABLE ad_principals (
+    id                  TEXT PRIMARY KEY,
+    session_id          TEXT NOT NULL,
+    sam_account_name    TEXT NOT NULL,
+    principal_type      TEXT NOT NULL,
+    domain              TEXT NOT NULL,
+    distinguished_name  TEXT,
+    member_of_json      TEXT,       -- JSON array of group SIDs
+    admin_on_json       TEXT,       -- JSON array of hostnames
+    high_value          BOOLEAN DEFAULT FALSE,
+    kerberoastable      BOOLEAN DEFAULT FALSE,
+    asreproastable      BOOLEAN DEFAULT FALSE,
+    source_tool         TEXT,
+    discovered_at       TIMESTAMP,
     FOREIGN KEY (session_id) REFERENCES sessions(id)
 );
- 
--- credentials
-CREATE TABLE credentials (
-    id            TEXT PRIMARY KEY,
-    session_id    TEXT NOT NULL,
-    finding_id    TEXT NOT NULL,
-    host          TEXT NOT NULL,
-    service       TEXT,
-    username      TEXT,
-    secret        TEXT NOT NULL,
-    type          TEXT NOT NULL,
-    cracked       BOOLEAN DEFAULT FALSE,
-    plaintext     TEXT,
-    evidence_path TEXT,
-    timestamp     TIMESTAMP,
+
+-- approvals
+CREATE TABLE approvals (
+    id                  TEXT PRIMARY KEY,
+    session_id          TEXT NOT NULL,
+    action_description  TEXT NOT NULL,
+    tool                TEXT NOT NULL,
+    target              TEXT NOT NULL,
+    command_json        TEXT NOT NULL,
+    decision            TEXT NOT NULL,   -- allow_once | allow_session | deny
+    decided_at          TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
+```
+
+The flow/task/subtask/action hierarchy from [Section 4.7](#47-phase-graph--upgraded-hierarchy) is represented as a self-referencing `phase_nodes` table rather than a separate graph database:
+
+```sql
+-- phase_nodes (flow/task/subtask/action hierarchy)
+CREATE TABLE phase_nodes (
+    id           TEXT PRIMARY KEY,
+    session_id   TEXT NOT NULL,
+    parent_id    TEXT,             -- NULL for top-level flow node
+    node_type    TEXT NOT NULL,    -- flow | task | subtask | action
+    name         TEXT NOT NULL,
+    status       TEXT NOT NULL,    -- pending | running | complete | skipped | failed
+    started_at   TIMESTAMP,
+    completed_at TIMESTAMP,
     FOREIGN KEY (session_id) REFERENCES sessions(id),
-    FOREIGN KEY (finding_id) REFERENCES findings(id)
-);
- 
--- tool_runs (raw execution log)
-CREATE TABLE tool_runs (
-    id              TEXT PRIMARY KEY,
-    session_id      TEXT NOT NULL,
-    phase           TEXT NOT NULL,
-    tool            TEXT NOT NULL,
-    target          TEXT,
-    command_json    TEXT NOT NULL,   -- List[str] as JSON
-    exit_code       INTEGER,
-    duration_secs   REAL,
-    raw_output_path TEXT,
-    error           TEXT,
-    started_at      TIMESTAMP,
-    completed_at    TIMESTAMP
+    FOREIGN KEY (parent_id) REFERENCES phase_nodes(id)
 );
 ```
- 
+
 ---
- 
+
 ## 9. Configuration System
- 
-### tools.yaml — tool paths and default flags
- 
+
+`tools.yaml` gains entries for the new AD tools and the Docker sandbox config:
+
 ```yaml
+sandbox:
+  image: saber/sandbox:kali-latest
+  network_mode: scoped
+  memory_limit: 4g
+  cpu_limit: 2
+  container_timeout: 7200
+
 tools:
-  nmap:
-    binary: /usr/bin/nmap
-    default_flags: ["-sV", "-sC", "--open", "-oX", "-"]
+  # ... (nmap, masscan, amass, nuclei, feroxbuster, sqlmap, metasploit,
+  #      hashcat, responder — all unchanged from original plan) ...
+
+  bloodhound:
+    binary: bloodhound-python
+    default_flags: ["-c", "All", "--zip"]
+    timeout: 900
+
+  impacket-secretsdump:
+    binary: secretsdump.py
     timeout: 300
- 
-  masscan:
-    binary: /usr/bin/masscan
-    default_flags: ["--rate", "1000", "-p", "1-65535"]
-    timeout: 120
-    requires_root: true
- 
-  amass:
-    binary: /usr/bin/amass
-    default_flags: ["enum", "-passive"]
-    timeout: 600
- 
-  nuclei:
-    binary: /usr/bin/nuclei
-    default_flags: ["-json", "-silent", "-severity", "medium,high,critical"]
-    timeout: 600
-    templates_path: /root/nuclei-templates
- 
-  feroxbuster:
-    binary: /usr/bin/feroxbuster
-    default_flags: ["--json", "--silent", "-t", "30"]
+
+  impacket-getuserspns:
+    binary: GetUserSPNs.py
+    default_flags: ["-request"]
     timeout: 300
-    wordlist: /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt
- 
-  sqlmap:
-    binary: /usr/bin/sqlmap
-    default_flags: ["--batch", "--level", "3", "--risk", "2", "--json-out"]
+
+  netexec:
+    binary: netexec
+    default_flags: ["smb"]
     timeout: 300
- 
-  metasploit:
-    rpc_host: 127.0.0.1
-    rpc_port: 55553
-    rpc_password: phantom_msfrpc_password   # set in .env
-    timeout: 120
- 
-  hashcat:
-    binary: /usr/bin/hashcat
-    wordlist: /usr/share/wordlists/rockyou.txt
-    timeout: 3600
- 
-  responder:
-    binary: /usr/bin/responder
-    log_dir: /usr/share/responder/logs
-    timeout: 300
+
+  zap:
+    client: python-owasp-zap-v2.4
+    api_host: 127.0.0.1
+    api_port: 8080
+    api_key_env: ZAP_API_KEY
 ```
- 
-### .env.example
- 
+
+`.env.example` gains:
+
 ```bash
-# Anthropic API
-ANTHROPIC_API_KEY=your_key_here
- 
-# Metasploit RPC
-MSF_RPC_PASSWORD=phantom_msfrpc_password
- 
-# ZAP API key
-ZAP_API_KEY=your_zap_key_here
- 
-# Optional: OpenVAS
-OPENVAS_HOST=127.0.0.1
-OPENVAS_PORT=9390
-OPENVAS_USER=admin
-OPENVAS_PASSWORD=your_openvas_password
- 
-# Session defaults
-DEFAULT_SESSION_DIR=./sessions
-DEFAULT_OUTPUT_DIR=./output
-LOG_LEVEL=INFO
+# Docker sandbox
+SABER_SANDBOX_IMAGE=saber/sandbox:kali-latest
+SABER_INTERACTIVE_DEFAULT=false
+
+# Active Directory
+AD_DOMAIN_CONTROLLER=
+AD_TEST_CREDENTIALS=
 ```
- 
+
 ---
- 
-## 10. Build Phases (Piece-by-Piece)
- 
-Build order is designed so every phase produces something testable before moving to the next.
- 
-### Phase 1 — Foundation
-**Goal:** schema + storage + scope enforcement working. No AI yet.
- 
-- [ ] Define and test all Pydantic models (`models/`)
+
+## 10. Build Phases (Chip-by-Chip)
+
+Build order is updated to front-load the Docker sandbox, since every later phase depends on it, and to insert the AD module where it now belongs.
+
+### Phase 1 — Foundation + Sandbox (Weeks 1–3, Expanded)
+
+**Goal:** schema + storage + scope enforcement + Docker sandbox working. No AI yet.
+
+- [ ] Define and test all Pydantic models in `models/`, including `ADPrincipal` and `ApprovalRecord`
 - [ ] Implement `ScopeGuard` with full test coverage
-- [ ] Implement `EvidenceStore` (directory creation, file saving)
-- [ ] Implement SQLite schema and `DatabaseManager` (CRUD for all tables)
-- [ ] Implement `ToolWrapper` base class with mock subclass
+- [ ] Build `docker/Dockerfile.sandbox` — Kali rolling + all Phase 1–6 tools
+- [ ] Implement `SandboxManager` — container start/exec/stop lifecycle, mocked Docker tests
+- [ ] Implement `EvidenceStore`
+- [ ] Implement SQLite schema, including new `ad_principals`, `approvals`, and `phase_nodes` tables
+- [ ] Implement `DatabaseManager`
+- [ ] Implement `ToolWrapper` base class, sandbox-aware, with mock subclass
 - [ ] Write unit tests for all of the above
-**Milestone:** `phantom/` package imports cleanly. Can create a session, save a mock finding, query it back.
- 
-### Phase 2 — Recon Layer
-**Goal:** nmap + amass wrappers working end-to-end on a test target.
- 
-- [ ] Implement `NmapWrapper` with XML parsing via python-libnmap
-- [ ] Implement `AmassWrapper` with JSON parsing
-- [ ] Implement `SubfinderWrapper`
-- [ ] Implement basic CLI (`phantom run --scope ... --phase recon`)
-- [ ] Implement `rich` live panel for scan progress
-- [ ] Add MasscanWrapper
-**Milestone:** `phantom run --scope examples/sample_scope.yaml --phase recon` runs against a test host, produces findings in SQLite, saves raw output to evidence dir.
- 
-### Phase 3 — Recon Agent
-**Goal:** Claude orchestrates the recon phase using tool wrappers.
- 
-- [ ] Implement `BaseAgent` with Anthropic API client + retry logic
-- [ ] Implement `ReconAgent` with system prompt
-- [ ] Implement `MissionPlannerAgent` (recon dispatch only for now)
-- [ ] Wire agent → tool wrapper → storage
-**Milestone:** Agent decides to run nmap + amass, dispatches both, findings appear in DB.
- 
-### Phase 4 — Web Layer
-**Goal:** web scanning pipeline working.
- 
-- [ ] Implement `FeroxbusterWrapper`
-- [ ] Implement `NucleiWrapper`
-- [ ] Implement `SqlmapWrapper`
-- [ ] Implement `WebAgent`
-- [ ] Start ZAP daemon via `start_zap.sh`, implement `ZapApiWrapper`
-**Milestone:** web agent runs against DVWA (local), finds SQLi, saves finding + screenshot evidence.
- 
-### Phase 5 — Network Layer
-**Goal:** internal network enumeration working.
- 
-- [ ] Implement `Enum4linuxWrapper`
-- [ ] Implement `ResponderWrapper` (log-watching pattern)
-- [ ] Implement `NetworkAgent`
-- [ ] Implement `SnmpwalkWrapper`
-**Milestone:** network agent runs against local test environment, captures SMB info + NTLMv2 hash.
- 
-### Phase 6 — Exploitation Layer
-**Goal:** Metasploit integration and exploit dispatch working.
- 
-- [ ] Start MSFRPC via `start_msfrpc.sh`
-- [ ] Implement `MetasploitWrapper` via pymetasploit3
+
+**Milestone:** `saber/` package imports cleanly. Can create a session, spin up a sandbox container, save a mock finding inside it, query it back, and tear the container down.
+
+### Phase 2 — Recon Layer (Weeks 4–5)
+
+Unchanged from the original plan, except tool execution now runs through the sandbox.
+
+**Milestone:** `saber run --scope examples/sample_scope.yaml --phase recon` runs inside the sandbox container against a test host, produces findings in SQLite, and saves raw output to the evidence directory.
+
+### Phase 3 — Recon Agent (Week 6)
+
+Unchanged from the original plan.
+
+### Phase 4 — Web Layer (Weeks 7–8)
+
+Unchanged from the original plan, with the ZAP wrapper now using `python-owasp-zap-v2.4` instead of hand-rolled REST calls.
+
+### Phase 5 — Network & Active Directory Layer (Weeks 9–11, Expanded)
+
+**Goal:** internal network enumeration and AD attack chain working — this phase grew the most in this revision.
+
+- [ ] Implement `Enum4linuxWrapper`, `ResponderWrapper`, and `SnmpwalkWrapper`
+- [ ] Implement `BloodhoundWrapper` — collection + JSON evidence storage
+- [ ] Implement lightweight graph analysis over BloodHound JSON output using `networkx`, not Neo4j, to identify shortest paths to high-value targets
+- [ ] Implement `ImpacketWrapper` — secretsdump, GetUserSPNs, wmiexec
+- [ ] Implement `NetexecWrapper`
+- [ ] Implement `NetworkAgent` with the expanded AD methodology from [Section 6](#6-agent-system-prompt-designs)
+- [ ] Implement `ApprovalGate` and wire it as a pass-through no-op when `--interactive` is not set
+
+**Milestone:** network agent runs against a lab AD environment, captures SMB info, runs BloodHound collection, identifies a Kerberoastable account, requests the ticket, and — if `--interactive` is set — pauses for approval before doing so.
+
+### Phase 6 — Exploitation Layer (Weeks 12–13)
+
+**Goal:** Metasploit integration and exploit dispatch working, now approval-gate-aware.
+
+- [ ] Start MSFRPC and implement `MetasploitWrapper` via `pymetasploit3`
 - [ ] Implement `SearchsploitWrapper`
 - [ ] Implement `ExploitAgent` with conservative gating logic
+- [ ] Wire `ApprovalGate` into the ExploitAgent's dispatch path
 - [ ] Implement screenshot capture post-exploitation
-**Milestone:** exploit agent matches a nuclei finding to a Metasploit module, launches it against test target, gets shell, screenshots session.
- 
-### Phase 7 — Post-Exploitation Layer
-**Goal:** post-exploit chain working.
- 
-- [ ] Implement `LinPEASWrapper` / `WinPEASWrapper`
-- [ ] Implement `MimikatzWrapper`
-- [ ] Implement `PostExploitAgent`
-- [ ] Implement `CredentialModel` vault
-- [ ] Implement `HashcatWrapper`
-**Milestone:** post-exploit agent runs linpeas on shell session, finds privesc vector, escalates, dumps creds, cracks hashes.
- 
-### Phase 8 — Reporting
-**Goal:** full report generation working.
- 
-- [ ] Implement `ReportingAgent` with system prompt
-- [ ] Implement `PdfExporter` with reportlab
-- [ ] Implement `XlsxExporter` with openpyxl
-- [ ] Implement `JsonExporter`
-- [ ] Wire to `phantom report` CLI command
-**Milestone:** `phantom report --session sessions/test/` produces executive PDF, technical PDF, and findings XLSX.
- 
-### Phase 9 — Full Integration
-**Goal:** end-to-end run on a controlled lab (Metasploitable, HackTheBox, or internal VM).
- 
-- [ ] Full pipeline test: recon → web → network → exploit → post-exploit → report
-- [ ] Session resume testing (interrupt mid-phase, resume)
-- [ ] Scope guard stress testing (verify no out-of-scope calls)
+
+**Milestone:** exploit agent matches a nuclei finding to a Metasploit module, prompts for approval in `--interactive` mode, launches it against a test target inside the sandbox after approval, gets shell, and screenshots the session.
+
+### Phase 7 — Post-Exploitation Layer (Week 14)
+
+Unchanged from the original plan, with `ApprovalGate` wired into PostExploitAgent the same way as ExploitAgent.
+
+### Phase 8 — Reporting (Week 15)
+
+Unchanged from the original plan. Technical report now includes an AD attack path section when applicable — shortest path to Domain Admin, rendered as a simple text-based path list, not a graph visualization in v1.
+
+### Phase 9 — Full Integration (Week 16)
+
+**Goal:** end-to-end run on a controlled lab including a domain-joined Windows environment, such as GOAD — Game of Active Directory — or a small custom AD lab, in addition to Metasploitable.
+
+- [ ] Full pipeline test: recon → web → network/AD → exploit → post-exploit → report
+- [ ] Sandbox container resume/cleanup testing
+- [ ] Approval gate testing in both autonomous and interactive modes
+- [ ] Scope guard stress testing — verify the Docker network policy actually blocks out-of-scope traffic, not just that ScopeGuard rejects the call in Python
 - [ ] Fix all integration bugs
-**Milestone:** complete run on Metasploitable produces full report with all phases.
- 
-### Phase 10 — Hardening & Polish
-- [ ] Rate limiting on all tool wrappers
-- [ ] Parallel phase execution (web + network simultaneously)
-- [ ] Retry logic tuning on all agents
-- [ ] Optional FastAPI web UI for session management
-- [ ] Full test suite to 80%+ coverage
-- [ ] README and documentation pass
+
+**Milestone:** complete run on a mixed Metasploitable + small AD lab produces a full report including an AD attack path section.
+
+### Phase 10 — Hardening & Polish (Week 17+)
+
+Unchanged from the original plan, with one addition: sandbox image size/startup time optimization, since a 17-tool Kali image can be slow to pull/start. Layer the Dockerfile so common tools are in early layers and rarely-used ones — wireless, reverse engineering, if added later — are in optional extension layers.
+
 ---
- 
+
 ## 11. Testing Strategy
- 
-### Unit tests (`tests/unit/`)
-No real tools. No Anthropic API calls. No network.
- 
-- `test_scope_guard.py` — verify IPs/domains in/out of scope, CIDR ranges
-- `test_finding_schema.py` — Pydantic validation, required fields, enum values
-- `test_phase_graph.py` — ordering logic, gate conditions
-- `test_tool_wrappers.py` — mock `asyncio.subprocess`, verify command building, output parsing against fixture files
-### Integration tests (`tests/integration/`)
-Require a controlled lab environment. Defined with pytest marks so they don't run in CI unless explicitly triggered.
- 
-- `test_recon_pipeline.py` — real nmap + amass against `scanme.nmap.org` or local target
-- `test_web_pipeline.py` — real feroxbuster + nuclei against DVWA
-- `test_full_pipeline.py` — full run against Metasploitable
-### Fixtures (`tests/fixtures/`)
-Real tool output saved as files for unit test parsing:
-- `sample_nmap_output.xml`
-- `sample_nuclei_output.json`
-- `sample_feroxbuster_output.json`
-- `sample_amass_output.json`
-- `sample_sqlmap_output.json`
-- `sample_scope.yaml`
+
+Unchanged structure from the original plan.
+
+Two additions:
+
+- `tests/unit/test_sandbox.py` — mocks the Docker SDK, verifies container lifecycle calls happen in the right order, and verifies that `exec_in_container` never uses `shell=True`
+- `tests/unit/test_approval_gate.py` — verifies allow-once doesn't cache, allow-session caches per `(tool, target)` pair only, deny blocks the action and logs it
+- `tests/integration/test_ad_attack_chain.py` — requires a lab AD environment such as GOAD or similar, marked to not run in CI by default
+
 ---
- 
+
 ## 12. Security & Operational Safeguards
- 
-### ScopeGuard (mandatory, not optional)
-`ScopeGuard.validate(target)` is called by every `ToolWrapper.run()` call before the subprocess is spawned. It raises `ScopeViolationError` — not a soft return — so it can never be silently ignored. This is the last defense against an AI agent drifting outside declared scope.
- 
-```python
-class ScopeGuard:
-    def validate(self, target: Target) -> None:
-        # Check IP against all allowed networks (ipaddress module)
-        # Check domain against allowed domain list + wildcard rules
-        # Check port against any port restrictions
-        # Raises ScopeViolationError with full context if out of scope
-```
- 
-### Command injection prevention
-- `shell=False` on all subprocess calls
-- Command arguments built as `List[str]` with no f-string interpolation of user/AI-supplied values
-- All AI-supplied tool parameters are validated against a whitelist schema before being passed to `build_command()`
-### Credential vault protection
-- Credentials table in SQLite is encrypted at rest (using `sqlcipher` or an AES-encrypted JSON file)
-- Cracked plaintext values are stored separately from hashes
-- Evidence directory containing credential files is `.gitignore`d
-### Session isolation
-- Each session gets its own subdirectory and SQLite file
-- No shared state between sessions
-- All paths validated to be within the declared `evidence_path` (no directory traversal)
+
+The original `ScopeGuard`, command injection prevention, and credential vault protections are unchanged and still apply — now as the first layer of defense, with the Docker sandbox as a second, independent layer.
+
+### Defense in Depth (Updated)
+
+1. **ScopeGuard** — Python-level. Rejects any tool call against an out-of-scope target before the command is even built.
+2. **Docker network policy** — container-level. The session container's network is restricted to the declared scope's IP ranges, so even a ScopeGuard bug or a successfully-injected command can't reach anything outside scope.
+3. **ApprovalGate** — operator-level, optional. In interactive mode, a human confirms exploitation/post-exploitation actions before they fire, independent of whether the AI's reasoning was sound.
+
+This is a meaningful upgrade from the original single-layer ScopeGuard design. It now matches the isolation model used by every serious competitor in the space rather than relying on a single Python-level check.
+
 ---
- 
+
 ## 13. Future Modules
- 
-Intentionally excluded from the initial build. Design slots exist but are not implemented.
- 
+
+Updated list — Active Directory has been promoted out of this section into the core build.
+
 | Module | Description | Why Deferred |
 |---|---|---|
 | Wireless | Aircrack-ng, Wifite, Airgeddon | Requires physical hardware; hard to automate reliably |
-| Active Directory | BloodHound, Kerbrute, Impacket | Full AD attack surface is a platform in itself |
 | Mobile | MobSF, apktool | Separate toolchain entirely |
-| Cloud | Pacu, ScoutSuite | Requires separate credential model (AWS/Azure keys) |
+| Cloud | Pacu, ScoutSuite, Prowler | Requires separate credential model — AWS/Azure/GCP keys |
+| Cross-engagement memory | Vector storage / knowledge graph for learning across engagements | This is PentAGI's strongest feature but genuinely requires the heavier infra you're deliberately avoiding in v1 — revisit only if running many engagements becomes the actual use case |
+| CI/CD integration | GitHub Actions, GitLab pipelines, diff-scoped scanning (Strix-style) | Lower priority than internal-network depth given your stated goals; revisit if web/app scope grows |
 | Web UI | FastAPI + React | Phase 10+ after core is stable |
-| Collaborative | Multi-operator session sharing | Needs proper auth system |
-| CI/CD integration | GitHub Actions, Gitlab | Regression pentest automation |
- 
+| Collaborative / multi-operator | Session sharing, role-based access | Needs proper auth system |
+
 ---
- 
+
 ## 14. Technology Decision Log
- 
-Decisions documented here so they don't get relitigated.
- 
+
+Original entries are unchanged and still apply.
+
+New entries from this revision:
+
 | Decision | Chosen | Rejected | Reason |
 |---|---|---|---|
-| Agent framework | Anthropic API direct + `tool_use` | LangGraph, CrewAI, AutoGen | Fewer abstraction layers = easier debugging. Direct API = full control over prompts and retry logic. |
-| Workflow automation | Python asyncio | n8n | n8n is SaaS glue. Need real subprocess control, process trees, stdin/stdout. |
-| Tool invocation | `asyncio.create_subprocess_exec` | `subprocess.run`, `shell=True` | Async for parallel phases. `exec` (not shell) for injection safety. |
-| Finding storage | SQLite + aiosqlite | PostgreSQL, MongoDB, flat JSON | Zero-config. File-portable. Queryable. No server to manage. |
-| Metasploit interface | pymetasploit3 (MSFRPC) | msfconsole subprocess | MSFRPC provides a real API. msfconsole subprocess is fragile and unparseable. |
-| ZAP interface | ZAP REST API daemon | sqlmap subprocess | ZAP needs to run persistently for proxy/crawler functionality. |
-| Report PDF | reportlab | WeasyPrint, pdfkit, LaTeX | reportlab = pure Python, no system dependencies, fully programmable. |
-| Config format | YAML + Pydantic | TOML, JSON, INI | YAML is human-readable for scope files. Pydantic catches mistakes at load time. |
-| Nuclei over OpenVAS (primary) | Nuclei | OpenVAS as primary | Nuclei is scripted, template-based, JSON output, fast. OpenVAS is slow and requires setup — use for compliance/deep scans as secondary. |
-| feroxbuster over gobuster | feroxbuster | gobuster, dirbuster | feroxbuster is actively maintained, recursive, JSON output, faster. Gobuster is fine but single-depth. Dirbuster is dead. |
- 
+| Tool execution isolation | Ephemeral Docker container per session | Direct host subprocess — original plan | Every serious competitor — PentAGI, Strix, autopentest-ai, PentestAgent — sandboxes execution. A single Python-level ScopeGuard is not defense in depth on its own. |
+| AD attack tooling | `bloodhound-python` + Impacket + NetExec, core in Phase 5 | Treating AD as a deferred future module | Every full-kill-chain competitor treats this as core; it's the actual differentiator versus web-focused competitors like Strix/XBOW. |
+| BloodHound graph analysis | `networkx` in-process | Neo4j — PentAGI's approach | Avoids standing up a graph database for a single-operator, single-engagement tool. Revisit only if cross-engagement analysis becomes a real requirement. |
+| Phase modeling | flow → task → subtask → action hierarchy | Flat phase list — original plan | Borrowed from PentAGI's cleanest idea without its infrastructure. Enables finer-grained resume and a meaningful progress tree in the CLI. |
+| Human oversight | Optional `--interactive` approval gate — allow-once/allow-session/deny | Scope-yaml-only enforcement — original plan | PentesterFlow's gating model is a stronger trust-building pattern than static scope enforcement alone, without sacrificing the default of full autonomy. |
+| ZAP client | `python-owasp-zap-v2.4` official client | Hand-rolled REST calls — original plan | Use the maintained official client instead of rebuilding it. |
+| Metasploit client | `pymetasploit3` — unchanged, confirmed | msfconsole subprocess | Confirmed correct after competitive research — every credible competitor uses an RPC/API approach, not subprocess parsing. |
+| CVSS scoring | `cvss` pip package | Custom vector parser | No reason to hand-roll a CVSS calculator when a maintained library exists. |
+| Cross-engagement memory / knowledge graph | Deferred to future module | Building it into v1 — tempting after seeing PentAGI's Graphiti/Neo4j integration | This is the single biggest infrastructure trap in this space. It's genuinely valuable at scale but is exactly the weight that makes PentAGI unsuitable for a solo operator running one engagement at a time. |
+
 ---
- 
-## Requirements
- 
+
+## Requirements (Updated)
+
 ### requirements.txt
- 
-```
+
+```text
 anthropic>=0.28.0
 pydantic>=2.0.0
 aiosqlite>=0.19.0
 pyyaml>=6.0
 click>=8.0
 rich>=13.0
+docker>=7.0.0
 python-libnmap>=0.7.2
 pymetasploit3>=1.0.3
 python-gvm>=22.0.0
+python-owasp-zap-v2.4>=0.0.21
+cvss>=3.1
+bloodhound-python>=1.7.0
+impacket>=0.11.0
+networkx>=3.0
 reportlab>=4.0.0
 openpyxl>=3.1.0
 Pillow>=10.0.0
@@ -1195,10 +953,10 @@ aiohttp>=3.9.0
 python-dotenv>=1.0.0
 jinja2>=3.1.0
 ```
- 
+
 ### requirements-dev.txt
- 
-```
+
+```text
 pytest>=7.0
 pytest-asyncio>=0.21
 pytest-mock>=3.11
@@ -1206,16 +964,20 @@ coverage>=7.0
 ruff>=0.1.0
 mypy>=1.0
 ```
- 
-### Kali setup
- 
+
+### Kali / Host Setup
+
 ```bash
 # scripts/install_kali_deps.sh
 apt-get update
-apt-get install -y nmap masscan amass subfinder nuclei feroxbuster \
-  sqlmap nikto whatweb dnsrecon enum4linux-ng responder bettercap \
-  metasploit-framework hashcat john mimikatz chisel
+apt-get install -y docker.io docker-compose nmap masscan amass subfinder \
+  nuclei feroxbuster sqlmap nikto whatweb dnsrecon enum4linux-ng responder \
+  bettercap metasploit-framework hashcat john crackmapexec impacket-scripts
+
 pip install -r requirements.txt --break-system-packages
 ```
- 
----
+
+```bash
+# scripts/build_sandbox_image.sh
+docker build -t saber/sandbox:kali-latest -f docker/Dockerfile.sandbox .
+```
