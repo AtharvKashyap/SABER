@@ -1,0 +1,367 @@
+
+
+# ==========================================================
+# SABER Tool Registry
+# Central configuration for sandboxed tool wrappers.
+# ==========================================================
+
+sandbox:
+  image: "saber/sandbox:kali-latest"
+  network_mode: "scoped"
+  memory_limit: "4g"
+  cpu_limit: 2
+  container_timeout: 7200
+  workdir: "/workspace"
+
+execution:
+  default_timeout: 300
+  capture_stdout: true
+  capture_stderr: true
+  shell_enabled: false
+  preserve_raw_output: true
+  max_concurrent_tools: 3
+
+# ----------------------------------------------------------
+# Reconnaissance Tools
+# ----------------------------------------------------------
+
+recon:
+  nmap:
+    binary: "nmap"
+    default_flags:
+      - "-sV"
+      - "--open"
+      - "-oX"
+      - "-"
+    timeout: 900
+    parser: "xml"
+    produces:
+      - "open_ports"
+      - "service_fingerprints"
+
+  masscan:
+    binary: "masscan"
+    default_flags:
+      - "--rate"
+      - "1000"
+    timeout: 900
+    parser: "text"
+    produces:
+      - "open_ports"
+
+  amass:
+    binary: "amass"
+    default_flags:
+      - "enum"
+      - "-passive"
+    timeout: 1200
+    parser: "text"
+    produces:
+      - "subdomains"
+
+  subfinder:
+    binary: "subfinder"
+    default_flags:
+      - "-silent"
+    timeout: 600
+    parser: "text_lines"
+    produces:
+      - "subdomains"
+
+  theharvester:
+    binary: "theHarvester"
+    default_flags:
+      - "-b"
+      - "all"
+    timeout: 900
+    parser: "text"
+    produces:
+      - "emails"
+      - "hosts"
+      - "subdomains"
+
+  dnsrecon:
+    binary: "dnsrecon"
+    default_flags: []
+    timeout: 600
+    parser: "text"
+    produces:
+      - "dns_records"
+
+  whatweb:
+    binary: "whatweb"
+    default_flags:
+      - "--log-json=-"
+    timeout: 300
+    parser: "json"
+    produces:
+      - "web_technologies"
+
+# ----------------------------------------------------------
+# Web Assessment Tools
+# ----------------------------------------------------------
+
+web:
+  feroxbuster:
+    binary: "feroxbuster"
+    default_flags:
+      - "--json"
+      - "--silent"
+    timeout: 1200
+    parser: "json_lines"
+    produces:
+      - "directories"
+      - "files"
+      - "interesting_paths"
+
+  nuclei:
+    binary: "nuclei"
+    default_flags:
+      - "-jsonl"
+      - "-silent"
+    timeout: 1800
+    parser: "json_lines"
+    produces:
+      - "web_findings"
+      - "cve_findings"
+      - "misconfigurations"
+
+  sqlmap:
+    binary: "sqlmap"
+    default_flags:
+      - "--batch"
+      - "--smart"
+    timeout: 1800
+    parser: "text"
+    produces:
+      - "sql_injection_findings"
+
+  nikto:
+    binary: "nikto"
+    default_flags:
+      - "-Format"
+      - "json"
+    timeout: 1200
+    parser: "json"
+    produces:
+      - "web_server_findings"
+
+  zap:
+    client: "python-owasp-zap-v2.4"
+    api_host: "127.0.0.1"
+    api_port: 8080
+    api_key_env: "ZAP_API_KEY"
+    timeout: 3600
+    parser: "zap_json"
+    produces:
+      - "web_findings"
+      - "passive_scan_findings"
+      - "active_scan_findings"
+
+# ----------------------------------------------------------
+# Network Assessment Tools
+# ----------------------------------------------------------
+
+network:
+  openvas:
+    client: "python-gvm"
+    host_env: "GVM_HOST"
+    port_env: "GVM_PORT"
+    username_env: "GVM_USERNAME"
+    password_env: "GVM_PASSWORD"
+    timeout: 7200
+    parser: "gvm_xml"
+    produces:
+      - "vulnerability_findings"
+
+  enum4linux:
+    binary: "enum4linux-ng"
+    default_flags:
+      - "-A"
+    timeout: 900
+    parser: "text"
+    produces:
+      - "smb_shares"
+      - "users"
+      - "groups"
+      - "domain_info"
+
+  snmpwalk:
+    binary: "snmpwalk"
+    default_flags:
+      - "-v2c"
+    timeout: 600
+    parser: "text"
+    produces:
+      - "snmp_data"
+
+  responder:
+    binary: "responder"
+    default_flags: []
+    timeout: 1800
+    parser: "text"
+    requires_approval: true
+    produces:
+      - "captured_hashes"
+
+  bettercap:
+    binary: "bettercap"
+    default_flags: []
+    timeout: 1800
+    parser: "text"
+    requires_approval: true
+    produces:
+      - "network_events"
+
+# ----------------------------------------------------------
+# Active Directory Tools
+# ----------------------------------------------------------
+
+active_directory:
+  bloodhound:
+    binary: "bloodhound-python"
+    default_flags:
+      - "-c"
+      - "All"
+      - "--zip"
+    timeout: 1800
+    parser: "bloodhound_json"
+    produces:
+      - "ad_principals"
+      - "attack_paths"
+      - "sessions"
+      - "acl_relationships"
+
+  netexec:
+    binary: "netexec"
+    default_flags:
+      - "smb"
+    timeout: 900
+    parser: "text"
+    produces:
+      - "credential_validation"
+      - "smb_shares"
+      - "local_admin_map"
+
+  impacket_getuserspns:
+    binary: "GetUserSPNs.py"
+    default_flags:
+      - "-request"
+    timeout: 900
+    parser: "text"
+    requires_approval: true
+    produces:
+      - "kerberoastable_tickets"
+
+  impacket_secretsdump:
+    binary: "secretsdump.py"
+    default_flags: []
+    timeout: 900
+    parser: "text"
+    requires_approval: true
+    produces:
+      - "hashes"
+      - "credential_material"
+
+  impacket_wmiexec:
+    binary: "wmiexec.py"
+    default_flags: []
+    timeout: 900
+    parser: "text"
+    requires_approval: true
+    produces:
+      - "remote_execution_evidence"
+
+# ----------------------------------------------------------
+# Exploitation Tools
+# ----------------------------------------------------------
+
+exploitation:
+  metasploit:
+    client: "pymetasploit3"
+    rpc_host_env: "MSF_RPC_HOST"
+    rpc_port_env: "MSF_RPC_PORT"
+    rpc_user_env: "MSF_RPC_USER"
+    rpc_password_env: "MSF_RPC_PASSWORD"
+    rpc_ssl_env: "MSF_RPC_SSL"
+    timeout: 3600
+    parser: "metasploit_rpc"
+    requires_approval: true
+    produces:
+      - "exploit_attempts"
+      - "sessions"
+      - "proof_of_exploitability"
+
+  searchsploit:
+    binary: "searchsploit"
+    default_flags:
+      - "--json"
+    timeout: 300
+    parser: "json"
+    produces:
+      - "public_exploit_references"
+
+# ----------------------------------------------------------
+# Post-Exploitation Tools
+# ----------------------------------------------------------
+
+post_exploit:
+  linpeas:
+    binary: "linpeas.sh"
+    default_flags: []
+    timeout: 1800
+    parser: "text"
+    requires_approval: true
+    produces:
+      - "linux_privesc_findings"
+
+  winpeas:
+    binary: "winpeas.exe"
+    default_flags: []
+    timeout: 1800
+    parser: "text"
+    requires_approval: true
+    produces:
+      - "windows_privesc_findings"
+
+  chisel:
+    binary: "chisel"
+    default_flags: []
+    timeout: 1800
+    parser: "text"
+    requires_approval: true
+    produces:
+      - "tunnel_status"
+
+  mimikatz:
+    binary: "mimikatz.exe"
+    default_flags: []
+    timeout: 900
+    parser: "text"
+    requires_approval: true
+    produces:
+      - "credential_material"
+
+# ----------------------------------------------------------
+# Password Tools
+# ----------------------------------------------------------
+
+password:
+  john:
+    binary: "john"
+    default_flags: []
+    timeout: 7200
+    parser: "text"
+    requires_approval: true
+    produces:
+      - "cracked_hashes"
+
+  hashcat:
+    binary: "hashcat"
+    default_flags:
+      - "--status"
+    timeout: 7200
+    parser: "text"
+    requires_approval: true
+    produces:
+      - "cracked_hashes"

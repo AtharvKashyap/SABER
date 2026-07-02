@@ -1,0 +1,184 @@
+# ==========================================================
+# SABER Scope Example
+# Copy this file to scope.yaml and edit it for each authorized engagement.
+# ==========================================================
+
+mission_name: "Q3 Internal Pentest - Example"
+operator: "Atharv Kashyap"
+client: "Example Client"
+date: "2026-07-02"
+
+# Operating mode controls how far SABER is allowed to go.
+# Supported values:
+#   recon_only      - discovery and enumeration only
+#   assessment      - vulnerability validation and evidence collection, no exploitation
+#   lab_exploit     - exploitation/post-exploitation allowed only in an approved lab
+#   report_only     - generate reports from an existing session, no scanning
+execution_mode: "assessment"
+
+# If true, exploitation and post-exploitation actions require operator approval.
+# This can also be controlled by the --interactive CLI flag.
+interactive: false
+
+# ----------------------------------------------------------
+# In-Scope Targets
+# ----------------------------------------------------------
+# Use only targets you are explicitly authorized to test.
+# Supported target types:
+#   ip
+#   ip_range
+#   domain
+#   url
+#   cidr
+
+targets:
+  - type: "cidr"
+    value: "10.10.10.0/24"
+    description: "Example internal lab subnet"
+
+  - type: "domain"
+    value: "internal.example.local"
+    description: "Example internal AD/domain namespace"
+
+  - type: "url"
+    value: "https://app.example.local"
+    description: "Example internal web application"
+
+# ----------------------------------------------------------
+# Explicitly Out-of-Scope Targets
+# ----------------------------------------------------------
+# Anything listed here must never be touched, even if it is discovered
+# during recon or referenced by an in-scope application.
+
+out_of_scope:
+  - type: "cidr"
+    value: "10.10.20.0/24"
+    reason: "Production finance subnet excluded from testing"
+
+  - type: "domain"
+    value: "payments.example.local"
+    reason: "Payment systems excluded from this engagement"
+
+  - type: "url"
+    value: "https://prod.example.com"
+    reason: "Public production site excluded from lab assessment"
+
+# ----------------------------------------------------------
+# Allowed Phases
+# ----------------------------------------------------------
+# SABER will only dispatch phases listed here.
+
+allowed_phases:
+  - "recon"
+  - "web"
+  - "network"
+  - "active_directory"
+  - "exploitation"
+  - "post_exploitation"
+  - "password_cracking"
+  - "reporting"
+
+# ----------------------------------------------------------
+# Allowed TTPs
+# ----------------------------------------------------------
+# These are capability-level permissions. A tool wrapper still has to pass
+# ScopeGuard and sandbox policy before it can run.
+
+allowed_ttps:
+  # Recon / discovery
+  - "port_scan"
+  - "service_fingerprinting"
+  - "subdomain_enum"
+  - "dns_enum"
+  - "web_fingerprinting"
+  - "web_directory_brute"
+
+  # Web assessment
+  - "web_vuln_scan"
+  - "sqli_detection"
+  - "xss_detection"
+  - "authz_testing"
+  - "api_testing"
+
+  # Network / AD assessment
+  - "smb_enum"
+  - "snmp_enum"
+  - "bloodhound_collection"
+  - "kerberoasting"
+  - "asreproasting"
+
+  # Validation / exploitation
+  - "metasploit_public_exploits"
+  - "proof_of_concept_validation"
+
+  # Password workflows
+  - "hash_crack"
+
+# ----------------------------------------------------------
+# Prohibited Actions
+# ----------------------------------------------------------
+# These are hard-deny actions even if an agent suggests them.
+
+prohibited:
+  - "dos_attacks"
+  - "destructive_payloads"
+  - "data_destruction"
+  - "production_credential_dumping"
+  - "lateral_movement_outside_scope"
+  - "persistence"
+  - "stealth_evasion"
+  - "unattended_worm_behavior"
+
+# High-impact actions require explicit authorization even in autonomous mode.
+requires_explicit_authorization:
+  - "dcsync"
+  - "credential_dumping"
+  - "post_exploitation"
+  - "remote_code_execution"
+  - "smb_relay"
+
+# ----------------------------------------------------------
+# Rate Limits / Concurrency
+# ----------------------------------------------------------
+
+limits:
+  max_concurrent_tools: 3
+  max_requests_per_second: 5
+  default_tool_timeout_seconds: 300
+  max_phase_runtime_seconds: 7200
+
+# ----------------------------------------------------------
+# Evidence / Output
+# ----------------------------------------------------------
+
+evidence:
+  base_path: "output/evidence"
+  preserve_raw_output: true
+  preserve_stderr: true
+  screenshots_enabled: true
+  redact_secrets_in_reports: true
+
+# ----------------------------------------------------------
+# Sandbox
+# ----------------------------------------------------------
+
+sandbox:
+  image: "saber/sandbox:kali-latest"
+  network_mode: "scoped"
+  memory_limit: "4g"
+  cpu_limit: 2
+  container_timeout_seconds: 7200
+
+# ----------------------------------------------------------
+# Reporting
+# ----------------------------------------------------------
+
+reporting:
+  output_path: "output/reports"
+  formats:
+    - "pdf"
+    - "xlsx"
+    - "json"
+  classification: "CONFIDENTIAL"
+  include_unverified_findings: false
+  include_raw_commands: true

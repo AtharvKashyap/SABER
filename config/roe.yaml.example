@@ -1,0 +1,191 @@
+# ==========================================================
+# SABER Rules of Engagement Example
+# Copy this file to roe.yaml and edit it for each authorized engagement.
+# ==========================================================
+
+engagement:
+  name: "Q3 Internal Pentest - Example"
+  client: "Example Client"
+  operator: "Atharv Kashyap"
+  authorization_reference: "Statement of Work / Written Authorization ID"
+  start_date: "2026-07-02"
+  end_date: "2026-07-09"
+  timezone: "America/New_York"
+
+# ----------------------------------------------------------
+# Authorized Testing Windows
+# ----------------------------------------------------------
+# SABER should not start new tool runs outside these windows unless
+# explicitly approved by the operator.
+
+testing_windows:
+  - days:
+      - "monday"
+      - "tuesday"
+      - "wednesday"
+      - "thursday"
+      - "friday"
+    start_time: "09:00"
+    end_time: "18:00"
+    description: "Normal business-hours testing window"
+
+  - days:
+      - "saturday"
+    start_time: "10:00"
+    end_time: "14:00"
+    description: "Optional weekend validation window"
+
+blackout_windows:
+  - start: "2026-07-04T00:00:00-04:00"
+    end: "2026-07-05T23:59:59-04:00"
+    reason: "Holiday blackout window"
+
+# ----------------------------------------------------------
+# Contact / Escalation
+# ----------------------------------------------------------
+
+contacts:
+  primary_client_contact:
+    name: "Client Security Lead"
+    email: "security@example.com"
+    phone: "+1-555-0100"
+
+  emergency_contact:
+    name: "Client Incident Response"
+    email: "ir@example.com"
+    phone: "+1-555-0199"
+
+  saber_operator:
+    name: "Atharv Kashyap"
+    email: "operator@example.com"
+    phone: "+1-555-0110"
+
+# ----------------------------------------------------------
+# Engagement Mode
+# ----------------------------------------------------------
+
+execution:
+  default_mode: "assessment"       # recon_only | assessment | lab_exploit | report_only
+  interactive_required: false
+  pause_on_critical_finding: true
+  pause_on_scope_boundary: true
+  pause_on_tool_error: false
+
+# ----------------------------------------------------------
+# Approval Rules
+# ----------------------------------------------------------
+# These actions require explicit approval from the operator, even if the
+# related TTP appears in scope.yaml.
+
+approval_required_for:
+  - "exploitation"
+  - "post_exploitation"
+  - "credential_dumping"
+  - "dcsync"
+  - "smb_relay"
+  - "remote_code_execution"
+  - "password_spraying"
+  - "hash_cracking"
+
+approval_cache:
+  allow_once_enabled: true
+  allow_session_enabled: true
+  cache_scope: "tool_target_pair"   # allow-session applies only to the same tool + target pair
+
+# ----------------------------------------------------------
+# Prohibited Actions
+# ----------------------------------------------------------
+# Hard stop. SABER must not perform these actions.
+
+prohibited:
+  - "denial_of_service"
+  - "stress_testing"
+  - "destructive_payloads"
+  - "data_deletion"
+  - "data_modification"
+  - "persistence"
+  - "stealth_evasion"
+  - "log_tampering"
+  - "malware_deployment"
+  - "phishing_real_users"
+  - "testing_safety_of_life_systems"
+  - "lateral_movement_outside_scope"
+
+# ----------------------------------------------------------
+# Data Handling
+# ----------------------------------------------------------
+
+data_handling:
+  collect_minimum_necessary_data: true
+  redact_secrets_in_reports: true
+  redact_personal_data_in_reports: true
+  store_raw_evidence_locally_only: true
+  encrypt_credential_material: true
+  evidence_retention_days: 30
+  delete_evidence_after_retention: false
+
+sensitive_data_rules:
+  stop_if_sensitive_data_discovered: true
+  allowed_to_capture_screenshots: true
+  allowed_to_capture_response_bodies: true
+  max_response_body_bytes: 1048576
+
+# ----------------------------------------------------------
+# Credential Handling
+# ----------------------------------------------------------
+
+credentials:
+  client_provided_credentials_allowed: true
+  credential_reuse_allowed: false
+  password_spraying_allowed: false
+  max_password_attempts_per_account: 1
+  lockout_threshold_known: false
+  default_test_accounts_only: true
+
+# ----------------------------------------------------------
+# Network / Traffic Limits
+# ----------------------------------------------------------
+
+traffic_limits:
+  max_concurrent_tools: 3
+  max_requests_per_second: 5
+  max_scan_rate_packets_per_second: 1000
+  respect_robots_txt: false
+  user_agent: "SABER Authorized Security Assessment"
+
+# ----------------------------------------------------------
+# Reporting Expectations
+# ----------------------------------------------------------
+
+reporting:
+  executive_summary_required: true
+  technical_report_required: true
+  xlsx_findings_required: true
+  json_export_required: true
+  include_reproduction_steps: true
+  include_raw_commands: true
+  include_evidence_paths: true
+  include_cvss: true
+  include_remediation: true
+  include_unverified_findings: false
+
+# ----------------------------------------------------------
+# Stop Conditions
+# ----------------------------------------------------------
+# SABER should pause or stop if these conditions occur.
+
+stop_conditions:
+  - condition: "out_of_scope_target_detected"
+    action: "pause_and_request_operator_review"
+
+  - condition: "service_instability_detected"
+    action: "stop_current_tool_and_notify_operator"
+
+  - condition: "sensitive_data_exposure_detected"
+    action: "pause_and_notify_client_contact"
+
+  - condition: "critical_rce_confirmed"
+    action: "pause_and_request_operator_review"
+
+  - condition: "account_lockout_risk_detected"
+    action: "stop_credential_activity"
