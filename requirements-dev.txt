@@ -1,0 +1,12 @@
+# Testing
+pytest>=7.0
+pytest-asyncio>=0.21
+pytest-mock>=3.11
+coverage>=7.0
+
+# Linting / formatting / type checking
+ruff>=0.1.0
+mypy>=1.0
+
+# Optional developer helpers
+pre-commit>=3.0
