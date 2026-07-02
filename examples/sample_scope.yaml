@@ -1,0 +1,223 @@
+
+
+# ==========================================================
+# SABER Example Scope
+# Safe demo/lab scope used for local development, testing, and docs.
+# Copy this file and edit it for real authorized engagements.
+# ==========================================================
+
+mission_name: "SABER Demo Lab Assessment"
+operator: "Atharv Kashyap"
+client: "Demo Client"
+date: "2026-07-02"
+
+# Supported values:
+#   recon_only
+#   assessment
+#   lab_exploit
+#   report_only
+execution_mode: "assessment"
+interactive: false
+
+# ----------------------------------------------------------
+# In-Scope Targets
+# ----------------------------------------------------------
+# These targets are examples only. Replace them with systems you are
+# explicitly authorized to test.
+
+targets:
+  - type: "cidr"
+    value: "10.10.10.0/24"
+    description: "Demo internal lab subnet"
+    tags:
+      - "internal"
+      - "lab"
+
+  - type: "ip"
+    value: "10.10.10.10"
+    description: "Demo Linux web server"
+    tags:
+      - "web"
+      - "linux"
+
+  - type: "ip"
+    value: "10.10.10.20"
+    description: "Demo Windows server"
+    tags:
+      - "windows"
+      - "smb"
+
+  - type: "domain"
+    value: "demo.local"
+    description: "Demo internal AD-style domain namespace"
+    tags:
+      - "active_directory"
+      - "internal_dns"
+
+  - type: "url"
+    value: "https://app.demo.local"
+    description: "Demo internal web application"
+    tags:
+      - "web"
+      - "application"
+
+# ----------------------------------------------------------
+# Explicitly Out-of-Scope Targets
+# ----------------------------------------------------------
+# Out-of-scope entries override anything discovered during recon.
+
+out_of_scope:
+  - type: "cidr"
+    value: "10.10.20.0/24"
+    reason: "Separate production-like subnet excluded from demo testing"
+
+  - type: "domain"
+    value: "payments.demo.local"
+    reason: "Payment service excluded from assessment"
+
+  - type: "url"
+    value: "https://prod.demo.local"
+    reason: "Production-like web app excluded from demo testing"
+
+# ----------------------------------------------------------
+# Allowed Phases
+# ----------------------------------------------------------
+# Keep the example broad so development can exercise each pipeline stage.
+# Exploitation/post-exploitation still require separate ROE and approval gates.
+
+allowed_phases:
+  - "recon"
+  - "web"
+  - "network"
+  - "active_directory"
+  - "exploitation"
+  - "post_exploitation"
+  - "password_cracking"
+  - "reporting"
+
+# ----------------------------------------------------------
+# Allowed TTPs
+# ----------------------------------------------------------
+# These are capability permissions. Tool execution is still validated by
+# ScopeGuard, ApprovalGate, and pre-written wrappers.
+
+allowed_ttps:
+  # Recon / discovery
+  - "port_scan"
+  - "service_fingerprinting"
+  - "subdomain_enum"
+  - "dns_enum"
+  - "web_fingerprinting"
+  - "web_directory_brute"
+
+  # Web assessment
+  - "web_vuln_scan"
+  - "sqli_detection"
+  - "xss_detection"
+  - "authz_testing"
+  - "api_testing"
+
+  # Network / AD assessment
+  - "smb_enum"
+  - "snmp_enum"
+  - "network_vuln_scan"
+  - "bloodhound_collection"
+  - "kerberoasting"
+  - "asreproasting"
+
+  # Controlled validation
+  - "proof_of_concept_validation"
+  - "metasploit_public_exploits"
+
+  # Password workflows
+  - "hash_crack"
+
+# ----------------------------------------------------------
+# Prohibited Actions
+# ----------------------------------------------------------
+
+prohibited:
+  - "dos_attacks"
+  - "destructive_payloads"
+  - "data_destruction"
+  - "data_modification"
+  - "production_credential_dumping"
+  - "lateral_movement_outside_scope"
+  - "persistence"
+  - "stealth_evasion"
+  - "log_tampering"
+  - "malware_deployment"
+  - "phishing_real_users"
+  - "unattended_worm_behavior"
+
+# These actions require explicit approval even when their broad TTP category
+# appears above.
+requires_explicit_authorization:
+  - "remote_code_execution"
+  - "post_exploitation"
+  - "credential_dumping"
+  - "dcsync"
+  - "smb_relay"
+  - "network_poisoning"
+  - "password_spraying"
+
+# ----------------------------------------------------------
+# Rate Limits / Runtime Limits
+# ----------------------------------------------------------
+
+limits:
+  max_concurrent_tools: 3
+  max_requests_per_second: 5
+  default_tool_timeout_seconds: 300
+  max_phase_runtime_seconds: 7200
+  max_total_actions: 250
+
+# ----------------------------------------------------------
+# Evidence / Output
+# ----------------------------------------------------------
+
+evidence:
+  base_path: "output/evidence"
+  preserve_raw_output: true
+  preserve_stderr: true
+  screenshots_enabled: true
+  redact_secrets_in_reports: true
+  mark_sensitive_evidence: true
+
+# ----------------------------------------------------------
+# Sandbox
+# ----------------------------------------------------------
+
+sandbox:
+  image: "saber/sandbox:kali-last-release"
+  network_mode: "scoped"
+  memory_limit: "4g"
+  cpu_limit: 2
+  container_timeout_seconds: 7200
+
+# ----------------------------------------------------------
+# Reporting
+# ----------------------------------------------------------
+
+reporting:
+  output_path: "output/reports"
+  formats:
+    - "pdf"
+    - "xlsx"
+    - "json"
+  classification: "CONFIDENTIAL"
+  include_unverified_findings: false
+  include_raw_commands: true
+  include_evidence_index: true
+
+# ----------------------------------------------------------
+# Completion Criteria
+# ----------------------------------------------------------
+# The mission orchestrator can stop and generate a report when any of these
+# completion conditions are met.
+
+completion:
+  finish_when_all_allowed_phases_complete: true
+  finish_when_no_in_scope_actions_remain: true
+  finish_when_remaining_actions_require_denied_approval: true
+  finish_on_stop_condition: true

@@ -1,0 +1,412 @@
+
+
+# ==========================================================
+# SABER Example Rules of Engagement
+# Safe demo/lab ROE used for local development, testing, and docs.
+# Copy this file and edit it for real authorized engagements.
+# ==========================================================
+
+engagement:
+  name: "SABER Demo Lab Assessment"
+  client: "Demo Client"
+  operator: "Atharv Kashyap"
+  classification: "CONFIDENTIAL"
+  authorization_status: "demo_lab_only"
+  authorization_notes:
+    - "This example ROE is for local development and controlled lab testing only."
+    - "Replace this file with written authorization before any real assessment."
+
+# ----------------------------------------------------------
+# Testing Window
+# ----------------------------------------------------------
+
+testing_window:
+  timezone: "America/New_York"
+  start: "2026-07-02T09:00:00"
+  end: "2026-07-02T18:00:00"
+  allowed_days:
+    - "monday"
+    - "tuesday"
+    - "wednesday"
+    - "thursday"
+    - "friday"
+  emergency_stop_allowed_anytime: true
+
+# ----------------------------------------------------------
+# Emergency / Contact Rules
+# ----------------------------------------------------------
+
+contacts:
+  primary_operator:
+    name: "Atharv Kashyap"
+    role: "SABER Operator"
+    email: "operator@example.com"
+
+  client_technical_contact:
+    name: "Demo Technical Contact"
+    role: "Lab Owner"
+    email: "technical-contact@example.com"
+
+  emergency_contact:
+    name: "Demo Emergency Contact"
+    role: "Incident Escalation"
+    email: "emergency-contact@example.com"
+
+communication:
+  notify_before_start: true
+  notify_after_completion: true
+  notify_on_high_or_critical_findings: true
+  notify_on_instability: true
+  notify_on_scope_conflict: true
+
+# ----------------------------------------------------------
+# Execution Rules
+# ----------------------------------------------------------
+
+execution:
+  default_mode: "assessment"
+  interactive_approval_required: true
+  run_tools_in_sandbox: true
+  preserve_raw_evidence: true
+  allow_parallel_tools: true
+  max_concurrent_tools: 3
+  default_tool_timeout_seconds: 300
+  max_total_runtime_seconds: 28800
+  max_total_actions: 250
+
+# ----------------------------------------------------------
+# Rate Limits
+# ----------------------------------------------------------
+
+rate_limits:
+  max_requests_per_second: 5
+  max_web_crawl_depth: 2
+  max_directory_bruteforce_threads: 10
+  max_port_scan_rate: "conservative"
+  masscan_allowed: true
+  masscan_max_rate: 1000
+
+# ----------------------------------------------------------
+# Phase Permissions
+# ----------------------------------------------------------
+
+phase_permissions:
+  recon:
+    allowed: true
+    approval_required: false
+
+  web:
+    allowed: true
+    approval_required: false
+    notes:
+      - "Passive and non-destructive checks are allowed."
+      - "Active scans that may alter state require approval."
+
+  network:
+    allowed: true
+    approval_required: false
+    notes:
+      - "Read-only SMB/SNMP/domain enumeration is allowed where in scope."
+
+  active_directory:
+    allowed: true
+    approval_required: true
+    notes:
+      - "BloodHound collection requires explicit approval and valid authorization."
+
+  exploitation:
+    allowed: true
+    approval_required: true
+    notes:
+      - "Only safe proof-of-exploitability is allowed."
+      - "No destructive payloads, persistence, stealth, or denial-of-service behavior."
+
+  post_exploitation:
+    allowed: true
+    approval_required: true
+    notes:
+      - "Only minimal evidence collection and impact demonstration are allowed."
+
+  password_cracking:
+    allowed: true
+    approval_required: true
+    notes:
+      - "Only demo/lab hash material may be cracked."
+      - "Credential reuse is not allowed unless separately authorized."
+
+  reporting:
+    allowed: true
+    approval_required: false
+
+# ----------------------------------------------------------
+# Tool Permissions
+# ----------------------------------------------------------
+
+tool_permissions:
+  nmap:
+    allowed: true
+    approval_required: false
+
+  masscan:
+    allowed: true
+    approval_required: true
+    notes:
+      - "Use only for larger in-scope ranges and within max rate limits."
+
+  amass:
+    allowed: true
+    approval_required: false
+    mode: "passive_preferred"
+
+  subfinder:
+    allowed: true
+    approval_required: false
+
+  theharvester:
+    allowed: true
+    approval_required: false
+
+  dnsrecon:
+    allowed: true
+    approval_required: false
+
+  whatweb:
+    allowed: true
+    approval_required: false
+
+  nuclei:
+    allowed: true
+    approval_required: false
+    prohibited_template_tags:
+      - "dos"
+      - "destructive"
+      - "intrusive"
+
+  feroxbuster:
+    allowed: true
+    approval_required: false
+    max_depth: 2
+    max_threads: 10
+
+  nikto:
+    allowed: true
+    approval_required: false
+
+  zap:
+    allowed: true
+    passive_scan_allowed: true
+    active_scan_allowed: true
+    active_scan_approval_required: true
+
+  sqlmap:
+    allowed: true
+    approval_required: true
+    notes:
+      - "Use only when a specific in-scope parameter has evidence of possible injection."
+      - "Database dumping is prohibited in this demo ROE."
+
+  enum4linux-ng:
+    allowed: true
+    approval_required: false
+
+  snmpwalk:
+    allowed: true
+    approval_required: false
+    notes:
+      - "Use only with provided or explicitly authorized community strings."
+
+  openvas:
+    allowed: true
+    approval_required: false
+
+  bloodhound:
+    allowed: true
+    approval_required: true
+
+  netexec:
+    allowed: true
+    approval_required: true
+    notes:
+      - "Use only with provided credentials and approved validation scope."
+
+  responder:
+    allowed: false
+    approval_required: true
+    reason: "Network poisoning/interception disabled by default."
+
+  bettercap:
+    allowed: false
+    approval_required: true
+    reason: "MITM-style activity disabled by default."
+
+  metasploit:
+    allowed: true
+    approval_required: true
+    notes:
+      - "Prefer check-only mode where supported."
+      - "Module execution requires target-specific approval."
+
+  searchsploit:
+    allowed: true
+    approval_required: false
+
+  impacket_getuserspns:
+    allowed: true
+    approval_required: true
+
+  impacket_secretsdump:
+    allowed: false
+    approval_required: true
+    reason: "Credential dumping disabled by default."
+
+  impacket_wmiexec:
+    allowed: false
+    approval_required: true
+    reason: "Remote command execution disabled by default."
+
+  linpeas:
+    allowed: true
+    approval_required: true
+
+  winpeas:
+    allowed: true
+    approval_required: true
+
+  chisel:
+    allowed: false
+    approval_required: true
+    reason: "Tunneling/pivoting disabled by default."
+
+  mimikatz:
+    allowed: false
+    approval_required: true
+    reason: "Credential-material access disabled by default."
+
+# ----------------------------------------------------------
+# Credentials
+# ----------------------------------------------------------
+
+credentials:
+  provided: false
+  credential_reference_ids: []
+  plaintext_credentials_allowed_in_config: false
+  credential_validation_allowed: false
+  password_spraying_allowed: false
+  credential_reuse_allowed: false
+  lockout_policy_known: false
+  max_authentication_attempts_per_account: 0
+
+# ----------------------------------------------------------
+# Data Handling
+# ----------------------------------------------------------
+
+data_handling:
+  collect_minimum_necessary_evidence: true
+  redact_secrets_in_reports: true
+  store_sensitive_evidence_separately: true
+  raw_evidence_retention_days: 30
+  report_retention_days: 90
+
+  prohibited_data_collection:
+    - "bulk_personal_data"
+    - "payment_card_data"
+    - "medical_records"
+    - "student_records"
+    - "private_messages"
+    - "production_database_dumps"
+    - "plaintext_passwords_in_reports"
+
+  redaction_placeholders:
+    password: "[REDACTED_PASSWORD]"
+    token: "[REDACTED_TOKEN]"
+    hash: "[REDACTED_HASH]"
+    private_key: "[REDACTED_PRIVATE_KEY]"
+    personal_data: "[REDACTED_PERSONAL_DATA]"
+
+# ----------------------------------------------------------
+# Prohibited Actions
+# ----------------------------------------------------------
+
+prohibited_actions:
+  - "denial_of_service"
+  - "destructive_payloads"
+  - "data_destruction"
+  - "data_modification"
+  - "production_credential_dumping"
+  - "unauthorized_lateral_movement"
+  - "out_of_scope_pivoting"
+  - "persistence"
+  - "stealth_evasion"
+  - "log_tampering"
+  - "malware_deployment"
+  - "phishing_real_users"
+  - "social_engineering_real_users"
+  - "physical_security_testing"
+  - "wireless_attacks"
+
+# ----------------------------------------------------------
+# Approval Rules
+# ----------------------------------------------------------
+
+approval_rules:
+  require_approval_for:
+    - "masscan"
+    - "active_zap_scan"
+    - "sqlmap"
+    - "bloodhound_collection"
+    - "netexec_credential_validation"
+    - "kerberoasting"
+    - "asreproasting"
+    - "metasploit_module_execution"
+    - "remote_code_execution"
+    - "post_exploitation"
+    - "password_cracking"
+    - "credential_dumping"
+    - "network_poisoning"
+    - "smb_relay"
+    - "tunneling"
+    - "pivoting"
+
+  approval_scope: "per_action_per_target"
+  approval_expires_after_minutes: 60
+  deny_if_ambiguous: true
+
+# ----------------------------------------------------------
+# Stop Conditions
+# ----------------------------------------------------------
+
+stop_conditions:
+  stop_immediately_if:
+    - "target_instability_detected"
+    - "service_crash_detected"
+    - "out_of_scope_asset_touched"
+    - "sensitive_data_exposure_exceeds_authorization"
+    - "approval_denied"
+    - "operator_requests_stop"
+    - "client_requests_stop"
+    - "tool_attempts_prohibited_action"
+    - "authentication_lockout_risk_detected"
+
+  escalation_required_if:
+    - "critical_finding_confirmed"
+    - "unexpected_access_obtained"
+    - "evidence_suggests_active_compromise"
+    - "scope_conflict_detected"
+
+# ----------------------------------------------------------
+# Reporting Requirements
+# ----------------------------------------------------------
+
+reporting:
+  formats:
+    - "pdf"
+    - "xlsx"
+    - "json"
+  include_executive_summary: true
+  include_technical_findings: true
+  include_evidence_index: true
+  include_unverified_observations: true
+  include_unverified_findings_in_main_report: false
+  include_raw_commands: true
+  include_sensitive_raw_evidence: false
+  require_remediation_roadmap: true

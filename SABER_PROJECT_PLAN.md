@@ -172,7 +172,8 @@ saber/
 │   │   ├── session.py                    # SessionManager: load/save/resume state
 │   │   ├── scope_guard.py                # ScopeGuard: enforce IP/domain/port limits
 │   │   ├── phase_graph.py                # PhaseGraph: flow → task → subtask → action DAG
-│   │   ├── sandbox.py                    # SandboxManager: ephemeral Docker container lifecycle
+│   │   ├── sandbox.py                    # SandboxManager: future per-session container lifecycle
+│   │   ├── docker_runner.py              # cross-platform Docker CLI helpers for sandbox commands
 │   │   ├── approval_gate.py              # ApprovalGate: allow-once/allow-session/deny gating
 │   │   └── evidence_store.py             # EvidenceStore: screenshot + file management
 │   │
@@ -270,8 +271,10 @@ saber/
 │       ├── __init__.py
 │       ├── cli/
 │       │   ├── __init__.py
-│       │   ├── main.py                   # click entry point (now with --interactive flag)
-│       │   ├── approval_prompt.py        # NEW — interactive approval UI
+│       │   ├── main.py                   # click entry point
+│       │   ├── doctor.py                 # environment and sandbox readiness checks
+│       │   ├── sandbox_commands.py       # build/status/shell commands for Docker sandbox
+│       │   ├── approval_prompt.py        # interactive approval UI
 │       │   └── live_panel.py             # rich live dashboard
 │       └── web/                          # optional, phase 4+
 │           ├── __init__.py
@@ -298,12 +301,6 @@ saber/
 │   ├── scope.yaml.example
 │   ├── roe.yaml.example
 │   └── tools.yaml
-│
-├── scripts/
-│   ├── install_kali_deps.sh
-│   ├── start_msfrpc.sh
-│   ├── start_zap.sh
-│   └── build_sandbox_image.sh            # NEW — builds the Docker sandbox image
 │
 ├── tests/
 │   ├── __init__.py
@@ -594,35 +591,31 @@ class ApprovalRecord(BaseModel):
 
 ## 6. Agent System Prompt Designs
 
-The `planner.txt` and `exploit_agent.txt` structures are unchanged from the original plan in their core logic.
+The prompts are now externalized into `prompts/` and use a stricter JSON-first format. Agents do not generate raw shell commands. They return structured plans, observations, evidence requirements, stop conditions, approval requirements, and handoff targets for the Python orchestrator.
 
-One addition to each:
+Current prompt files:
 
-### planner.txt
+- `planner.txt` — builds the mission flow/task/subtask/action graph and enforces scope/ROE interpretation.
+- `recon_agent.txt` — plans host discovery, port/service detection, DNS/subdomain enumeration, and technology fingerprinting.
+- `web_agent.txt` — plans safe web assessment using WhatWeb, nuclei, feroxbuster, nikto, ZAP, and sqlmap when allowed.
+- `network_agent.txt` — plans SMB, SNMP, OpenVAS/GVM, NetExec, BloodHound, and AD-related assessment with strict approval gating.
+- `exploit_agent.txt` — plans only controlled proof-of-exploitability when explicitly authorized.
+- `post_exploit_agent.txt` — plans only minimal authorized impact evidence collection.
+- `reporter.txt` — planned next; converts verified evidence into executive, technical, XLSX, and JSON reports.
 
-```text
-INTERACTIVE MODE: If the session config has interactive=true, you must flag
-every exploitation and post-exploitation dispatch as requiring approval_gate
-review before execution. This does not change your planning logic — you still
-decide what to attempt and in what order — it only changes whether the
-Python orchestrator pauses for operator confirmation before each dispatch fires.
-```
-
-### network_agent.txt
+All prompts follow the same pattern:
 
 ```text
-ACTIVE DIRECTORY METHODOLOGY: When bloodhound_collection is in allowed_ttps
-and a domain controller is identified in scope:
-  1. Run passive SMB/LDAP enumeration first (enum4linux, no auth required)
-  2. If valid credentials exist (from recon or earlier captures), run
-     bloodhound-python collection
-  3. Read BloodHound output for high-value targets and Kerberoastable/
-     ASREPRoastable accounts before attempting any AD-specific exploitation
-  4. Only attempt Kerberoasting/ASREPRoasting if kerberoasting/asreproasting
-     appear in allowed_ttps
-  5. Never attempt DCSync or domain admin escalation unless dcsync explicitly
-     appears in allowed_ttps — this is a high-impact action requiring explicit
-     authorization even in fully autonomous mode
+1. State the agent role.
+2. Define allowed responsibilities.
+3. Define hard safety boundaries.
+4. Define tool families the agent may request.
+5. Require structured JSON only.
+6. Require expected evidence for every action.
+7. Require stop conditions for risky actions.
+8. Separate verified findings from candidate observations.
+9. Mark high-impact actions for ApprovalGate.
+10. Return operator_review_items when authorization is missing or unclear.
 ```
 
 ---
@@ -967,17 +960,26 @@ mypy>=1.0
 
 ### Kali / Host Setup
 
-```bash
-# scripts/install_kali_deps.sh
-apt-get update
-apt-get install -y docker.io docker-compose nmap masscan amass subfinder \
-  nuclei feroxbuster sqlmap nikto whatweb dnsrecon enum4linux-ng responder \
-  bettercap metasploit-framework hashcat john crackmapexec impacket-scripts
-
-pip install -r requirements.txt --break-system-packages
-```
+SABER no longer uses host install scripts for the assessment tools. Tooling is installed inside the Docker sandbox image and managed through the Python CLI.
 
 ```bash
-# scripts/build_sandbox_image.sh
-docker build -t saber/sandbox:kali-last-release -f docker/Dockerfile.sandbox .
+# Check local setup
+python -m saber doctor
+
+# Build sandbox image
+python -m saber sandbox build
+
+# Verify image exists
+python -m saber sandbox status
+
+# Enter sandbox shell
+python -m saber sandbox shell
 ```
+
+The Docker image is named:
+
+```text
+saber/sandbox:kali-last-release
+```
+
+The Kali package `bloodhound.py` is installed in the sandbox image. `bloodhound-python` is intentionally not listed in `requirements.txt` because it is not installed as a normal PyPI runtime dependency for this project.
