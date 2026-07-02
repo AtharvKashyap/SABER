@@ -163,7 +163,7 @@ evidence:
 # ----------------------------------------------------------
 
 sandbox:
-  image: "saber/sandbox:kali-latest"
+  image: "saber/sandbox:kali-last-release"
   network_mode: "scoped"
   memory_limit: "4g"
   cpu_limit: 2

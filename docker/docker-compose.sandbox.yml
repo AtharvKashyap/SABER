@@ -1,0 +1,30 @@
+services:
+  saber-sandbox:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.sandbox
+    image: saber/sandbox:kali-last-release
+    container_name: saber-sandbox-dev
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    environment:
+      SABER_SANDBOX: "true"
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ../output:/workspace/output
+      - ../sessions:/workspace/sessions
+      - ../config:/workspace/config:ro
+      - ../examples:/workspace/examples:ro
+    networks:
+      - saber-dev-net
+    mem_limit: 4g
+    cpus: 2
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+networks:
+  saber-dev-net:
+    driver: bridge

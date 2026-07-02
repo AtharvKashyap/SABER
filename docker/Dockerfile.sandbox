@@ -1,0 +1,85 @@
+# SABER sandbox image
+# This image contains the command-line tools used by SABER wrappers.
+# Tool execution should always be scope-checked by SABER before reaching this container.
+
+FROM kalilinux/kali-last-release:latest
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV PIP_NO_CACHE_DIR=1
+ENV SABER_SANDBOX=true
+
+WORKDIR /workspace
+
+# Base OS utilities and Python runtime
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    wget \
+    git \
+    jq \
+    unzip \
+    zip \
+    tar \
+    bash \
+    coreutils \
+    iproute2 \
+    iputils-ping \
+    dnsutils \
+    netcat-openbsd \
+    procps \
+    python3 \
+    python3-pip \
+    python3-venv \
+    pipx \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Recon / web / network tools available from Kali repositories.
+# This image uses kali-last-release instead of kali-rolling so package availability
+# is more stable across builds. If a package name changes, update this list and
+# the host-side scripts/install_kali_deps.sh file together.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nmap \
+    masscan \
+    amass \
+    subfinder \
+    theharvester \
+    dnsrecon \
+    whatweb \
+    feroxbuster \
+    nuclei \
+    sqlmap \
+    nikto \
+    zaproxy \
+    enum4linux-ng \
+    snmp \
+    responder \
+    bettercap \
+    metasploit-framework \
+    exploitdb \
+    hashcat \
+    john \
+    bloodhound.py \
+    crackmapexec \
+    netexec \
+    impacket-scripts \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python libraries used by SABER wrappers that may run inside the sandbox.
+COPY requirements.txt /tmp/requirements.txt
+RUN python3 -m pip install --break-system-packages -r /tmp/requirements.txt \
+    && rm -f /tmp/requirements.txt
+
+# Runtime directories used by SABER when bind-mounted or copied into the container.
+RUN mkdir -p /workspace/input /workspace/output /workspace/evidence /workspace/tmp
+
+# Non-root sandbox user. Some tools may still require elevated privileges in lab mode,
+# but default execution should avoid root where possible.
+RUN useradd --create-home --shell /bin/bash saber \
+    && chown -R saber:saber /workspace
+
+USER saber
+
+CMD ["/bin/bash"]

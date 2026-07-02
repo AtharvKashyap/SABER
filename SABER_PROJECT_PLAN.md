@@ -413,12 +413,12 @@ class SandboxManager:
     for it.
     """
     
-    image: str = "saber/sandbox:kali-latest"
+    image: str = "saber/sandbox:kali-last-release"
     
     async def start_session_container(self, session_id: str) -> ContainerHandle:
         # docker run -d --name saber-{session_id}
         #   --network saber-session-net-{session_id}
-        #   saber/sandbox:kali-latest
+        #   saber/sandbox:kali-last-release
         ...
     
     async def exec_in_container(
@@ -727,7 +727,7 @@ CREATE TABLE phase_nodes (
 
 ```yaml
 sandbox:
-  image: saber/sandbox:kali-latest
+  image: saber/sandbox:kali-last-release
   network_mode: scoped
   memory_limit: 4g
   cpu_limit: 2
@@ -767,7 +767,7 @@ tools:
 
 ```bash
 # Docker sandbox
-SABER_SANDBOX_IMAGE=saber/sandbox:kali-latest
+SABER_SANDBOX_IMAGE=saber/sandbox:kali-last-release
 SABER_INTERACTIVE_DEFAULT=false
 
 # Active Directory
@@ -979,5 +979,5 @@ pip install -r requirements.txt --break-system-packages
 
 ```bash
 # scripts/build_sandbox_image.sh
-docker build -t saber/sandbox:kali-latest -f docker/Dockerfile.sandbox .
+docker build -t saber/sandbox:kali-last-release -f docker/Dockerfile.sandbox .
 ```
