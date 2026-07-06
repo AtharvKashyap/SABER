@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from datetime import UTC, datetime
 from typing import Any
 
 from saber.models.scope import AssessmentPhase, MissionScope
@@ -148,7 +149,7 @@ class PhaseGraph:
         """
 
         self.scope = scope
-        self.transitions = transitions or self.DEFAULT_TRANSITIONS
+        self.transitions = self.DEFAULT_TRANSITIONS if transitions is None else transitions
 
     def can_start_phase(
         self,
@@ -268,9 +269,11 @@ class PhaseGraph:
             Updated MissionSession.
         """
 
-        phase_execution = self._existing_or_new_phase(session, phase).mark_completed(
-            findings_count=findings_count,
-            evidence_count=evidence_count,
+        phase_execution = self._existing_or_new_phase(session, phase).mark_completed().model_copy(
+            update={
+                "findings_count": findings_count,
+                "evidence_count": evidence_count,
+            }
         )
         return self._replace_phase_execution(session, phase_execution)
 
@@ -314,6 +317,7 @@ class PhaseGraph:
         phase_execution = self._existing_or_new_phase(session, phase).model_copy(
             update={
                 "status": PhaseStatus.SKIPPED,
+                "finished_at": datetime.now(UTC),
                 "error_message": reason,
             }
         )
@@ -339,6 +343,7 @@ class PhaseGraph:
         phase_execution = self._existing_or_new_phase(session, phase).model_copy(
             update={
                 "status": PhaseStatus.BLOCKED,
+                "finished_at": datetime.now(UTC),
                 "error_message": reason,
             }
         )

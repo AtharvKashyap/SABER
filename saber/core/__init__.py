@@ -1,5 +1,3 @@
-
-
 """Core runtime exports for SABER.
 
 The `saber.core` package contains the non-model runtime layer for mission
@@ -11,14 +9,12 @@ their implementation modules.
 """
 
 from saber.core.approval_gate import ApprovalGate, ApprovalGateOutcome, ApprovalGateResult
-from saber.core.docker_runner import DockerRunner
 from saber.core.scope_guard import RequestedActionCategory, ScopeGuard, ScopeGuardReason, ToolRequest
 
 __all__ = [
     "ApprovalGate",
     "ApprovalGateOutcome",
     "ApprovalGateResult",
-    "DockerRunner",
     "RequestedActionCategory",
     "ScopeGuard",
     "ScopeGuardReason",

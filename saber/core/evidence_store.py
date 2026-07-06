@@ -487,7 +487,7 @@ class EvidenceStore:
             size_bytes=file_path.stat().st_size,
             command=command,
             content_preview=content_preview,
-            parsed_data=parsed_data,
+            parsed_data=parsed_data or {},
             sensitivity=sensitivity,
             redacted=sensitivity == EvidenceSensitivity.SECRET,
             created_at=datetime.now(UTC),
