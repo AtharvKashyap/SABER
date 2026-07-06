@@ -476,74 +476,126 @@ class MissionScope(BaseModel):
 
 
 class ScopeDecision(BaseModel):
-    """Result of evaluating a target against mission scope.
+    """Decision returned by scope checks.
 
     Args:
-        target: Target that was evaluated.
-        allowed: Whether the target is allowed for use.
-        status: Resulting scope status.
-        reason: Human-readable reason for the decision.
+        target: Optional target this decision applies to.
+        status: Scope status produced by the decision.
+        allowed: Whether the request is allowed.
+        requires_review: Whether the request requires operator review.
+        reason: Human-readable decision reason.
+        metadata: Optional structured decision metadata.
 
     Returns:
-        A compact decision object for ScopeGuard and audit logs.
+        A validated scope decision object.
     """
 
-    target: Target
+    target: Target | None = None
+    status: ScopeStatus = ScopeStatus.UNKNOWN
     allowed: bool
-    status: ScopeStatus
+    requires_review: bool = False
     reason: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
-    def allow(cls, target: Target, reason: str = "target is explicitly in scope") -> ScopeDecision:
-        """Create an allowed scope decision.
+    def allow(
+        cls,
+        target: Target | None = None,
+        reason: str = "target is explicitly in scope",
+        metadata: dict[str, Any] | None = None,
+    ) -> "ScopeDecision":
+        """Create an allow decision.
 
         Args:
-            target: Target that passed scope validation.
-            reason: Explanation for the allow decision.
+            target: Optional target this decision applies to.
+            reason: Human-readable decision reason.
+            metadata: Optional structured decision metadata.
 
         Returns:
-            A ScopeDecision with allowed=True.
+            A ScopeDecision allowing the request.
         """
 
-        return cls(target=target.mark_in_scope(), allowed=True, status=ScopeStatus.IN_SCOPE, reason=reason)
-
-    @classmethod
-    def deny(cls, target: Target, reason: str = "target is out of scope") -> ScopeDecision:
-        """Create a denied scope decision.
-
-        Args:
-            target: Target that failed scope validation.
-            reason: Explanation for the deny decision.
-
-        Returns:
-            A ScopeDecision with allowed=False.
-        """
-
+        marked_target = target.mark_in_scope() if target else None
         return cls(
-            target=target.mark_out_of_scope(),
-            allowed=False,
+            target=marked_target,
+            status=ScopeStatus.IN_SCOPE,
+            allowed=True,
+            requires_review=False,
+            reason=reason,
+            metadata=metadata or {},
+        )
+
+    @classmethod
+    def deny(
+        cls,
+        target: Target | None = None,
+        reason: str = "target is explicitly out of scope",
+        metadata: dict[str, Any] | None = None,
+    ) -> "ScopeDecision":
+        """Create a deny decision.
+
+        Args:
+            target: Optional target this decision applies to.
+            reason: Human-readable decision reason.
+            metadata: Optional structured decision metadata.
+
+        Returns:
+            A ScopeDecision denying the request.
+        """
+
+        marked_target = target.mark_out_of_scope() if target else None
+        return cls(
+            target=marked_target,
             status=ScopeStatus.OUT_OF_SCOPE,
+            allowed=False,
+            requires_review=False,
             reason=reason,
+            metadata=metadata or {},
         )
 
     @classmethod
-    def review(cls, target: Target, reason: str = "target requires operator review") -> ScopeDecision:
-        """Create a review-required scope decision.
+    def review(
+        cls,
+        target: Target | None = None,
+        reason: str = "target requires operator review",
+        metadata: dict[str, Any] | None = None,
+    ) -> "ScopeDecision":
+        """Create a review decision.
 
         Args:
-            target: Target that could not be safely allowed or denied automatically.
-            reason: Explanation for the review decision.
+            target: Optional target this decision applies to.
+            reason: Human-readable decision reason.
+            metadata: Optional structured decision metadata.
 
         Returns:
-            A ScopeDecision with allowed=False and status=REQUIRES_REVIEW.
+            A ScopeDecision requiring operator review.
         """
 
+        marked_target = target.mark_requires_review() if target else None
         return cls(
-            target=target.mark_requires_review(),
-            allowed=False,
+            target=marked_target,
             status=ScopeStatus.REQUIRES_REVIEW,
+            allowed=False,
+            requires_review=True,
             reason=reason,
+            metadata=metadata or {},
         )
+
+    def to_agent_dict(self) -> dict[str, Any]:
+        """Return compact scope decision data for agent handoff.
+
+        Returns:
+            JSON-compatible decision metadata.
+        """
+
+        return {
+            "target": self.target.to_agent_dict() if self.target else None,
+            "status": self.status.value,
+            "allowed": self.allowed,
+            "requires_review": self.requires_review,
+            "reason": self.reason,
+            "metadata": self.metadata,
+        }
 
 
 def _normalize_string_list(values: list[str]) -> list[str]:
