@@ -1,0 +1,70 @@
+name: bloodhound
+display_name: BloodHound
+category: active_directory
+phase: exploitation
+image: saber/bloodhound:latest
+binary: bloodhound-python
+description: Active Directory relationship collection for graph-based attack-path analysis.
+default_timeout_seconds: 1800
+requires_network: true
+
+inputs:
+  target:
+    type: string
+    required: true
+    description: Domain controller, domain, or AD target.
+  domain:
+    type: string
+    required: false
+  username:
+    type: string
+    required: false
+  password:
+    type: string
+    required: false
+    sensitive: true
+  nameserver:
+    type: string
+    required: false
+  collection_methods:
+    type: list
+    required: false
+    default:
+      - Default
+
+actions:
+  collect:
+    description: Collect BloodHound-compatible AD data.
+    command_template:
+      - bloodhound-python
+      - -d
+      - "{domain}"
+      - -u
+      - "{username}"
+      - -p
+      - "{password}"
+      - -ns
+      - "{nameserver}"
+      - -c
+      - "{collection_methods}"
+    evidence_dir: active_directory/bloodhound/collect
+    output_parsers:
+      - bloodhound_json
+
+  collect_all:
+    description: Collect all supported BloodHound data.
+    command_template:
+      - bloodhound-python
+      - -d
+      - "{domain}"
+      - -u
+      - "{username}"
+      - -p
+      - "{password}"
+      - -ns
+      - "{nameserver}"
+      - -c
+      - All
+    evidence_dir: active_directory/bloodhound/collect_all
+    output_parsers:
+      - bloodhound_json

@@ -1,0 +1,71 @@
+name: whatweb
+display_name: WhatWeb
+category: recon
+phase: recon
+image: saber/whatweb:latest
+binary: whatweb
+description: Web technology fingerprinting.
+default_timeout_seconds: 600
+requires_network: true
+
+inputs:
+  url:
+    type: string
+    required: false
+  input_file:
+    type: string
+    required: false
+  aggression:
+    type: integer
+    required: false
+    default: 1
+  json_output:
+    type: string
+    required: false
+
+actions:
+  fingerprint:
+    description: Fingerprint a single web target.
+    command_template:
+      - whatweb
+      - -a
+      - "{aggression}"
+      - "{url}"
+    optional_flags:
+      json_output:
+        flag: --log-json
+        style: separate
+    evidence_dir: recon/whatweb/fingerprint
+    output_parsers:
+      - whatweb
+
+  aggressive:
+    description: Run aggressive fingerprinting.
+    command_template:
+      - whatweb
+      - -a
+      - "3"
+      - "{url}"
+    optional_flags:
+      json_output:
+        flag: --log-json
+        style: separate
+    evidence_dir: recon/whatweb/aggressive
+    output_parsers:
+      - whatweb
+
+  list_scan:
+    description: Fingerprint URLs from an input file.
+    command_template:
+      - whatweb
+      - -a
+      - "{aggression}"
+      - -i
+      - "{input_file}"
+    optional_flags:
+      json_output:
+        flag: --log-json
+        style: separate
+    evidence_dir: recon/whatweb/list_scan
+    output_parsers:
+      - whatweb

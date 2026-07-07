@@ -1,0 +1,76 @@
+name: enum4linux
+display_name: enum4linux
+category: network
+phase: recon
+image: saber/enum4linux:latest
+binary: enum4linux
+description: SMB/NetBIOS enumeration for users, shares, policies, groups, and OS information.
+default_timeout_seconds: 600
+requires_network: true
+
+inputs:
+  target:
+    type: string
+    required: true
+  username:
+    type: string
+    required: false
+  password:
+    type: string
+    required: false
+    sensitive: true
+
+actions:
+  full_enum:
+    description: Run full SMB enumeration.
+    command_template:
+      - enum4linux
+      - -o
+      - -a
+      - "{target}"
+    optional_flags:
+      username:
+        flag: -u
+        style: separate
+      password:
+        flag: -p
+        style: separate
+    evidence_dir: network/enum4linux/full
+    output_parsers:
+      - enum4linux
+
+  users:
+    description: Enumerate SMB users.
+    command_template:
+      - enum4linux
+      - -o
+      - -U
+      - "{target}"
+    optional_flags:
+      username:
+        flag: -u
+        style: separate
+      password:
+        flag: -p
+        style: separate
+    evidence_dir: network/enum4linux/users
+    output_parsers:
+      - enum4linux
+
+  shares:
+    description: Enumerate SMB shares.
+    command_template:
+      - enum4linux
+      - -o
+      - -S
+      - "{target}"
+    optional_flags:
+      username:
+        flag: -u
+        style: separate
+      password:
+        flag: -p
+        style: separate
+    evidence_dir: network/enum4linux/shares
+    output_parsers:
+      - enum4linux

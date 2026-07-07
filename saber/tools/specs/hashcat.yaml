@@ -1,0 +1,94 @@
+name: hashcat
+display_name: Hashcat
+category: password_cracking
+phase: exploitation
+image: saber/hashcat:latest
+binary: hashcat
+description: GPU/CPU password hash auditing.
+default_timeout_seconds: 3600
+requires_network: false
+
+inputs:
+  hash_file:
+    type: string
+    required: false
+  hash_mode:
+    type: string
+    required: false
+  wordlist:
+    type: string
+    required: false
+  mask:
+    type: string
+    required: false
+  rules:
+    type: list
+    required: false
+  workload_profile:
+    type: integer
+    required: false
+
+actions:
+  dictionary_attack:
+    description: Run dictionary attack mode.
+    command_template:
+      - hashcat
+      - -m
+      - "{hash_mode}"
+      - -a
+      - "0"
+      - "{hash_file}"
+      - "{wordlist}"
+    optional_flags:
+      rules:
+        flag: -r
+        style: repeated
+      workload_profile:
+        flag: -w
+        style: separate
+    evidence_dir: password/hashcat/dictionary
+    output_parsers:
+      - hashcat
+
+  mask_attack:
+    description: Run mask attack mode.
+    command_template:
+      - hashcat
+      - -m
+      - "{hash_mode}"
+      - -a
+      - "3"
+      - "{hash_file}"
+      - "{mask}"
+    optional_flags:
+      workload_profile:
+        flag: -w
+        style: separate
+    evidence_dir: password/hashcat/mask
+    output_parsers:
+      - hashcat
+
+  show_cracked:
+    description: Show cracked hashes.
+    command_template:
+      - hashcat
+      - -m
+      - "{hash_mode}"
+      - --show
+      - "{hash_file}"
+    evidence_dir: password/hashcat/show
+    output_parsers:
+      - hashcat_show
+
+  benchmark:
+    description: Run hashcat benchmark.
+    command_template:
+      - hashcat
+      - -b
+    optional_flags:
+      hash_mode:
+        flag: -m
+        style: separate
+    evidence_dir: password/hashcat/benchmark
+    output_parsers:
+      - hashcat

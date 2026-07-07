@@ -1,0 +1,87 @@
+name: radare2
+display_name: radare2
+category: reverse_engineering
+phase: recon
+image: saber/radare2:latest
+binary: r2
+description: Static binary analysis with radare2.
+default_timeout_seconds: 1200
+requires_network: false
+
+inputs:
+  binary_path:
+    type: string
+    required: true
+  analysis_level:
+    type: string
+    required: false
+    enum:
+      - aa
+      - aaa
+      - aaaa
+  commands:
+    type: list
+    required: false
+  json_output:
+    type: boolean
+    required: false
+    default: true
+
+actions:
+  analyze:
+    description: Run radare2 auto-analysis.
+    command_template:
+      - r2
+      - -q
+      - -c
+      - "{analysis_level}"
+      - -c
+      - q
+      - "{binary_path}"
+    evidence_dir: reverse_engineering/radare2/analyze
+    output_parsers:
+      - radare2
+
+  info:
+    description: Extract binary info.
+    command_template:
+      - r2
+      - -q
+      - -c
+      - ij
+      - -c
+      - q
+      - "{binary_path}"
+    evidence_dir: reverse_engineering/radare2/info
+    output_parsers:
+      - radare2_json
+
+  functions:
+    description: List discovered functions.
+    command_template:
+      - r2
+      - -q
+      - -c
+      - aaa
+      - -c
+      - aflj
+      - -c
+      - q
+      - "{binary_path}"
+    evidence_dir: reverse_engineering/radare2/functions
+    output_parsers:
+      - radare2_json
+
+  custom_commands:
+    description: Run custom radare2 commands.
+    command_template:
+      - r2
+      - -q
+      - "{binary_path}"
+    optional_flags:
+      commands:
+        flag: -c
+        style: repeated
+    evidence_dir: reverse_engineering/radare2/custom_commands
+    output_parsers:
+      - radare2

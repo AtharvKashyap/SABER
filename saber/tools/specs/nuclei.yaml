@@ -1,0 +1,44 @@
+name: nuclei
+display_name: Nuclei
+category: web
+phase: recon
+image: saber/nuclei:latest
+binary: nuclei
+description: Template-based vulnerability scanning for web and network targets.
+default_timeout_seconds: 1800
+requires_network: true
+
+inputs:
+  target:
+    type: string
+    required: true
+  templates:
+    type: string
+    required: false
+  severity:
+    type: string
+    required: false
+  output_file:
+    type: string
+    required: false
+
+actions:
+  scan:
+    description: Run Nuclei scan.
+    command_template:
+      - nuclei
+      - -u
+      - "{target}"
+    optional_flags:
+      templates:
+        flag: -t
+        style: separate
+      severity:
+        flag: -severity
+        style: separate
+      output_file:
+        flag: -o
+        style: separate
+    evidence_dir: web/nuclei/scan
+    output_parsers:
+      - nuclei

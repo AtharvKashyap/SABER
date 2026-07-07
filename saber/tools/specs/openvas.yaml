@@ -1,0 +1,89 @@
+name: openvas
+display_name: OpenVAS
+category: network
+phase: recon
+image: saber/openvas-api:latest
+binary: openvas-cli
+description: OpenVAS/GVM target, task, scan, and report workflows.
+default_timeout_seconds: 900
+requires_network: true
+
+inputs:
+  target:
+    type: string
+    required: false
+  name:
+    type: string
+    required: false
+  target_id:
+    type: string
+    required: false
+  scan_config_id:
+    type: string
+    required: false
+  task_id:
+    type: string
+    required: false
+  report_id:
+    type: string
+    required: false
+  output_format:
+    type: string
+    required: false
+    enum:
+      - xml
+      - json
+      - pdf
+
+actions:
+  create_target:
+    description: Create an OpenVAS target.
+    command_template:
+      - openvas-cli
+      - target-create
+      - --name
+      - "{name}"
+      - --hosts
+      - "{target}"
+    evidence_dir: network/openvas_api/create_target
+    output_parsers:
+      - openvas
+
+  create_task:
+    description: Create an OpenVAS task.
+    command_template:
+      - openvas-cli
+      - task-create
+      - --name
+      - "{name}"
+      - --target-id
+      - "{target_id}"
+      - --scan-config-id
+      - "{scan_config_id}"
+    evidence_dir: network/openvas_api/create_task
+    output_parsers:
+      - openvas
+
+  start_task:
+    description: Start an OpenVAS task.
+    command_template:
+      - openvas-cli
+      - task-start
+      - --task-id
+      - "{task_id}"
+    evidence_dir: network/openvas_api/start_task
+    output_parsers:
+      - openvas
+
+  get_report:
+    description: Download an OpenVAS report.
+    command_template:
+      - openvas-cli
+      - report-get
+      - --report-id
+      - "{report_id}"
+      - --format
+      - "{output_format}"
+    evidence_dir: network/openvas_api/get_report
+    output_parsers:
+      - openvas_report

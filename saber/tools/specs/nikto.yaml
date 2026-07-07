@@ -1,0 +1,49 @@
+name: nikto
+display_name: Nikto
+category: web
+phase: recon
+image: saber/nikto:latest
+binary: nikto
+description: Web server vulnerability and misconfiguration scanner.
+default_timeout_seconds: 1200
+requires_network: true
+
+inputs:
+  url:
+    type: string
+    required: true
+  output_file:
+    type: string
+    required: false
+  format:
+    type: string
+    required: false
+    enum:
+      - txt
+      - csv
+      - json
+      - xml
+  tuning:
+    type: string
+    required: false
+
+actions:
+  scan:
+    description: Run Nikto web scan.
+    command_template:
+      - nikto
+      - -h
+      - "{url}"
+    optional_flags:
+      output_file:
+        flag: -o
+        style: separate
+      format:
+        flag: -Format
+        style: separate
+      tuning:
+        flag: -Tuning
+        style: separate
+    evidence_dir: web/nikto/scan
+    output_parsers:
+      - nikto

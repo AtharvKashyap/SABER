@@ -1,0 +1,63 @@
+name: checksec
+display_name: checksec
+category: reverse_engineering
+phase: recon
+image: saber/checksec:latest
+binary: checksec
+description: Binary hardening inspection for NX, PIE, RELRO, stack canaries, and related protections.
+default_timeout_seconds: 300
+requires_network: false
+
+inputs:
+  binary_path:
+    type: string
+    required: false
+  directory_path:
+    type: string
+    required: false
+  output_format:
+    type: string
+    required: false
+    enum:
+      - cli
+      - csv
+      - json
+      - xml
+
+actions:
+  binary:
+    description: Run checksec against a single binary.
+    command_template:
+      - checksec
+      - --file
+      - "{binary_path}"
+    optional_flags:
+      output_format:
+        flag: --output=
+        style: joined
+    evidence_dir: reverse_engineering/checksec/binary
+    output_parsers:
+      - checksec
+
+  directory:
+    description: Run checksec against binaries in a directory.
+    command_template:
+      - checksec
+      - --dir
+      - "{directory_path}"
+    optional_flags:
+      output_format:
+        flag: --output=
+        style: joined
+    evidence_dir: reverse_engineering/checksec/directory
+    output_parsers:
+      - checksec
+
+  kernel:
+    description: Run kernel hardening checks.
+    command_template:
+      - checksec
+      - --kernel
+    evidence_dir: reverse_engineering/checksec/kernel
+    output_parsers:
+      - checksec

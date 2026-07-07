@@ -1,0 +1,101 @@
+name: nmap
+display_name: Nmap
+category: recon
+phase: recon
+image: saber/nmap:latest
+binary: nmap
+description: Network discovery, service detection, scripting, and port enumeration.
+default_timeout_seconds: 1200
+requires_network: true
+
+inputs:
+  target:
+    type: string
+    required: true
+  ports:
+    type: string
+    required: false
+  script:
+    type: string
+    required: false
+  output_prefix:
+    type: string
+    required: false
+
+actions:
+  service_scan:
+    description: Run service and default script detection.
+    command_template:
+      - nmap
+      - -sV
+      - -sC
+      - "{target}"
+    optional_flags:
+      ports:
+        flag: -p
+        style: separate
+      output_prefix:
+        flag: -oA
+        style: separate
+    evidence_dir: recon/nmap/service_scan
+    output_parsers:
+      - nmap_xml
+      - nmap_text
+
+  vuln_scan:
+    description: Run Nmap vuln NSE scripts.
+    command_template:
+      - nmap
+      - -sV
+      - --script
+      - vuln
+      - "{target}"
+    optional_flags:
+      ports:
+        flag: -p
+        style: separate
+      output_prefix:
+        flag: -oA
+        style: separate
+    evidence_dir: recon/nmap/vuln_scan
+    output_parsers:
+      - nmap_xml
+      - nmap_text
+
+  udp_scan:
+    description: Run UDP scan.
+    command_template:
+      - nmap
+      - -sU
+      - "{target}"
+    optional_flags:
+      ports:
+        flag: -p
+        style: separate
+      output_prefix:
+        flag: -oA
+        style: separate
+    evidence_dir: recon/nmap/udp_scan
+    output_parsers:
+      - nmap_xml
+      - nmap_text
+
+  script_scan:
+    description: Run a specific NSE script or category.
+    command_template:
+      - nmap
+      - -sV
+      - --script
+      - "{script}"
+      - "{target}"
+    optional_flags:
+      ports:
+        flag: -p
+        style: separate
+      output_prefix:
+        flag: -oA
+        style: separate
+    evidence_dir: recon/nmap/script_scan
+    output_parsers:
+      - nmap_xml
+      - nmap_text

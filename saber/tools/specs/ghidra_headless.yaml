@@ -1,0 +1,83 @@
+name: ghidra_headless
+display_name: Ghidra Headless
+category: reverse_engineering
+phase: recon
+image: saber/ghidra-headless:latest
+binary: analyzeHeadless
+description: Headless Ghidra binary import, analysis, scripting, and export.
+default_timeout_seconds: 3600
+requires_network: false
+
+inputs:
+  binary_path:
+    type: string
+    required: false
+  project_dir:
+    type: string
+    required: true
+  project_name:
+    type: string
+    required: true
+  script_path:
+    type: string
+    required: false
+  script_args:
+    type: list
+    required: false
+  output_file:
+    type: string
+    required: false
+
+actions:
+  analyze_binary:
+    description: Import and analyze a binary.
+    command_template:
+      - analyzeHeadless
+      - "{project_dir}"
+      - "{project_name}"
+      - -import
+      - "{binary_path}"
+      - -overwrite
+    optional_flags:
+      script_path:
+        flag: -postScript
+        style: separate
+      script_args:
+        flag: ""
+        style: append_list
+    evidence_dir: reverse_engineering/ghidra_headless/analyze_binary
+    output_parsers:
+      - ghidra
+
+  run_script:
+    description: Run a script against an existing project.
+    command_template:
+      - analyzeHeadless
+      - "{project_dir}"
+      - "{project_name}"
+      - -process
+      - -postScript
+      - "{script_path}"
+    optional_flags:
+      script_args:
+        flag: ""
+        style: append_list
+    evidence_dir: reverse_engineering/ghidra_headless/run_script
+    output_parsers:
+      - ghidra
+
+  export_analysis:
+    description: Analyze a binary and export structured output through a script.
+    command_template:
+      - analyzeHeadless
+      - "{project_dir}"
+      - "{project_name}"
+      - -import
+      - "{binary_path}"
+      - -overwrite
+      - -postScript
+      - "{script_path}"
+      - "{output_file}"
+    evidence_dir: reverse_engineering/ghidra_headless/export_analysis
+    output_parsers:
+      - ghidra
