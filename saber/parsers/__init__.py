@@ -10,4 +10,3 @@ This package intentionally avoids eager imports to reduce circular import risk.
 """
 
 __all__: list[str] = []
-PY
