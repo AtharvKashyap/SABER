@@ -109,6 +109,7 @@ class AssessmentPhase(StrEnum):
     NETWORK = "network"
     ACTIVE_DIRECTORY = "active_directory"
     EXPLOITATION = "exploitation"
+    LATERAL_MOVEMENT = "lateral_movement"
     POST_EXPLOITATION = "post_exploitation"
     PASSWORD_CRACKING = "password_cracking"
     REPORTING = "reporting"

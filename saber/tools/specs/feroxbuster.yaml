@@ -1,0 +1,49 @@
+name: feroxbuster
+display_name: Feroxbuster
+category: web
+phase: recon
+image: saber/feroxbuster:latest
+binary: feroxbuster
+description: Fast recursive web content discovery.
+default_timeout_seconds: 1200
+requires_network: true
+
+inputs:
+  url:
+    type: string
+    required: true
+  wordlist:
+    type: string
+    required: true
+  extensions:
+    type: list
+    required: false
+  threads:
+    type: integer
+    required: false
+    default: 50
+  output_file:
+    type: string
+    required: false
+
+actions:
+  directory_bruteforce:
+    description: Discover web directories and files.
+    command_template:
+      - feroxbuster
+      - -u
+      - "{url}"
+      - -w
+      - "{wordlist}"
+      - -t
+      - "{threads}"
+    optional_flags:
+      extensions:
+        flag: -x
+        style: comma_list
+      output_file:
+        flag: -o
+        style: separate
+    evidence_dir: web/feroxbuster/directory_bruteforce
+    output_parsers:
+      - feroxbuster

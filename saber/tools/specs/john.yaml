@@ -1,0 +1,78 @@
+name: john
+display_name: John the Ripper
+category: password_cracking
+phase: exploitation
+image: saber/john:latest
+binary: john
+description: Password hash auditing with John the Ripper.
+default_timeout_seconds: 3600
+requires_network: false
+
+inputs:
+  hash_file:
+    type: string
+    required: false
+  wordlist:
+    type: string
+    required: false
+  format_name:
+    type: string
+    required: false
+  rules:
+    type: string
+    required: false
+
+actions:
+  dictionary_attack:
+    description: Run dictionary attack mode.
+    command_template:
+      - john
+      - "--wordlist={wordlist}"
+      - "{hash_file}"
+    optional_flags:
+      format_name:
+        flag: --format=
+        style: joined
+      rules:
+        flag: --rules=
+        style: joined
+    evidence_dir: password/john/dictionary
+    output_parsers:
+      - john
+
+  single_crack:
+    description: Run single-crack mode.
+    command_template:
+      - john
+      - --single
+      - "{hash_file}"
+    optional_flags:
+      format_name:
+        flag: --format=
+        style: joined
+    evidence_dir: password/john/single
+    output_parsers:
+      - john
+
+  show_cracked:
+    description: Show cracked hashes.
+    command_template:
+      - john
+      - --show
+      - "{hash_file}"
+    optional_flags:
+      format_name:
+        flag: --format=
+        style: joined
+    evidence_dir: password/john/show
+    output_parsers:
+      - john_show
+
+  list_formats:
+    description: List supported John formats.
+    command_template:
+      - john
+      - --list=formats
+    evidence_dir: password/john/formats
+    output_parsers:
+      - john

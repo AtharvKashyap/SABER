@@ -1,0 +1,67 @@
+name: metasploit
+display_name: Metasploit
+category: exploitation
+phase: exploitation
+image: saber/metasploit:latest
+binary: msfconsole
+description: Metasploit module discovery, inspection, check mode, and execution.
+default_timeout_seconds: 1200
+requires_network: true
+
+inputs:
+  query:
+    type: string
+    required: false
+  module:
+    type: string
+    required: false
+  options:
+    type: map
+    required: false
+
+actions:
+  search_modules:
+    description: Search Metasploit modules.
+    command_template:
+      - msfconsole
+      - -q
+      - -x
+      - "search {query}; exit -y"
+    evidence_dir: exploitation/metasploit/search
+    output_parsers:
+      - metasploit_search
+
+  show_module_info:
+    description: Show module information.
+    command_template:
+      - msfconsole
+      - -q
+      - -x
+      - "info {module}; exit -y"
+    evidence_dir: exploitation/metasploit/info
+    output_parsers:
+      - metasploit_info
+
+  check_module:
+    description: Run a module check.
+    requires_explicit_authorization: true
+    command_template:
+      - msfconsole
+      - -q
+      - -x
+      - "use {module}; set-options {options}; check; exit -y"
+    evidence_dir: exploitation/metasploit/check
+    output_parsers:
+      - metasploit
+
+  run_module:
+    description: Run a Metasploit module.
+    requires_explicit_authorization: true
+    command_template:
+      - msfconsole
+      - -q
+      - -x
+      - "use {module}; set-options {options}; run; exit -y"
+    evidence_dir: exploitation/metasploit/run
+    output_parsers:
+      - metasploit

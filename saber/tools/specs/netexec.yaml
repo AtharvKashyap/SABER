@@ -1,0 +1,101 @@
+name: netexec
+display_name: NetExec
+category: active_directory
+phase: exploitation
+image: saber/netexec:latest
+binary: nxc
+description: Network service enumeration, authentication checks, and AD operations.
+default_timeout_seconds: 900
+requires_network: true
+
+inputs:
+  protocol:
+    type: string
+    required: true
+    enum:
+      - smb
+      - ldap
+      - winrm
+      - mssql
+      - ssh
+  target:
+    type: string
+    required: true
+  username:
+    type: string
+    required: false
+  password:
+    type: string
+    required: false
+    sensitive: true
+  hashes:
+    type: string
+    required: false
+    sensitive: true
+  module:
+    type: string
+    required: false
+
+actions:
+  auth_check:
+    description: Check credentials against a protocol target.
+    command_template:
+      - nxc
+      - "{protocol}"
+      - "{target}"
+    optional_flags:
+      username:
+        flag: -u
+        style: separate
+      password:
+        flag: -p
+        style: separate
+      hashes:
+        flag: -H
+        style: separate
+    evidence_dir: active_directory/netexec/auth_check
+    output_parsers:
+      - netexec
+
+  shares:
+    description: Enumerate SMB shares.
+    command_template:
+      - nxc
+      - smb
+      - "{target}"
+      - --shares
+    optional_flags:
+      username:
+        flag: -u
+        style: separate
+      password:
+        flag: -p
+        style: separate
+      hashes:
+        flag: -H
+        style: separate
+    evidence_dir: active_directory/netexec/shares
+    output_parsers:
+      - netexec
+
+  module:
+    description: Run a NetExec module.
+    command_template:
+      - nxc
+      - "{protocol}"
+      - "{target}"
+      - -M
+      - "{module}"
+    optional_flags:
+      username:
+        flag: -u
+        style: separate
+      password:
+        flag: -p
+        style: separate
+      hashes:
+        flag: -H
+        style: separate
+    evidence_dir: active_directory/netexec/module
+    output_parsers:
+      - netexec

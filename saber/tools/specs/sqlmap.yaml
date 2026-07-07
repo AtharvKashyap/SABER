@@ -1,0 +1,79 @@
+name: sqlmap
+display_name: sqlmap
+category: web
+phase: exploitation
+image: saber/sqlmap:latest
+binary: sqlmap
+description: SQL injection detection and database enumeration.
+default_timeout_seconds: 1800
+requires_network: true
+
+inputs:
+  url:
+    type: string
+    required: true
+  request_file:
+    type: string
+    required: false
+  risk:
+    type: integer
+    required: false
+    default: 1
+  level:
+    type: integer
+    required: false
+    default: 1
+  batch:
+    type: boolean
+    required: false
+    default: true
+
+actions:
+  test_url:
+    description: Test a URL for SQL injection.
+    command_template:
+      - sqlmap
+      - -u
+      - "{url}"
+      - --batch
+    optional_flags:
+      risk:
+        flag: --risk
+        style: separate
+      level:
+        flag: --level
+        style: separate
+    evidence_dir: web/sqlmap/test_url
+    output_parsers:
+      - sqlmap
+
+  test_request:
+    description: Test a captured HTTP request.
+    command_template:
+      - sqlmap
+      - -r
+      - "{request_file}"
+      - --batch
+    optional_flags:
+      risk:
+        flag: --risk
+        style: separate
+      level:
+        flag: --level
+        style: separate
+    evidence_dir: web/sqlmap/test_request
+    output_parsers:
+      - sqlmap
+
+  dump_schema:
+    description: Enumerate database schema.
+    requires_explicit_authorization: true
+    command_template:
+      - sqlmap
+      - -u
+      - "{url}"
+      - --schema
+      - --batch
+    evidence_dir: web/sqlmap/dump_schema
+    output_parsers:
+      - sqlmap

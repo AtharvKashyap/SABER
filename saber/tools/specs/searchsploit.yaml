@@ -1,0 +1,53 @@
+name: searchsploit
+display_name: SearchSploit
+category: exploitation
+phase: exploitation
+image: saber/searchsploit:latest
+binary: searchsploit
+description: Exploit-DB exploit intelligence lookup.
+default_timeout_seconds: 300
+requires_network: false
+
+inputs:
+  query:
+    type: string
+    required: false
+  cve_id:
+    type: string
+    required: false
+  exploit_id:
+    type: string
+    required: false
+
+actions:
+  search:
+    description: Search Exploit-DB entries by query.
+    command_template:
+      - searchsploit
+      - --json
+      - "{query}"
+    evidence_dir: exploitation/searchsploit/search
+    output_parsers:
+      - searchsploit_json
+
+  cve_search:
+    description: Search Exploit-DB entries by CVE.
+    command_template:
+      - searchsploit
+      - --json
+      - --cve
+      - "{cve_id}"
+    evidence_dir: exploitation/searchsploit/cve
+    output_parsers:
+      - searchsploit_json
+
+  copy_exploit:
+    description: Copy an exploit file into the workspace.
+    requires_explicit_authorization: true
+    command_template:
+      - searchsploit
+      - -m
+      - "{exploit_id}"
+    evidence_dir: exploitation/searchsploit/copy
+    output_parsers:
+      - searchsploit
