@@ -50,7 +50,6 @@ from saber.models.scope import (
     RateLimitConfig,
     ReportingConfig,
     SandboxConfig,
-    ScopeDecision,
 )
 from saber.models.target import ScopeStatus, Target, TargetType
 
@@ -82,7 +81,6 @@ __all__ = [
     "RemediationStep",
     "ReportingConfig",
     "SandboxConfig",
-    "ScopeDecision",
     "ScopeStatus",
     "SecretReference",
     "Target",

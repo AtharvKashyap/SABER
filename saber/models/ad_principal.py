@@ -5,7 +5,7 @@
 This file defines safe data structures for Active Directory objects and
 relationships discovered during authorized internal assessments. These models do
 not perform LDAP, BloodHound, NetExec, or Kerberos operations. They only represent
-normalized AD graph data for ScopeGuard, agents, evidence storage, and reports.
+normalized AD graph data for agents, evidence storage, and reports.
 
 Inputs:
     - Parsed LDAP/BloodHound/NetExec-style output from authorized wrappers.

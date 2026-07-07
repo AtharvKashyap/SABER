@@ -12,10 +12,10 @@ Inputs:
 
 Outputs:
     - Normalized, validated MissionScope objects.
-    - Helper methods for ScopeGuard, agents, tool wrappers, and reporting.
+    - Helper methods for agents, tool wrappers, and reporting.
 
 Used by:
-    - saber.core.scope_guard
+    - saber.tools.capability
     - saber.core.mission
     - saber.core.phase_graph
     - saber.agents.*
@@ -31,6 +31,47 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from saber.models.target import ScopeStatus, Target, TargetType
+
+
+
+
+
+
+def _normalize_policy_value(value: str) -> str:
+    """Normalize one policy/TTP/action value.
+
+    Args:
+        value: Raw policy string.
+
+    Returns:
+        Lowercase, stripped, underscored value.
+    """
+
+    item = str(value).strip().lower().replace(" ", "_")
+    return "_".join(part for part in item.split("_") if part)
+
+
+def _normalize_string_list(values: list[str]) -> list[str]:
+    """Normalize, lowercase, underscore, and deduplicate strings.
+
+    Args:
+        values: Raw string values.
+
+    Returns:
+        Normalized unique values preserving first-seen order.
+    """
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+
+    for value in values:
+        item = str(value).strip().lower().replace(" ", "_")
+        item = "_".join(part for part in item.split("_") if part)
+        if item and item not in seen:
+            normalized.append(item)
+            seen.add(item)
+
+    return normalized
 
 
 class ExecutionMode(StrEnum):
@@ -204,7 +245,7 @@ class MissionScope(BaseModel):
         metadata: Optional additional mission context.
 
     Returns:
-        A normalized, validated scope object used by ScopeGuard and the mission
+        A normalized, validated scope object used by the mission
         orchestrator.
     """
 
@@ -474,160 +515,3 @@ class MissionScope(BaseModel):
             )
             raise ValueError(f"targets cannot be both in scope and out of scope: {formatted}")
 
-
-class ScopeDecision(BaseModel):
-    """Decision returned by scope checks.
-
-    Args:
-        target: Optional target this decision applies to.
-        status: Scope status produced by the decision.
-        allowed: Whether the request is allowed.
-        requires_review: Whether the request requires operator review.
-        reason: Human-readable decision reason.
-        metadata: Optional structured decision metadata.
-
-    Returns:
-        A validated scope decision object.
-    """
-
-    target: Target | None = None
-    status: ScopeStatus = ScopeStatus.UNKNOWN
-    allowed: bool
-    requires_review: bool = False
-    reason: str
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-    @classmethod
-    def allow(
-        cls,
-        target: Target | None = None,
-        reason: str = "target is explicitly in scope",
-        metadata: dict[str, Any] | None = None,
-    ) -> "ScopeDecision":
-        """Create an allow decision.
-
-        Args:
-            target: Optional target this decision applies to.
-            reason: Human-readable decision reason.
-            metadata: Optional structured decision metadata.
-
-        Returns:
-            A ScopeDecision allowing the request.
-        """
-
-        marked_target = target.mark_in_scope() if target else None
-        return cls(
-            target=marked_target,
-            status=ScopeStatus.IN_SCOPE,
-            allowed=True,
-            requires_review=False,
-            reason=reason,
-            metadata=metadata or {},
-        )
-
-    @classmethod
-    def deny(
-        cls,
-        target: Target | None = None,
-        reason: str = "target is explicitly out of scope",
-        metadata: dict[str, Any] | None = None,
-    ) -> "ScopeDecision":
-        """Create a deny decision.
-
-        Args:
-            target: Optional target this decision applies to.
-            reason: Human-readable decision reason.
-            metadata: Optional structured decision metadata.
-
-        Returns:
-            A ScopeDecision denying the request.
-        """
-
-        marked_target = target.mark_out_of_scope() if target else None
-        return cls(
-            target=marked_target,
-            status=ScopeStatus.OUT_OF_SCOPE,
-            allowed=False,
-            requires_review=False,
-            reason=reason,
-            metadata=metadata or {},
-        )
-
-    @classmethod
-    def review(
-        cls,
-        target: Target | None = None,
-        reason: str = "target requires operator review",
-        metadata: dict[str, Any] | None = None,
-    ) -> "ScopeDecision":
-        """Create a review decision.
-
-        Args:
-            target: Optional target this decision applies to.
-            reason: Human-readable decision reason.
-            metadata: Optional structured decision metadata.
-
-        Returns:
-            A ScopeDecision requiring operator review.
-        """
-
-        marked_target = target.mark_requires_review() if target else None
-        return cls(
-            target=marked_target,
-            status=ScopeStatus.REQUIRES_REVIEW,
-            allowed=False,
-            requires_review=True,
-            reason=reason,
-            metadata=metadata or {},
-        )
-
-    def to_agent_dict(self) -> dict[str, Any]:
-        """Return compact scope decision data for agent handoff.
-
-        Returns:
-            JSON-compatible decision metadata.
-        """
-
-        return {
-            "target": self.target.to_agent_dict() if self.target else None,
-            "status": self.status.value,
-            "allowed": self.allowed,
-            "requires_review": self.requires_review,
-            "reason": self.reason,
-            "metadata": self.metadata,
-        }
-
-
-def _normalize_string_list(values: list[str]) -> list[str]:
-    """Normalize a list of policy/report strings.
-
-    Args:
-        values: Raw string values.
-
-    Returns:
-        Lowercase, stripped, de-duplicated strings in original order.
-    """
-
-    seen: set[str] = set()
-    normalized_values: list[str] = []
-
-    for value in values:
-        normalized = _normalize_policy_value(value)
-        if normalized and normalized not in seen:
-            seen.add(normalized)
-            normalized_values.append(normalized)
-
-    return normalized_values
-
-
-def _normalize_policy_value(value: str) -> str:
-    """Normalize one policy string.
-
-    Args:
-        value: Raw policy string.
-
-    Returns:
-        Lowercase string with surrounding whitespace removed and spaces converted to underscores.
-    """
-
-    return value.strip().lower().replace(" ", "_")

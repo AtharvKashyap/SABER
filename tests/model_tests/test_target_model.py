@@ -1,7 +1,7 @@
 """Tests for SABER target models.
 
 This file verifies that `saber.models.target` correctly validates,
-normalizes, and classifies targets before they are used by ScopeGuard,
+normalizes, and classifies targets before they are used by agents,
 agent planning, tool wrappers, or report generation.
 """
 

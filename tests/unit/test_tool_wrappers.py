@@ -6,7 +6,7 @@ implemented.
 
 A tool wrapper should not bypass SABER's safety layers. Its job is to translate a
 high-level wrapper call into:
-    - a ToolRequest for ScopeGuard policy evaluation
+    - a ToolRequest describing the tool action
     - a command list for the runner backend
     - a SandboxExecutionRequest for guarded execution and evidence capture
 
@@ -20,9 +20,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from saber.core.sandbox import SandboxExecutionRequest, SandboxExecutionResult, SandboxOutcome
-from saber.core.scope_guard import RequestedActionCategory, ToolRequest
+from saber.tools.capability import RequestedActionCategory, ToolRequest
 from saber.models.evidence import EvidenceRecord, EvidenceSource, EvidenceStatus, EvidenceType
-from saber.models.scope import AssessmentPhase, ScopeDecision
+from saber.models.scope import AssessmentPhase
 from saber.models.session import MissionSession, SessionStatus
 from saber.models.target import Target, TargetType
 
@@ -91,7 +91,7 @@ class FakeHttpxWrapper:
             requires_explicit_authorization: Whether this action requires approval.
 
         Returns:
-            ToolRequest for ScopeGuard and Sandbox.
+            ToolRequest for Sandbox metadata.
         """
 
         return ToolRequest(
@@ -263,7 +263,6 @@ def make_sandbox_result(
         outcome=outcome,
         allowed=allowed,
         session=resolved_session,
-        scope_decision=ScopeDecision.allow(reason="Allowed by test."),
         evidence=evidence,
         return_code=0 if outcome == SandboxOutcome.EXECUTED else None,
         stdout="https://example.com [200]" if outcome == SandboxOutcome.EXECUTED else "",
@@ -360,17 +359,17 @@ class TestFakeToolWrapperExecution:
         assert sandbox.calls[0].tool_request.target == target
         assert sandbox.calls[0].session == session
 
-    def test_run_preserves_waiting_for_approval_result(self) -> None:
-        """Wrapper should return approval-pending sandbox results without bypassing them."""
+    def test_run_preserves_runner_failed_result(self) -> None:
+        """Wrapper should return runner-failed sandbox results without overriding them."""
 
         target = make_target()
         session = make_session()
         sandbox_result = make_sandbox_result(
-            outcome=SandboxOutcome.WAITING_FOR_APPROVAL,
+            outcome=SandboxOutcome.RUNNER_FAILED,
             allowed=False,
             session=session,
             evidence=None,
-            reason="Approval request created and attached to session.",
+            reason="Runner failed before returning a result.",
         )
         sandbox = FakeSandbox(sandbox_result)
         wrapper = FakeHttpxWrapper(sandbox)
@@ -381,32 +380,32 @@ class TestFakeToolWrapperExecution:
             requires_explicit_authorization=True,
         )
 
-        assert result.outcome == SandboxOutcome.WAITING_FOR_APPROVAL
+        assert result.outcome == SandboxOutcome.RUNNER_FAILED
         assert result.allowed is False
         assert result.evidence is None
         assert len(sandbox.calls) == 1
         assert sandbox.calls[0].tool_request.requires_explicit_authorization is True
 
-    def test_run_preserves_denied_result(self) -> None:
-        """Wrapper should return denied sandbox results without custom override logic."""
+    def test_run_preserves_evidence_failed_result(self) -> None:
+        """Wrapper should return evidence-failed sandbox results without overriding them."""
 
         target = make_target()
         session = make_session()
         sandbox_result = make_sandbox_result(
-            outcome=SandboxOutcome.DENIED,
+            outcome=SandboxOutcome.EVIDENCE_FAILED,
             allowed=False,
             session=session,
             evidence=None,
-            reason="Request denied by scope policy.",
+            reason="Command executed but evidence persistence failed.",
         )
         sandbox = FakeSandbox(sandbox_result)
         wrapper = FakeHttpxWrapper(sandbox)
 
         result = wrapper.run(target=target, session=session)
 
-        assert result.outcome == SandboxOutcome.DENIED
+        assert result.outcome == SandboxOutcome.EVIDENCE_FAILED
         assert result.allowed is False
-        assert result.reason == "Request denied by scope policy."
+        assert result.reason == "Command executed but evidence persistence failed."
         assert len(sandbox.calls) == 1
 
 

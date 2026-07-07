@@ -10,7 +10,7 @@ Inputs:
     - Validated mission scope from saber.models.scope.
     - Evidence records from tool wrappers and EvidenceStore.
     - Finding records from agents, parsers, and analyst review.
-    - Approval requests from ScopeGuard or ApprovalGate.
+    - Operator review notes and approval-style session metadata.
 
 Outputs:
     - Normalized MissionSession objects.
@@ -20,7 +20,7 @@ Outputs:
 Used by:
     - saber.core.session
     - saber.core.mission
-    - saber.core.approval_gate
+    - saber.core.session
     - saber.core.phase_graph
     - saber.storage.database
     - saber.ui.cli

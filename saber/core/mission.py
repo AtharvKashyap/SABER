@@ -3,20 +3,13 @@
 """Mission orchestration for SABER.
 
 This module defines MissionController, the high-level coordinator for a SABER
-mission. It wires together the core runtime services without embedding
-implementation details from any one layer.
-
-MissionController coordinates:
-    - MissionSession lifecycle through SessionManager.
-    - Phase transitions through PhaseGraph.
-    - Scope decisions through ScopeGuard.
-    - Review workflows through ApprovalGate.
-    - Guarded command execution through Sandbox.
+mission. It wires together session lifecycle, phase transitions, sandboxed tool
+execution, evidence attachment, finding attachment, and mission summaries.
 
 MissionController does not parse tool output into findings, implement Docker,
 write evidence files directly, render reports, call an LLM, or contain
 exploit/tool-specific logic. Those responsibilities belong to tool wrappers,
-DockerRunner, EvidenceStore, report generators, and agent layers.
+DockerRunner, EvidenceStore, report generators, parsers, and agent layers.
 """
 
 from __future__ import annotations
@@ -25,15 +18,14 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
-from saber.core.approval_gate import ApprovalGate, ApprovalGateResult
 from saber.core.phase_graph import PhaseGraph, PhaseTransitionResult
-from saber.core.sandbox import Sandbox, SandboxExecutionRequest, SandboxExecutionResult
-from saber.core.scope_guard import ScopeGuard, ToolRequest
+from saber.core.sandbox import Sandbox, SandboxExecutionRequest, SandboxExecutionResult, SandboxOutcome
 from saber.core.session import SessionManager, SessionManagerOutcome, SessionManagerResult
 from saber.models.evidence import EvidenceRecord
 from saber.models.finding import Finding
-from saber.models.scope import AssessmentPhase, MissionScope, ScopeDecision
-from saber.models.session import ApprovalRequest, MissionSession, SessionStatus
+from saber.models.scope import AssessmentPhase, MissionScope
+from saber.models.session import ApprovalRequest, MissionSession
+from saber.tools.capability import ToolRequest
 
 
 class MissionOutcome(StrEnum):
@@ -42,10 +34,11 @@ class MissionOutcome(StrEnum):
     Values:
         CREATED: A mission session was created.
         UPDATED: Mission state was updated.
-        ALLOWED: A request was allowed.
-        DENIED: A request was denied.
-        WAITING_FOR_APPROVAL: A request is waiting for approval.
-        EXECUTED: A sandbox request executed.
+        ALLOWED: A request was accepted for continuation.
+        DENIED: A phase transition or operation was denied.
+        EXECUTED: A sandbox request executed and produced evidence.
+        RUNNER_FAILED: Sandbox runner failed before returning a result.
+        EVIDENCE_FAILED: Sandbox execution finished but evidence persistence failed.
         NOT_FOUND: The mission session was not found.
         INVALID_STATE: The requested operation was invalid.
     """
@@ -54,8 +47,9 @@ class MissionOutcome(StrEnum):
     UPDATED = "updated"
     ALLOWED = "allowed"
     DENIED = "denied"
-    WAITING_FOR_APPROVAL = "waiting_for_approval"
     EXECUTED = "executed"
+    RUNNER_FAILED = "runner_failed"
+    EVIDENCE_FAILED = "evidence_failed"
     NOT_FOUND = "not_found"
     INVALID_STATE = "invalid_state"
 
@@ -67,8 +61,6 @@ class MissionResult:
     Args:
         outcome: High-level mission outcome.
         session: Mission session related to the operation, if available.
-        scope_decision: Optional scope decision.
-        approval_result: Optional approval gate result.
         phase_result: Optional phase transition result.
         sandbox_result: Optional sandbox execution result.
         evidence: Optional evidence record produced or attached.
@@ -82,8 +74,6 @@ class MissionResult:
 
     outcome: MissionOutcome
     session: MissionSession | None = None
-    scope_decision: ScopeDecision | None = None
-    approval_result: ApprovalGateResult | None = None
     phase_result: PhaseTransitionResult | None = None
     sandbox_result: SandboxExecutionResult | None = None
     evidence: EvidenceRecord | None = None
@@ -132,9 +122,7 @@ class MissionController:
         scope: Mission scope.
         session_manager: SessionManager used to track sessions.
         phase_graph: PhaseGraph used for phase transitions.
-        scope_guard: ScopeGuard used for request policy checks.
-        approval_gate: ApprovalGate used for review workflows.
-        sandbox: Optional Sandbox used for guarded command execution.
+        sandbox: Optional Sandbox used for command execution.
         session: Optional existing mission session to control.
 
     Returns:
@@ -146,8 +134,6 @@ class MissionController:
         scope: MissionScope,
         session_manager: SessionManager,
         phase_graph: PhaseGraph,
-        scope_guard: ScopeGuard,
-        approval_gate: ApprovalGate,
         sandbox: Sandbox | None = None,
         session: MissionSession | None = None,
     ) -> None:
@@ -157,8 +143,6 @@ class MissionController:
             scope: Mission scope.
             session_manager: Session manager dependency.
             phase_graph: Phase graph dependency.
-            scope_guard: Scope guard dependency.
-            approval_gate: Approval gate dependency.
             sandbox: Optional sandbox dependency.
             session: Optional existing mission session.
         """
@@ -166,8 +150,6 @@ class MissionController:
         self.scope = scope
         self.session_manager = session_manager
         self.phase_graph = phase_graph
-        self.scope_guard = scope_guard
-        self.approval_gate = approval_gate
         self.sandbox = sandbox
         self._session_id: str | None = None
 
@@ -410,51 +392,35 @@ class MissionController:
         )
 
     def evaluate_request(self, request: ToolRequest, requested_by: str) -> MissionResult:
-        """Evaluate a tool request through ScopeGuard and ApprovalGate.
+        """Record that a tool request is accepted by mission control.
+
+        MissionController no longer performs heavyweight scope or approval checks.
+        Tool wrappers and operators can still use the request metadata for audit,
+        routing, and reporting.
 
         Args:
-            request: ToolRequest to evaluate.
+            request: ToolRequest to record.
             requested_by: Component or wrapper requesting evaluation.
 
         Returns:
-            MissionResult describing allow, deny, or waiting-for-approval state.
+            MissionResult describing the accepted request.
         """
 
         session = self._require_session()
         if session is None:
             return self._not_found()
-
-        decision = self.scope_guard.evaluate_tool_request(request)
-        if decision.allowed:
-            return MissionResult(
-                outcome=MissionOutcome.ALLOWED,
-                session=session,
-                scope_decision=decision,
-                reason=decision.reason,
-                metadata=decision.metadata,
-            )
-
-        approval_result = self.approval_gate.require_approval_for_decision(
-            session=session,
-            decision=decision,
-            request=request,
-            requested_by=requested_by,
-        )
-        if approval_result.session is not None:
-            self.session_manager.register_session(approval_result.session)
-
-        if approval_result.outcome.value == MissionOutcome.WAITING_FOR_APPROVAL.value:
-            outcome = MissionOutcome.WAITING_FOR_APPROVAL
-        else:
-            outcome = MissionOutcome.DENIED
-
         return MissionResult(
-            outcome=outcome,
-            session=approval_result.session,
-            scope_decision=decision,
-            approval_result=approval_result,
-            reason=approval_result.reason,
-            metadata=approval_result.metadata,
+            outcome=MissionOutcome.ALLOWED,
+            session=session,
+            reason=f"Tool request accepted: {request.tool_name}.{request.action}",
+            metadata={
+                "requested_by": requested_by,
+                "tool_name": request.tool_name,
+                "tool_action": request.action,
+                "tool_category": request.category.value,
+                "requires_explicit_authorization": request.requires_explicit_authorization,
+                **request.metadata,
+            },
         )
 
     def execute(self, request: SandboxExecutionRequest) -> MissionResult:
@@ -477,20 +443,20 @@ class MissionController:
         result = self.sandbox.execute(request)
         self.session_manager.register_session(result.session)
 
-        if result.outcome.value == MissionOutcome.WAITING_FOR_APPROVAL.value:
-            outcome = MissionOutcome.WAITING_FOR_APPROVAL
-        elif result.allowed and result.evidence is not None:
+        if result.outcome == SandboxOutcome.EXECUTED:
             outcome = MissionOutcome.EXECUTED
+        elif result.outcome == SandboxOutcome.RUNNER_FAILED:
+            outcome = MissionOutcome.RUNNER_FAILED
+        elif result.outcome == SandboxOutcome.EVIDENCE_FAILED:
+            outcome = MissionOutcome.EVIDENCE_FAILED
         elif result.allowed:
             outcome = MissionOutcome.ALLOWED
         else:
-            outcome = MissionOutcome.DENIED
+            outcome = MissionOutcome.INVALID_STATE
 
         return MissionResult(
             outcome=outcome,
             session=result.session,
-            scope_decision=result.scope_decision,
-            approval_result=result.approval_result,
             sandbox_result=result,
             evidence=result.evidence,
             reason=result.reason,
@@ -540,7 +506,10 @@ class MissionController:
         )
 
     def add_approval(self, approval: ApprovalRequest) -> MissionResult:
-        """Attach an approval request to the current session.
+        """Attach an approval-style note to the current session.
+
+        ApprovalRequest remains part of the session model for audit notes and UI
+        compatibility, but MissionController no longer runs an approval workflow.
 
         Args:
             approval: ApprovalRequest to attach.

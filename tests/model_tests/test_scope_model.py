@@ -4,7 +4,7 @@
 
 This file verifies that `saber.models.scope` correctly validates mission scope,
 normalizes policy fields, enforces execution-mode constraints, and exposes helper
-methods used by ScopeGuard, agents, tool wrappers, and reporting.
+methods used by agents, tool wrappers, and reporting.
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ from saber.models.scope import (
     ExecutionMode,
     MissionScope,
     ReportingConfig,
-    ScopeDecision,
 )
 from saber.models.target import ScopeStatus, Target, TargetType
 
@@ -317,39 +316,3 @@ class TestReportingConfig:
         with pytest.raises(ValueError):
             ReportingConfig(formats=[])
 
-
-class TestScopeDecision:
-    """Validate ScopeDecision factory helpers."""
-
-    def test_allow_decision(self) -> None:
-        """allow should mark the target in scope and allow execution."""
-
-        target = make_target()
-        decision = ScopeDecision.allow(target)
-
-        assert decision.allowed is True
-        assert decision.status == ScopeStatus.IN_SCOPE
-        assert decision.target.scope_status == ScopeStatus.IN_SCOPE
-        assert decision.reason == "target is explicitly in scope"
-
-    def test_deny_decision(self) -> None:
-        """deny should mark the target out of scope and block execution."""
-
-        target = make_target()
-        decision = ScopeDecision.deny(target, reason="excluded by ROE")
-
-        assert decision.allowed is False
-        assert decision.status == ScopeStatus.OUT_OF_SCOPE
-        assert decision.target.scope_status == ScopeStatus.OUT_OF_SCOPE
-        assert decision.reason == "excluded by ROE"
-
-    def test_review_decision(self) -> None:
-        """review should mark the target as requiring operator review."""
-
-        target = make_target(TargetType.DOMAIN, "new.example.com")
-        decision = ScopeDecision.review(target)
-
-        assert decision.allowed is False
-        assert decision.status == ScopeStatus.REQUIRES_REVIEW
-        assert decision.target.scope_status == ScopeStatus.REQUIRES_REVIEW
-        assert decision.reason == "target requires operator review"

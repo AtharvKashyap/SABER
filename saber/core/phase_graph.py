@@ -5,8 +5,7 @@ phases. It knows which assessment phases can follow which other phases and how
 to update MissionSession phase records safely.
 
 PhaseGraph does not execute tools, save evidence, ask for approval, call Docker,
-call an LLM, or decide target scope. Those responsibilities belong to ScopeGuard,
-ApprovalGate, Sandbox, DockerRunner, and EvidenceStore.
+call an LLM, or decide target scope. Those responsibilities belong to agents, Sandbox, DockerRunner, and EvidenceStore.
 
 Typical use:
     1. Mission asks PhaseGraph whether a phase can start.

@@ -1,16 +1,16 @@
-"""Sandboxed execution orchestration for SABER.
+"""Sandboxed command execution for SABER.
 
-This module defines Sandbox, the safe bridge between policy enforcement,
-approval handling, sandboxed command execution, and evidence persistence.
+Sandbox is the bridge between tool wrappers, a runner backend, and evidence
+persistence.
 
-Sandbox does not decide mission strategy, parse tool output into findings, choose
-phases, or generate reports. Its responsibility is narrower:
+It does not decide mission strategy, run agents, parse tool output into findings,
+choose phases, or generate reports. Its responsibility is narrower:
 
-    1. Ask ScopeGuard whether a proposed ToolRequest is allowed.
-    2. Route review-required decisions through ApprovalGate.
-    3. Refuse denied or pending requests before any command runs.
-    4. Execute allowed commands through DockerRunner or another compatible runner.
-    5. Save command output as EvidenceRecord objects through EvidenceStore.
+    1. Receive a SandboxExecutionRequest from a tool wrapper.
+    2. Execute the command through DockerRunner or another compatible runner.
+    3. Save stdout/stderr and command metadata through EvidenceStore.
+    4. Attach the EvidenceRecord to the current MissionSession.
+    5. Return a SandboxExecutionResult.
 
 The runner dependency is intentionally duck-typed. DockerRunner can implement its
 own return object as long as the object exposes command output through common
@@ -25,12 +25,11 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
 
-from saber.core.approval_gate import ApprovalGate, ApprovalGateOutcome, ApprovalGateResult
 from saber.core.evidence_store import EvidenceStore
-from saber.core.scope_guard import ScopeGuard, ToolRequest
 from saber.models.evidence import CommandMetadata, EvidenceRecord
 from saber.models.session import MissionSession
-from saber.models.scope import ScopeDecision
+from saber.tools.capability import ToolRequest
+from saber.models.evidence import CommandMetadata, EvidenceRecord
 
 
 class SandboxOutcome(StrEnum):
@@ -38,15 +37,11 @@ class SandboxOutcome(StrEnum):
 
     Values:
         EXECUTED: The command ran and evidence was saved.
-        DENIED: Scope policy or approval denied the request.
-        WAITING_FOR_APPROVAL: The request requires approval before execution.
         RUNNER_FAILED: The runner raised an exception before a result was returned.
         EVIDENCE_FAILED: Execution finished, but evidence persistence failed.
     """
 
     EXECUTED = "executed"
-    DENIED = "denied"
-    WAITING_FOR_APPROVAL = "waiting_for_approval"
     RUNNER_FAILED = "runner_failed"
     EVIDENCE_FAILED = "evidence_failed"
 
@@ -56,7 +51,7 @@ class SandboxExecutionRequest:
     """Request to execute one command through the sandbox layer.
 
     Args:
-        tool_request: Scope-aware tool request describing the action.
+        tool_request: Tool request describing the action.
         command: Command and arguments to execute.
         session: Current mission session.
         requested_by: Component or wrapper requesting execution.
@@ -93,10 +88,8 @@ class SandboxExecutionResult:
 
     Args:
         outcome: High-level sandbox outcome.
-        allowed: Whether execution was allowed to run.
+        allowed: Whether execution reached the runner.
         session: Updated mission session.
-        scope_decision: ScopeGuard decision.
-        approval_result: Optional ApprovalGate result.
         evidence: Optional saved EvidenceRecord.
         return_code: Optional process return code.
         stdout: Captured standard output when available.
@@ -111,8 +104,6 @@ class SandboxExecutionResult:
     outcome: SandboxOutcome
     allowed: bool
     session: MissionSession
-    scope_decision: ScopeDecision
-    approval_result: ApprovalGateResult | None = None
     evidence: EvidenceRecord | None = None
     return_code: int | None = None
     stdout: str = ""
@@ -155,11 +146,9 @@ class SandboxRunner(Protocol):
 
 
 class Sandbox:
-    """Coordinate guarded command execution and evidence persistence.
+    """Coordinate command execution and evidence persistence.
 
     Args:
-        scope_guard: ScopeGuard used to evaluate ToolRequest policy.
-        approval_gate: ApprovalGate used for review-required requests.
         evidence_store: EvidenceStore used to persist command output.
         runner: DockerRunner or compatible execution backend.
 
@@ -169,27 +158,21 @@ class Sandbox:
 
     def __init__(
         self,
-        scope_guard: ScopeGuard,
-        approval_gate: ApprovalGate,
         evidence_store: EvidenceStore,
         runner: SandboxRunner,
     ) -> None:
         """Initialize Sandbox dependencies.
 
         Args:
-            scope_guard: Scope policy evaluator.
-            approval_gate: Approval workflow manager.
             evidence_store: Evidence persistence layer.
             runner: Command execution backend.
         """
 
-        self.scope_guard = scope_guard
-        self.approval_gate = approval_gate
         self.evidence_store = evidence_store
         self.runner = runner
 
     def execute(self, request: SandboxExecutionRequest) -> SandboxExecutionResult:
-        """Evaluate policy, run an allowed command, and save evidence.
+        """Run a command and save evidence.
 
         Args:
             request: Sandbox execution request.
@@ -197,35 +180,6 @@ class Sandbox:
         Returns:
             SandboxExecutionResult describing the outcome.
         """
-
-        scope_decision = self.scope_guard.evaluate_tool_request(request.tool_request)
-        if not scope_decision.allowed:
-            approval_result = self.approval_gate.require_approval_for_decision(
-                session=request.session,
-                decision=scope_decision,
-                request=request.tool_request,
-                requested_by=request.requested_by,
-            )
-            if approval_result.outcome == ApprovalGateOutcome.WAITING_FOR_APPROVAL:
-                return SandboxExecutionResult(
-                    outcome=SandboxOutcome.WAITING_FOR_APPROVAL,
-                    allowed=False,
-                    session=approval_result.session,
-                    scope_decision=scope_decision,
-                    approval_result=approval_result,
-                    reason=approval_result.reason,
-                    metadata=request.metadata,
-                )
-
-            return SandboxExecutionResult(
-                outcome=SandboxOutcome.DENIED,
-                allowed=False,
-                session=approval_result.session,
-                scope_decision=scope_decision,
-                approval_result=approval_result,
-                reason=approval_result.reason,
-                metadata=request.metadata,
-            )
 
         started_at = datetime.now(UTC)
         try:
@@ -241,15 +195,18 @@ class Sandbox:
             finished_at = datetime.now(UTC)
             return SandboxExecutionResult(
                 outcome=SandboxOutcome.RUNNER_FAILED,
-                allowed=True,
+                allowed=False,
                 session=request.session,
-                scope_decision=scope_decision,
                 reason=f"Runner failed before returning a result: {exc}",
                 metadata={
                     **request.metadata,
                     "error_type": type(exc).__name__,
                     "started_at": started_at.isoformat(),
                     "finished_at": finished_at.isoformat(),
+                    "requested_by": request.requested_by,
+                    "tool_name": request.tool_request.tool_name,
+                    "tool_action": request.tool_request.action,
+                    "tool_category": request.tool_request.category.value,
                 },
             )
 
@@ -287,6 +244,9 @@ class Sandbox:
                     "runner_metadata": result_metadata,
                     "image": request.image,
                     "timeout_seconds": request.timeout_seconds,
+                    "requested_by": request.requested_by,
+                    "tool_action": request.tool_request.action,
+                    "tool_category": request.tool_request.category.value,
                 },
             )
         except Exception as exc:  # noqa: BLE001 - preserve evidence failure as result data.
@@ -294,7 +254,6 @@ class Sandbox:
                 outcome=SandboxOutcome.EVIDENCE_FAILED,
                 allowed=True,
                 session=request.session,
-                scope_decision=scope_decision,
                 return_code=return_code,
                 stdout=stdout,
                 stderr=stderr,
@@ -303,6 +262,10 @@ class Sandbox:
                     **request.metadata,
                     "runner_metadata": result_metadata,
                     "error_type": type(exc).__name__,
+                    "requested_by": request.requested_by,
+                    "tool_name": request.tool_request.tool_name,
+                    "tool_action": request.tool_request.action,
+                    "tool_category": request.tool_request.category.value,
                 },
             )
 
@@ -311,7 +274,6 @@ class Sandbox:
             outcome=SandboxOutcome.EXECUTED,
             allowed=True,
             session=updated_session,
-            scope_decision=scope_decision,
             evidence=evidence,
             return_code=return_code,
             stdout=stdout,
@@ -322,6 +284,10 @@ class Sandbox:
                 "runner_metadata": result_metadata,
                 "image": request.image,
                 "timeout_seconds": request.timeout_seconds,
+                "requested_by": request.requested_by,
+                "tool_name": request.tool_request.tool_name,
+                "tool_action": request.tool_request.action,
+                "tool_category": request.tool_request.category.value,
             },
         )
 

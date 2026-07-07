@@ -1,8 +1,8 @@
 """Tests for SABER Sandbox.
 
-Sandbox is the safe bridge between ScopeGuard, ApprovalGate, a runner backend,
-and EvidenceStore. These tests use fake runners so no Docker containers or shell
-commands are executed.
+Sandbox is the bridge between tool wrappers, a runner backend, and EvidenceStore.
+These tests use fake runners so no Docker containers or shell commands are
+executed.
 """
 
 from __future__ import annotations
@@ -12,13 +12,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from saber.core.approval_gate import ApprovalGate
 from saber.core.evidence_store import EvidenceStore
 from saber.core.sandbox import Sandbox, SandboxExecutionRequest, SandboxOutcome
-from saber.core.scope_guard import RequestedActionCategory, ScopeGuard, ToolRequest
-from saber.models.scope import AssessmentPhase, ExecutionMode, MissionScope
+from saber.models.scope import AssessmentPhase
 from saber.models.session import MissionSession, SessionStatus
 from saber.models.target import Target, TargetType
+from saber.tools.capability import RequestedActionCategory, ToolRequest
 
 
 @dataclass(frozen=True)
@@ -105,45 +104,8 @@ def make_target() -> Target:
     return Target(type=TargetType.DOMAIN, value="example.com")
 
 
-def make_scope(
-    execution_mode: ExecutionMode = ExecutionMode.ASSESSMENT,
-    allowed_phases: list[AssessmentPhase] | None = None,
-    prohibited_actions: list[str] | None = None,
-) -> MissionScope:
-    """Create a reusable mission scope.
-
-    Args:
-        execution_mode: Mission execution mode.
-        allowed_phases: Optional allowed phases.
-        prohibited_actions: Optional prohibited actions.
-
-    Returns:
-        Validated MissionScope object.
-    """
-
-    return MissionScope(
-        mission_name="Sandbox Test Mission",
-        client_name="Test Client",
-        operator_name="Atharv",
-        execution_mode=execution_mode,
-        targets=[make_target()],
-        allowed_phases=allowed_phases
-        if allowed_phases is not None
-        else [
-            AssessmentPhase.RECON,
-            AssessmentPhase.WEB,
-            AssessmentPhase.NETWORK,
-            AssessmentPhase.REPORTING,
-        ],
-        prohibited_actions=prohibited_actions if prohibited_actions is not None else [],
-    )
-
-
-def make_session(scope: MissionScope | None = None) -> MissionSession:
+def make_session() -> MissionSession:
     """Create a reusable mission session.
-
-    Args:
-        scope: Optional MissionScope to attach.
 
     Returns:
         Validated MissionSession object.
@@ -152,7 +114,6 @@ def make_session(scope: MissionScope | None = None) -> MissionSession:
     return MissionSession(
         session_id="session_1",
         mission_name="Sandbox Test Mission",
-        scope=scope,
         status=SessionStatus.CREATED,
     )
 
@@ -171,7 +132,7 @@ def make_tool_request(
         action: Requested action.
         phase: Requested phase.
         category: Requested action category.
-        requires_explicit_authorization: Whether approval is required.
+        requires_explicit_authorization: Whether the request metadata marks approval as useful.
 
     Returns:
         ToolRequest object.
@@ -190,7 +151,6 @@ def make_tool_request(
 
 def make_sandbox(
     tmp_path: Path,
-    scope: MissionScope | None = None,
     runner: Any | None = None,
     evidence_store: EvidenceStore | None = None,
 ) -> Sandbox:
@@ -198,7 +158,6 @@ def make_sandbox(
 
     Args:
         tmp_path: Temporary path for evidence.
-        scope: Optional mission scope.
         runner: Optional fake runner.
         evidence_store: Optional evidence store.
 
@@ -206,34 +165,26 @@ def make_sandbox(
         Configured Sandbox instance.
     """
 
-    resolved_scope = scope or make_scope()
     return Sandbox(
-        scope_guard=ScopeGuard(resolved_scope),
-        approval_gate=ApprovalGate(),
         evidence_store=evidence_store or EvidenceStore(tmp_path / "evidence"),
         runner=runner or FakeRunner(),
     )
 
 
-def make_execution_request(
-    scope: MissionScope | None = None,
-    tool_request: ToolRequest | None = None,
-) -> SandboxExecutionRequest:
+def make_execution_request(tool_request: ToolRequest | None = None) -> SandboxExecutionRequest:
     """Create a reusable sandbox execution request.
 
     Args:
-        scope: Optional mission scope.
         tool_request: Optional tool request.
 
     Returns:
         SandboxExecutionRequest object.
     """
 
-    resolved_scope = scope or make_scope()
     return SandboxExecutionRequest(
         tool_request=tool_request or make_tool_request(),
         command=["httpx", "-u", "https://example.com"],
-        session=make_session(resolved_scope),
+        session=make_session(),
         requested_by="HttpxWrapper",
         image="saber/httpx:latest",
         working_directory="/work",
@@ -267,11 +218,11 @@ class TestSandboxExecutionResult:
         }
 
 
-class TestSandboxAllowedExecution:
-    """Validate allowed sandbox execution path."""
+class TestSandboxExecution:
+    """Validate sandbox execution path."""
 
-    def test_allowed_request_runs_runner_and_saves_evidence(self, tmp_path: Path) -> None:
-        """Allowed requests should execute and attach evidence to the session."""
+    def test_request_runs_runner_and_saves_evidence(self, tmp_path: Path) -> None:
+        """Requests should execute and attach evidence to the session."""
 
         runner = FakeRunner(FakeRunnerResult(stdout="https://example.com [200]", stderr="warning", return_code=0))
         sandbox = make_sandbox(tmp_path, runner=runner)
@@ -293,6 +244,10 @@ class TestSandboxAllowedExecution:
         assert result.evidence.command.sandboxed is True
         assert result.evidence.command.environment_redacted is True
         assert result.session.evidence == [result.evidence]
+        assert result.metadata["requested_by"] == "HttpxWrapper"
+        assert result.metadata["tool_name"] == "httpx"
+        assert result.metadata["tool_action"] == "run_http_probe"
+        assert result.metadata["tool_category"] == "web"
         assert runner.calls == [
             {
                 "command": ["httpx", "-u", "https://example.com"],
@@ -313,7 +268,7 @@ class TestSandboxAllowedExecution:
         assert "[stderr]" in saved_text
         assert "warning" in saved_text
 
-    def test_allowed_request_accepts_mapping_runner_result(self, tmp_path: Path) -> None:
+    def test_request_accepts_mapping_runner_result(self, tmp_path: Path) -> None:
         """Sandbox should accept dict-style runner results."""
 
         started_at = datetime.now(UTC) - timedelta(seconds=2)
@@ -343,7 +298,7 @@ class TestSandboxAllowedExecution:
         assert result.evidence.command.started_at == started_at
         assert result.evidence.command.finished_at == finished_at
 
-    def test_allowed_request_defaults_missing_runner_fields(self, tmp_path: Path) -> None:
+    def test_request_defaults_missing_runner_fields(self, tmp_path: Path) -> None:
         """Missing runner fields should default safely."""
 
         runner = FakeRunner({})
@@ -360,70 +315,39 @@ class TestSandboxAllowedExecution:
         assert result.evidence.command is not None
         assert result.evidence.command.duration_seconds >= 0
 
+    def test_request_marked_approval_required_still_executes_as_metadata(self, tmp_path: Path) -> None:
+        """Approval-required markers are metadata now, not sandbox blockers."""
 
-class TestSandboxBlocksBeforeExecution:
-    """Validate deny and review behavior before runner execution."""
-
-    def test_denied_scope_request_does_not_run(self, tmp_path: Path) -> None:
-        """Denied requests should not call the runner."""
-
-        scope = make_scope(prohibited_actions=["run_http_probe"])
         runner = FakeRunner()
-        sandbox = make_sandbox(tmp_path, scope=scope, runner=runner)
-        request = make_execution_request(scope=scope)
-
-        result = sandbox.execute(request)
-
-        assert result.outcome == SandboxOutcome.DENIED
-        assert result.allowed is False
-        assert result.evidence is None
-        assert result.approval_result is not None
-        assert result.approval_result.allowed is False
-        assert runner.calls == []
-
-    def test_review_required_request_creates_pending_approval_and_does_not_run(self, tmp_path: Path) -> None:
-        """Review-required requests should create approval state and avoid execution."""
-
-        scope = make_scope()
-        runner = FakeRunner()
-        sandbox = make_sandbox(tmp_path, scope=scope, runner=runner)
+        sandbox = make_sandbox(tmp_path, runner=runner)
         tool_request = make_tool_request(requires_explicit_authorization=True)
-        request = make_execution_request(scope=scope, tool_request=tool_request)
+        request = make_execution_request(tool_request=tool_request)
 
         result = sandbox.execute(request)
 
-        assert result.outcome == SandboxOutcome.WAITING_FOR_APPROVAL
-        assert result.allowed is False
-        assert result.evidence is None
-        assert result.approval_result is not None
-        assert result.approval_result.approval is not None
-        assert result.approval_result.approval.status.value == "pending"
-        assert result.session.status == SessionStatus.WAITING_FOR_APPROVAL
-        assert result.session.pending_approvals == [result.approval_result.approval]
-        assert runner.calls == []
+        assert result.outcome == SandboxOutcome.EXECUTED
+        assert result.allowed is True
+        assert result.evidence is not None
+        assert runner.calls != []
 
-    def test_recon_only_blocks_exploitation_request_before_execution(self, tmp_path: Path) -> None:
-        """Execution mode policy should block disallowed categories before execution."""
+    def test_exploitation_category_still_executes_through_sandbox(self, tmp_path: Path) -> None:
+        """Sandbox executes requests regardless of tool category metadata."""
 
-        scope = make_scope(
-            execution_mode=ExecutionMode.RECON_ONLY,
-            allowed_phases=[AssessmentPhase.RECON, AssessmentPhase.REPORTING],
-        )
         runner = FakeRunner()
-        sandbox = make_sandbox(tmp_path, scope=scope, runner=runner)
+        sandbox = make_sandbox(tmp_path, runner=runner)
         tool_request = make_tool_request(
             action="run_exploit_check",
             phase=AssessmentPhase.EXPLOITATION,
             category=RequestedActionCategory.EXPLOITATION,
         )
-        request = make_execution_request(scope=scope, tool_request=tool_request)
+        request = make_execution_request(tool_request=tool_request)
 
         result = sandbox.execute(request)
 
-        assert result.outcome == SandboxOutcome.DENIED
-        assert result.allowed is False
-        assert result.evidence is None
-        assert runner.calls == []
+        assert result.outcome == SandboxOutcome.EXECUTED
+        assert result.allowed is True
+        assert result.metadata["tool_category"] == "exploitation"
+        assert runner.calls != []
 
 
 class TestSandboxFailures:
@@ -438,11 +362,12 @@ class TestSandboxFailures:
         result = sandbox.execute(request)
 
         assert result.outcome == SandboxOutcome.RUNNER_FAILED
-        assert result.allowed is True
+        assert result.allowed is False
         assert result.evidence is None
         assert result.return_code is None
         assert "runner unavailable" in result.reason
         assert result.metadata["error_type"] == "RuntimeError"
+        assert result.metadata["tool_name"] == "httpx"
 
     def test_evidence_failure_returns_evidence_failed(self, tmp_path: Path) -> None:
         """Evidence persistence failures should preserve runner output in result."""
@@ -464,6 +389,7 @@ class TestSandboxFailures:
         assert result.stderr == "err"
         assert "disk full" in result.reason
         assert result.metadata["error_type"] == "RuntimeError"
+        assert result.metadata["tool_name"] == "httpx"
 
 
 class TestSandboxResultHelpers:

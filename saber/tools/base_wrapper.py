@@ -5,13 +5,13 @@
 Tool wrappers translate high-level SABER actions into safe, structured execution
 requests. A wrapper should not run shell commands directly. Instead, it should:
 
-    1. Build a ToolRequest for ScopeGuard policy evaluation.
+    1. Build a ToolRequest describing the tool action.
     2. Build a command list for the configured runner backend.
     3. Build a SandboxExecutionRequest.
     4. Delegate execution to Sandbox.
     5. Return the SandboxExecutionResult unchanged.
 
-This keeps all safety controls centralized in ScopeGuard, ApprovalGate, Sandbox,
+This keeps execution, evidence, and runner plumbing centralized in Sandbox,
 DockerRunner, and EvidenceStore.
 """
 
@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from saber.core.sandbox import Sandbox, SandboxExecutionRequest, SandboxExecutionResult
-from saber.core.scope_guard import RequestedActionCategory, ToolRequest
+from saber.tools.capability import RequestedActionCategory, ToolRequest
 from saber.models.scope import AssessmentPhase
 from saber.models.session import MissionSession
 from saber.models.target import Target
@@ -36,7 +36,7 @@ class ToolWrapperConfig:
         tool_name: Stable internal tool name.
         image: Optional container image used by Docker-backed runners.
         phase: Assessment phase this wrapper usually belongs to.
-        category: Tool action category used by ScopeGuard.
+        category: Tool action category used by agents, registries, and execution.
         requested_by: Component name recorded in approval requests.
         default_timeout_seconds: Default execution timeout.
         default_working_directory: Optional runner working directory.
@@ -66,7 +66,7 @@ class ToolCommand:
 
     Args:
         command: Command and arguments to execute.
-        action: Stable action name for ScopeGuard and audit records.
+        action: Stable action name for audit records.
         evidence_title: Human-readable evidence title.
         evidence_relative_dir: Directory below the EvidenceStore root.
         requires_explicit_authorization: Whether the action requires approval.
@@ -145,14 +145,14 @@ class BaseToolWrapper(ABC):
         """
 
     def build_tool_request(self, target: Target, command: ToolCommand) -> ToolRequest:
-        """Build a ToolRequest for ScopeGuard.
+        """Build a ToolRequest for the tool action.
 
         Args:
             target: Target the tool will operate on.
             command: Tool command plan.
 
         Returns:
-            ToolRequest for policy evaluation.
+            ToolRequest for execution metadata.
         """
 
         return ToolRequest(

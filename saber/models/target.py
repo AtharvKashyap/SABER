@@ -16,7 +16,7 @@ Outputs:
 
 Used by:
     - saber.models.scope
-    - saber.core.scope_guard
+    - saber.tools.capability
     - saber.core.phase_graph
     - saber.tools.* wrappers
     - saber.reporting exporters
@@ -61,7 +61,7 @@ class ScopeStatus(StrEnum):
         IN_SCOPE: Target is explicitly authorized.
         OUT_OF_SCOPE: Target is explicitly excluded.
         REQUIRES_REVIEW: Target was discovered or inferred and needs operator review.
-        UNKNOWN: Target has not yet been evaluated by ScopeGuard.
+        UNKNOWN: Target has not yet been evaluated by the mission workflow.
     """
 
     IN_SCOPE = "in_scope"
