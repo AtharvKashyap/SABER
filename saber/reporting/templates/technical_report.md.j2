@@ -1,0 +1,80 @@
+# SABER Technical Report
+
+**Mission:** {{ document.mission_name }}  
+**Target:** {{ document.target }}  
+**Generated:** {{ document.generated_at }}  
+**Report ID:** {{ document.report_id }}
+
+## Executive Summary
+
+{{ document.executive_summary }}
+
+## Severity Summary
+
+| Severity | Count |
+|---|---:|
+| Critical | {{ severity_counts.critical }} |
+| High | {{ severity_counts.high }} |
+| Medium | {{ severity_counts.medium }} |
+| Low | {{ severity_counts.low }} |
+| Info | {{ severity_counts.info }} |
+| Unknown | {{ severity_counts.unknown }} |
+
+## Findings
+
+{% if findings %}
+{% for finding in findings %}
+### {{ loop.index }}. {{ finding.title }}
+
+- **Severity:** {{ finding.severity }}
+- **Source Tool:** {{ finding.source_tool or "unknown" }}
+
+{{ finding.description }}
+
+{% if finding.references %}
+#### References
+
+{% for reference in finding.references %}
+- {{ reference }}
+{% endfor %}
+{% endif %}
+
+#### Evidence
+
+{{ finding.evidence | tojson_pretty }}
+
+#### Metadata
+
+{{ finding.metadata | tojson_pretty }}
+
+{% endfor %}
+{% else %}
+No findings were included in this report.
+{% endif %}
+
+## Observations
+
+{% if observations %}
+{% for observation in observations %}
+### {{ loop.index }}. {{ observation.kind }}
+
+{{ observation.summary }}
+
+- **Source Tool:** {{ observation.source_tool or "unknown" }}
+
+#### Data
+
+{{ observation.data | tojson_pretty }}
+
+#### Metadata
+
+{{ observation.metadata | tojson_pretty }}
+
+{% endfor %}
+{% else %}
+No observations were included in this report.
+{% endif %}
+
+## Report Metadata
+
+{{ document.metadata | tojson_pretty }}
