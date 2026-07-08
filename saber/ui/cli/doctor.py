@@ -1,104 +1,252 @@
-"""Environment checks for SABER."""
+"""SABER CLI doctor checks."""
 
 from __future__ import annotations
 
+import importlib.util
+import os
 import platform
+import shutil
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
-import click
-
-from saber.core.docker_runner import (
-    docker_available,
-    docker_compose_version,
-    docker_info,
-    image_exists,
-    repo_root,
-    sandbox_compose_file,
-    sandbox_image_name,
-)
+from saber.storage.connection import StorageConnection
 
 
-def _status_line(label: str, ok: bool, detail: str = "") -> None:
-    status = click.style("OK", fg="green") if ok else click.style("MISSING", fg="red")
-    suffix = f" - {detail}" if detail else ""
-    click.echo(f"{label:<30} {status}{suffix}")
+@dataclass(frozen=True)
+class DoctorCheck:
+    """One doctor check result."""
+
+    name: str
+    status: str
+    message: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return JSON-compatible check."""
+
+        return {
+            "name": self.name,
+            "status": self.status,
+            "message": self.message,
+            "metadata": self.metadata,
+        }
 
 
-@click.command("doctor")
-def doctor_command() -> None:
-    """Check whether the local machine can run SABER."""
-    root = repo_root()
+@dataclass(frozen=True)
+class DoctorReport:
+    """Doctor check report."""
 
-    click.echo(click.style("SABER Doctor", bold=True))
-    click.echo(f"Repository root: {root}")
-    click.echo(f"Platform: {platform.system()} {platform.release()}")
-    click.echo()
+    checks: list[DoctorCheck]
 
-    python_ok = sys.version_info >= (3, 11)
-    _status_line(
-        "Python 3.11+",
-        python_ok,
-        f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+    def ok(self) -> bool:
+        """Return whether all checks are OK or WARN."""
+
+        return all(check.status in {"ok", "warn"} for check in self.checks)
+
+    def has_failures(self) -> bool:
+        """Return whether any check failed."""
+
+        return any(check.status == "fail" for check in self.checks)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return JSON-compatible report."""
+
+        return {
+            "ok": self.ok(),
+            "has_failures": self.has_failures(),
+            "checks": [check.to_dict() for check in self.checks],
+        }
+
+
+class SaberDoctor:
+    """Run local SABER readiness checks."""
+
+    DEFAULT_TOOLS = (
+        "docker",
+        "nmap",
+        "nuclei",
+        "whatweb",
+        "searchsploit",
+        "subfinder",
+        "amass",
     )
 
-    docker_ok = docker_available()
-    _status_line("Docker CLI", docker_ok)
+    DEFAULT_PACKAGES = (
+        "pydantic",
+        "openpyxl",
+        "jinja2",
+        "reportlab",
+        "fastapi",
+        "uvicorn",
+    )
 
-    daemon_ok = False
-    compose_ok = False
+    def __init__(
+        self,
+        db_path: str | Path = "runs/saber.db",
+        evidence_dir: str | Path = "runs/evidence",
+        reports_dir: str | Path = "runs/reports",
+        tools: tuple[str, ...] | None = None,
+        packages: tuple[str, ...] | None = None,
+    ) -> None:
+        """Initialize doctor."""
 
-    if docker_ok:
-        daemon_result = docker_info()
-        daemon_ok = daemon_result.ok
-        _status_line("Docker daemon", daemon_ok)
+        self.db_path = Path(db_path)
+        self.evidence_dir = Path(evidence_dir)
+        self.reports_dir = Path(reports_dir)
+        self.tools = tools if tools is not None else self.DEFAULT_TOOLS
+        self.packages = packages if packages is not None else self.DEFAULT_PACKAGES
 
-        compose_result = docker_compose_version()
-        compose_ok = compose_result.ok
-        detail = compose_result.stdout.splitlines()[0] if compose_result.stdout else ""
-        _status_line("Docker Compose plugin", compose_ok, detail)
-    else:
-        _status_line("Docker daemon", False, "Docker CLI not found")
-        _status_line("Docker Compose plugin", False, "Docker CLI not found")
+    def run(self) -> DoctorReport:
+        """Run all doctor checks."""
 
-    compose_file = sandbox_compose_file()
-    _status_line("Sandbox compose file", compose_file.exists(), str(compose_file))
+        checks: list[DoctorCheck] = []
+        checks.append(self.check_python_version())
+        checks.append(self.check_storage())
+        checks.append(self.check_writable_directory("Evidence directory", self.evidence_dir))
+        checks.append(self.check_writable_directory("Reports directory", self.reports_dir))
 
-    dockerfile = root / "docker" / "Dockerfile.sandbox"
-    _status_line("Sandbox Dockerfile", dockerfile.exists(), str(dockerfile))
+        for package_name in self.packages:
+            checks.append(self.check_python_package(package_name))
 
-    env_example = root / ".env.example"
-    env_file = root / ".env"
-    env_ok = env_file.exists() or env_example.exists()
-    detail = ".env exists" if env_file.exists() else ".env.example exists" if env_example.exists() else ""
-    _status_line("Environment file", env_ok, detail)
+        for tool_name in self.tools:
+            checks.append(self.check_executable(tool_name))
 
-    requirements = root / "requirements.txt"
-    _status_line("requirements.txt", requirements.exists(), str(requirements))
+        return DoctorReport(checks=checks)
 
-    image_ok = docker_ok and daemon_ok and image_exists()
-    _status_line("Sandbox image", image_ok, sandbox_image_name())
+    def check_python_version(self) -> DoctorCheck:
+        """Check Python version."""
 
-    click.echo()
+        version = sys.version_info
+        version_text = platform.python_version()
 
-    if not python_ok:
-        click.echo(click.style("Python 3.11 or newer is required.", fg="red"))
+        if version >= (3, 11):
+            return DoctorCheck(
+                name="Python version",
+                status="ok",
+                message=f"Python {version_text}",
+                metadata={"version": version_text},
+            )
 
-    if not docker_ok:
-        click.echo(click.style("Docker was not found on PATH.", fg="red"))
-        click.echo("Install Docker Desktop on macOS/Windows or Docker Engine on Linux.")
+        return DoctorCheck(
+            name="Python version",
+            status="fail",
+            message=f"Python {version_text}; SABER expects Python 3.11+.",
+            metadata={"version": version_text},
+        )
 
-    if docker_ok and not daemon_ok:
-        click.echo(click.style("Docker is installed, but the engine is not reachable.", fg="red"))
-        click.echo("Start Docker Desktop or the Docker service, then rerun this command.")
+    def check_storage(self) -> DoctorCheck:
+        """Check SQLite storage initialization."""
 
-    if docker_ok and daemon_ok and not compose_ok:
-        click.echo(click.style("Docker Compose plugin is missing.", fg="red"))
-        click.echo("Update Docker Desktop or install the Docker Compose plugin.")
+        try:
+            connection = StorageConnection(self.db_path)
+            connection.initialize()
+            connection.close()
+            return DoctorCheck(
+                name="SQLite storage",
+                status="ok",
+                message=f"Storage initialized at {self.db_path}.",
+                metadata={"db_path": str(self.db_path)},
+            )
+        except Exception as exc:
+            return DoctorCheck(
+                name="SQLite storage",
+                status="fail",
+                message=f"Storage initialization failed: {exc}",
+                metadata={"db_path": str(self.db_path), "error_type": type(exc).__name__},
+            )
 
-    if docker_ok and daemon_ok and compose_ok and not image_ok:
-        click.echo("Next step:")
-        click.echo(click.style("  python -m saber sandbox build", fg="cyan"))
+    def check_writable_directory(self, name: str, directory: Path) -> DoctorCheck:
+        """Check directory can be created and written."""
 
-    if python_ok and docker_ok and daemon_ok and compose_ok:
-        click.echo(click.style("SABER environment checks completed.", fg="green"))
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            probe = directory / ".saber_write_check"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink(missing_ok=True)
+            return DoctorCheck(
+                name=name,
+                status="ok",
+                message=f"{directory} is writable.",
+                metadata={"path": str(directory)},
+            )
+        except Exception as exc:
+            return DoctorCheck(
+                name=name,
+                status="fail",
+                message=f"{directory} is not writable: {exc}",
+                metadata={"path": str(directory), "error_type": type(exc).__name__},
+            )
+
+    def check_python_package(self, package_name: str) -> DoctorCheck:
+        """Check Python package availability."""
+
+        spec = importlib.util.find_spec(package_name)
+        if spec:
+            return DoctorCheck(
+                name=f"Python package: {package_name}",
+                status="ok",
+                message=f"{package_name} is installed.",
+                metadata={"package": package_name},
+            )
+
+        status = "warn" if package_name in {"fastapi", "uvicorn"} else "fail"
+        return DoctorCheck(
+            name=f"Python package: {package_name}",
+            status=status,
+            message=f"{package_name} is not installed.",
+            metadata={"package": package_name},
+        )
+
+    def check_executable(self, executable: str) -> DoctorCheck:
+        """Check executable availability."""
+
+        path = shutil.which(executable)
+        if path:
+            return DoctorCheck(
+                name=f"Executable: {executable}",
+                status="ok",
+                message=f"{executable} found at {path}.",
+                metadata={"executable": executable, "path": path},
+            )
+
+        status = "warn"
+        return DoctorCheck(
+            name=f"Executable: {executable}",
+            status=status,
+            message=f"{executable} was not found on PATH.",
+            metadata={"executable": executable, "path": os.environ.get("PATH", "")},
+        )
+
+
+def format_doctor_report(report: DoctorReport) -> str:
+    """Format doctor report for terminal output."""
+
+    lines = ["SABER Doctor", ""]
+
+    for check in report.checks:
+        label = {
+            "ok": "OK",
+            "warn": "WARN",
+            "fail": "FAIL",
+        }.get(check.status, check.status.upper())
+        lines.append(f"[{label}] {check.name}: {check.message}")
+
+    lines.append("")
+    lines.append("Result: PASS" if report.ok() else "Result: FAIL")
+    return "\n".join(lines)
+
+
+def run_doctor(
+    db_path: str | Path = "runs/saber.db",
+    evidence_dir: str | Path = "runs/evidence",
+    reports_dir: str | Path = "runs/reports",
+) -> DoctorReport:
+    """Run doctor checks."""
+
+    return SaberDoctor(
+        db_path=db_path,
+        evidence_dir=evidence_dir,
+        reports_dir=reports_dir,
+    ).run()

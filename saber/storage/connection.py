@@ -1,15 +1,23 @@
-"""SQLite storage connection and migration support for SABER."""
+"""SQLite storage connection and migration runner for SABER."""
 
 from __future__ import annotations
 
 import sqlite3
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
 
 class StorageConnection:
-    """SQLite connection wrapper for SABER stores."""
+    """Small SQLite wrapper for SABER storage.
+
+    Security notes:
+    - Migrations are static SQL files controlled by the application.
+    - Runtime stores should use parameterized SQL only.
+    - check_same_thread=False is required for FastAPI/TestClient thread usage.
+    - A re-entrant lock serializes access through this wrapper.
+    """
 
     def __init__(
         self,
@@ -19,105 +27,134 @@ class StorageConnection:
         """Initialize storage connection."""
 
         self.db_path = Path(db_path)
-        self.migrations_dir = Path(migrations_dir) if migrations_dir else Path(__file__).parent / "migrations"
+        self.migrations_dir = (
+            Path(migrations_dir)
+            if migrations_dir is not None
+            else Path(__file__).parent / "migrations"
+        )
         self._connection: sqlite3.Connection | None = None
+        self._lock = threading.RLock()
+        self._in_transaction = False
 
     def connect(self) -> sqlite3.Connection:
-        """Return active SQLite connection."""
+        """Return SQLite connection, creating it if needed."""
 
-        if self._connection is None:
-            self.db_path.parent.mkdir(parents=True, exist_ok=True)
-            self._connection = sqlite3.connect(str(self.db_path))
-            self._connection.row_factory = sqlite3.Row
-            self._connection.execute("PRAGMA foreign_keys = ON")
-        return self._connection
+        with self._lock:
+            if self._connection is None:
+                self.db_path.parent.mkdir(parents=True, exist_ok=True)
+                self._connection = sqlite3.connect(
+                    self.db_path,
+                    check_same_thread=False,
+                )
+                self._connection.row_factory = sqlite3.Row
+                self._connection.execute("PRAGMA foreign_keys = ON")
+            return self._connection
 
     def close(self) -> None:
-        """Close active connection."""
+        """Close connection."""
 
-        if self._connection is not None:
-            self._connection.close()
-            self._connection = None
+        with self._lock:
+            if self._connection is not None:
+                self._connection.close()
+                self._connection = None
 
     def initialize(self) -> None:
         """Initialize database and apply migrations."""
 
-        self.connect()
-        self._ensure_schema_migrations_table()
-        self.apply_migrations()
+        with self._lock:
+            self.connect()
+            self._ensure_schema_migrations_table()
+            self.apply_migrations()
 
     def apply_migrations(self) -> list[str]:
-        """Apply unapplied SQL migrations and return applied versions."""
+        """Apply unapplied migrations and return applied migration versions."""
 
-        self._ensure_schema_migrations_table()
+        with self._lock:
+            self._ensure_schema_migrations_table()
 
-        if not self.migrations_dir.exists():
-            raise FileNotFoundError(f"Migrations directory does not exist: {self.migrations_dir}")
+            if not self.migrations_dir.exists():
+                return []
 
-        applied_versions = self._applied_versions()
-        newly_applied: list[str] = []
+            applied = self._applied_versions()
+            newly_applied: list[str] = []
 
-        for migration_path in sorted(self.migrations_dir.glob("*.sql")):
-            version = migration_path.name
-            if version in applied_versions:
-                continue
+            for migration_path in sorted(self.migrations_dir.glob("*.sql")):
+                version = migration_path.name
+                if version in applied:
+                    continue
 
-            sql = migration_path.read_text(encoding="utf-8").strip()
-            if not sql:
-                continue
+                sql = migration_path.read_text(encoding="utf-8")
+                conn = self.connect()
 
-            with self.transaction() as connection:
-                connection.executescript(sql)
-                connection.execute(
-                    """
-                    INSERT INTO schema_migrations (version, applied_at)
-                    VALUES (?, datetime('now'))
-                    """,
-                    (version,),
-                )
+                try:
+                    conn.executescript(sql)
+                    conn.execute(
+                        "INSERT INTO schema_migrations (version) VALUES (?)",
+                        (version,),
+                    )
+                    conn.commit()
+                    newly_applied.append(version)
+                except Exception:
+                    conn.rollback()
+                    raise
 
-            newly_applied.append(version)
-
-        return newly_applied
+            return newly_applied
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
-        """Run SQL in a transaction."""
+        """Run operations inside a transaction."""
 
-        connection = self.connect()
-        try:
-            yield connection
-            connection.commit()
-        except Exception:
-            connection.rollback()
-            raise
+        with self._lock:
+            conn = self.connect()
+            previous = self._in_transaction
+            self._in_transaction = True
+            try:
+                yield conn
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                self._in_transaction = previous
 
-    def execute(self, sql: str, params: tuple[Any, ...] = ()) -> sqlite3.Cursor:
-        """Execute SQL and commit immediately."""
+    def execute(self, sql: str, parameters: tuple[Any, ...] = ()) -> sqlite3.Cursor:
+        """Execute one parameterized statement."""
 
-        connection = self.connect()
-        cursor = connection.execute(sql, params)
-        connection.commit()
-        return cursor
+        with self._lock:
+            conn = self.connect()
+            cursor = conn.execute(sql, parameters)
+            if not self._in_transaction:
+                conn.commit()
+            return cursor
 
-    def query_one(self, sql: str, params: tuple[Any, ...] = ()) -> sqlite3.Row | None:
+    def query_one(
+        self,
+        sql: str,
+        parameters: tuple[Any, ...] = (),
+    ) -> sqlite3.Row | None:
         """Return one row."""
 
-        return self.connect().execute(sql, params).fetchone()
+        with self._lock:
+            return self.connect().execute(sql, parameters).fetchone()
 
-    def query_all(self, sql: str, params: tuple[Any, ...] = ()) -> list[sqlite3.Row]:
+    def query_all(
+        self,
+        sql: str,
+        parameters: tuple[Any, ...] = (),
+    ) -> list[sqlite3.Row]:
         """Return all rows."""
 
-        return list(self.connect().execute(sql, params).fetchall())
+        with self._lock:
+            return list(self.connect().execute(sql, parameters).fetchall())
 
     def _ensure_schema_migrations_table(self) -> None:
-        """Create schema migration tracking table."""
+        """Create schema migration table."""
 
         self.connect().execute(
             """
             CREATE TABLE IF NOT EXISTS schema_migrations (
                 version TEXT PRIMARY KEY,
-                applied_at TEXT NOT NULL
+                applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
@@ -126,16 +163,16 @@ class StorageConnection:
     def _applied_versions(self) -> set[str]:
         """Return applied migration versions."""
 
-        rows = self.query_all("SELECT version FROM schema_migrations", ())
-        return {row["version"] for row in rows}
+        rows = self.query_all("SELECT version FROM schema_migrations")
+        return {str(row["version"]) for row in rows}
 
     def __enter__(self) -> StorageConnection:
         """Context manager enter."""
 
-        self.connect()
+        self.initialize()
         return self
 
-    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
+    def __exit__(self, *_exc: object) -> None:
         """Context manager exit."""
 
         self.close()

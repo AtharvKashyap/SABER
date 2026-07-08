@@ -1,98 +1,125 @@
-"""Docker sandbox commands for SABER."""
+"""Sandbox inspection commands for SABER CLI."""
 
 from __future__ import annotations
 
-import click
+import shutil
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 
-from saber.core.docker_runner import (
-    build_sandbox,
-    docker_available,
-    docker_compose_version,
-    docker_info,
-    image_exists,
-    run_sandbox_shell,
-    sandbox_image_name,
-)
+from saber.storage.evidence_index import EvidenceIndex
 
 
-def _require_docker() -> None:
-    if not docker_available():
-        raise click.ClickException(
-            "Docker CLI was not found. Install Docker Desktop or Docker Engine first."
+@dataclass(frozen=True)
+class ToolAvailability:
+    """Tool availability result."""
+
+    tool: str
+    available: bool
+    path: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return JSON-compatible result."""
+
+        return {
+            "tool": self.tool,
+            "available": self.available,
+            "path": self.path,
+        }
+
+
+@dataclass(frozen=True)
+class SandboxCheck:
+    """Sandbox check result."""
+
+    docker_available: bool
+    docker_path: str | None
+    tools: list[ToolAvailability] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return JSON-compatible check."""
+
+        return {
+            "docker_available": self.docker_available,
+            "docker_path": self.docker_path,
+            "tools": [tool.to_dict() for tool in self.tools],
+        }
+
+
+class SandboxCommands:
+    """Read-only sandbox/tool inspection helpers."""
+
+    DEFAULT_TOOLS = (
+        "nmap",
+        "nuclei",
+        "whatweb",
+        "searchsploit",
+        "subfinder",
+        "amass",
+        "dnsrecon",
+        "nikto",
+        "sqlmap",
+    )
+
+    def __init__(
+        self,
+        evidence_index: EvidenceIndex | None = None,
+        tools: tuple[str, ...] | None = None,
+    ) -> None:
+        """Initialize sandbox commands."""
+
+        self.evidence_index = evidence_index
+        self.tools = tools if tools is not None else self.DEFAULT_TOOLS
+
+    def check(self) -> SandboxCheck:
+        """Check local sandbox/tool readiness."""
+
+        docker_path = shutil.which("docker")
+        tools = [
+            ToolAvailability(
+                tool=tool,
+                available=shutil.which(tool) is not None,
+                path=shutil.which(tool),
+            )
+            for tool in self.tools
+        ]
+
+        return SandboxCheck(
+            docker_available=docker_path is not None,
+            docker_path=docker_path,
+            tools=tools,
         )
 
-    info = docker_info()
-    if not info.ok:
-        raise click.ClickException(
-            "Docker is installed, but the daemon/engine is not reachable. "
-            "Start Docker Desktop or the Docker service."
-        )
+    def list_tools(self) -> list[ToolAvailability]:
+        """List configured tool availability."""
 
-    compose = docker_compose_version()
-    if not compose.ok:
-        raise click.ClickException(
-            "Docker Compose plugin is unavailable. SABER requires 'docker compose'."
-        )
+        return self.check().tools
 
+    def list_evidence(self, session_id: str) -> list[dict[str, Any]]:
+        """List evidence for a session."""
 
-@click.group("sandbox")
-def sandbox_group() -> None:
-    """Build and run the SABER Kali sandbox."""
+        if self.evidence_index is None:
+            raise RuntimeError("EvidenceIndex is required to list evidence.")
+        return self.evidence_index.list_evidence(session_id)
 
+    def evidence_paths(self, session_id: str) -> list[Path]:
+        """Return evidence paths for a session."""
 
-@sandbox_group.command("build")
-def sandbox_build_command() -> None:
-    """Build the SABER Kali sandbox image."""
-    _require_docker()
+        return [Path(item["path"]) for item in self.list_evidence(session_id)]
 
-    click.echo(f"Building sandbox image: {sandbox_image_name()}")
-    result = build_sandbox()
+    @staticmethod
+    def format_check(check: SandboxCheck) -> str:
+        """Format sandbox check for terminal output."""
 
-    if result.stdout:
-        click.echo(result.stdout)
+        lines = ["SABER Sandbox Check", ""]
 
-    if not result.ok:
-        if result.stderr:
-            click.echo(result.stderr, err=True)
-        raise click.ClickException("Sandbox image build failed.")
+        docker_label = "OK" if check.docker_available else "WARN"
+        lines.append(f"[{docker_label}] docker: {check.docker_path or 'not found'}")
+        lines.append("")
+        lines.append("Tools:")
 
-    click.echo(click.style("Sandbox image build complete.", fg="green"))
+        for tool in check.tools:
+            label = "OK" if tool.available else "WARN"
+            lines.append(f"[{label}] {tool.tool}: {tool.path or 'not found'}")
 
-
-@sandbox_group.command("status")
-def sandbox_status_command() -> None:
-    """Check whether the SABER sandbox image exists."""
-    _require_docker()
-
-    if image_exists():
-        click.echo(click.style(f"Sandbox image exists: {sandbox_image_name()}", fg="green"))
-    else:
-        click.echo(click.style(f"Sandbox image missing: {sandbox_image_name()}", fg="yellow"))
-        click.echo("Build it with:")
-        click.echo(click.style("  python -m saber sandbox build", fg="cyan"))
-
-
-@sandbox_group.command("shell")
-def sandbox_shell_command() -> None:
-    """Open an interactive shell inside the SABER sandbox."""
-    _require_docker()
-
-    if not image_exists():
-        raise click.ClickException(
-            "Sandbox image is missing. Run: python -m saber sandbox build"
-        )
-
-    raise SystemExit(run_sandbox_shell())
-
-
-@sandbox_group.command("run")
-def sandbox_run_command() -> None:
-    """Alias for 'sandbox shell'."""
-    _require_docker()
-
-    if not image_exists():
-        raise click.ClickException(
-            "Sandbox image is missing. Run: python -m saber sandbox build"
-        )
-
-    raise SystemExit(run_sandbox_shell())
+        return "\n".join(lines)
