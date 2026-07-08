@@ -33,6 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     run = subcommands.add_parser("run", help="Run a SABER mission.")
     run.add_argument("--target", required=True, help="Mission target, such as example.com or 127.0.0.1.")
     run.add_argument("--profile", choices=["recon", "web", "network", "ad", "full"], default="recon")
+    run.add_argument("--mode", choices=["deterministic", "llm"], default="deterministic")
     run.add_argument("--mission-name")
     run.add_argument("--objective")
     run.add_argument("--evidence-dir", default="runs/evidence")
@@ -150,6 +151,7 @@ def dispatch(
             require_approval=not args.no_approval,
             max_steps=args.max_steps,
             dry_run=args.dry_run,
+            agent_mode=args.mode,
         )
         print(json.dumps(result, indent=2, sort_keys=True, default=str))
         return 0

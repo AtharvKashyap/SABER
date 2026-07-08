@@ -22,7 +22,9 @@ from saber.agents.reporter_agent import ReporterAgent
 from saber.agents.reverse_engineering_agent import ReverseEngineerAgent
 from saber.agents.web_agent import WebAgent
 from saber.core.evidence_store import EvidenceStore
+from saber.core.llm_client import LlmClient, LlmConfig
 from saber.core.result_processor import ResultProcessor
+from saber.core.tool_catalog import ToolCatalog
 from saber.core.sandbox import Sandbox
 from saber.orchestration.chain_runner import ChainRunner
 from saber.orchestration.mission_orchestrator import MissionOrchestrator
@@ -49,8 +51,10 @@ class SaberConfig:
     default_timeout_seconds: int = 300
     max_steps: int = 50
     max_chain_depth: int = 20
+    agent_mode: str = "deterministic"
     allowed_tools: tuple[str, ...] = ()
     disabled_tools: tuple[str, ...] = ()
+    llm_config: LlmConfig = field(default_factory=LlmConfig.from_env)
     metadata: dict[str, Any] | None = None
 
     @classmethod
@@ -92,6 +96,8 @@ class SaberRuntime:
     graph_store: GraphStore
     tool_registry: ToolRegistry
     parser_registry: ParserRegistry
+    tool_catalog: ToolCatalog
+    llm_client: LlmClient
     result_processor: ResultProcessor
     sandbox: Sandbox
     agents: dict[str, Any]
@@ -153,6 +159,8 @@ def build_saber_runtime(
 
     tools = tool_registry or build_default_registry()
     parsers = parser_registry or build_default_parser_registry()
+    tool_catalog = ToolCatalog.from_registry(tools)
+    llm_client = LlmClient(runtime_config.llm_config)
     runtime_sandbox = sandbox or _build_sandbox(runtime_config)
 
     result_processor = ResultProcessor(
@@ -191,6 +199,8 @@ def build_saber_runtime(
         graph_store=graph_store,
         tool_registry=tools,
         parser_registry=parsers,
+        tool_catalog=tool_catalog,
+        llm_client=llm_client,
         result_processor=result_processor,
         sandbox=runtime_sandbox,
         agents=agents,

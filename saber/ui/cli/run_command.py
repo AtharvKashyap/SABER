@@ -48,6 +48,7 @@ def run_cli_mission(
     require_approval: bool = True,
     max_steps: int = 50,
     dry_run: bool = False,
+    agent_mode: str = "deterministic",
 ) -> dict[str, Any]:
     """Run a SABER mission from the CLI and persist the result."""
 
@@ -66,6 +67,7 @@ def run_cli_mission(
         profile=normalized_profile,
         require_approval=require_approval,
         max_steps=max_steps,
+        agent_mode=agent_mode,
         metadata={"source": "cli_run"},
     )
 
@@ -87,6 +89,7 @@ def run_cli_mission(
                     "objective": resolved_objective,
                     "dry_run": dry_run,
                     "require_approval": require_approval,
+                    "agent_mode": agent_mode,
                     "started_at": datetime.now(UTC).isoformat(),
                 },
             }
@@ -225,6 +228,8 @@ def run_cli_mission(
             "observations": stored_observations,
             "evidence": stored_evidence,
             "dry_run": dry_run,
+            "agent_mode": agent_mode,
+            "llm_enabled": runtime.llm_client.enabled,
             "next_commands": [
                 f"python -m saber.ui.cli.main sessions show {session_id}",
                 f"python -m saber.ui.cli.main live {session_id} --once",
