@@ -106,34 +106,124 @@ def run_cli_mission(
 
         runtime.session_store.save_plan(session_id, plan)
 
-        result = runtime.orchestrator.run_mission(
-            session=session,
-            target=target,
-            objective=resolved_objective,
-            plan=plan,
-            constraints={
-                "profile": normalized_profile,
-                "dry_run": dry_run,
-                "require_approval": require_approval,
-            },
-            metadata={
-                "source": "cli_run",
-                "profile": normalized_profile,
-                "dry_run": dry_run,
-            },
-        )
+        pre_report_plan, report_plan = split_plan_for_reporting(plan)
 
-        persist_mission_result(runtime, result, mission_started_at=mission_started_at)
+        total_records = 0
+        final_status = "completed"
+
+        if report_plan is None:
+            result = runtime.orchestrator.run_mission(
+                session=session,
+                target=target,
+                objective=resolved_objective,
+                plan=pre_report_plan,
+                constraints={
+                    "profile": normalized_profile,
+                    "dry_run": dry_run,
+                    "require_approval": require_approval,
+                },
+                metadata={
+                    "source": "cli_run",
+                    "profile": normalized_profile,
+                    "dry_run": dry_run,
+                },
+            )
+
+            persist_mission_result(
+                runtime,
+                result,
+                mission_started_at=mission_started_at,
+                process_evidence=True,
+                save_plan=True,
+            )
+            total_records += len(result.records)
+            final_status = str(result.status.value if hasattr(result.status, "value") else result.status)
+        else:
+            pre_result = runtime.orchestrator.run_mission(
+                session=session,
+                target=target,
+                objective=resolved_objective,
+                plan=pre_report_plan,
+                constraints={
+                    "profile": normalized_profile,
+                    "dry_run": dry_run,
+                    "require_approval": require_approval,
+                    "phase": "pre_report",
+                },
+                metadata={
+                    "source": "cli_run",
+                    "profile": normalized_profile,
+                    "dry_run": dry_run,
+                    "phase": "pre_report",
+                },
+            )
+
+            # This is the important ordering change:
+            # persist pre-report observations/evidence, then parse evidence,
+            # then run the reporter with the parsed observations included.
+            persist_mission_result(
+                runtime,
+                pre_result,
+                mission_started_at=mission_started_at,
+                process_evidence=True,
+                save_plan=True,
+            )
+            total_records += len(pre_result.records)
+
+            report_observations = _load_observations_for_reporter(
+                runtime,
+                session_id,
+                fallback_observations=pre_result.observations,
+            )
+
+            report_result = runtime.orchestrator.run_mission(
+                session=session,
+                target=target,
+                objective="Generate evidence-backed assessment report from parsed observations.",
+                plan=report_plan,
+                initial_observations=report_observations,
+                constraints={
+                    "profile": normalized_profile,
+                    "dry_run": dry_run,
+                    "require_approval": require_approval,
+                    "phase": "report",
+                },
+                metadata={
+                    "source": "cli_run",
+                    "profile": normalized_profile,
+                    "dry_run": dry_run,
+                    "phase": "report",
+                    "parsed_observation_count": len(report_observations),
+                },
+            )
+
+            persist_mission_result(
+                runtime,
+                report_result,
+                mission_started_at=mission_started_at,
+                process_evidence=False,
+                save_plan=False,
+                save_observations=False,
+            )
+            total_records += len(report_result.records)
+            final_status = str(
+                report_result.status.value if hasattr(report_result.status, "value") else report_result.status
+            )
+
+        stored_observations = _safe_count(lambda: runtime.finding_store.list_observations(session_id))
+        stored_evidence = _safe_count(lambda: runtime.evidence_index.list_evidence(session_id))
+        stored_steps = _safe_count(lambda: runtime.session_store.list_steps(session_id))
 
         return {
             "session_id": session_id,
             "mission_name": resolved_mission_name,
             "target": target_value,
             "profile": normalized_profile,
-            "status": str(result.status.value if hasattr(result.status, "value") else result.status),
-            "steps": len(result.plan.steps),
-            "records": len(result.records),
-            "observations": len(result.observations),
+            "status": final_status,
+            "steps": stored_steps,
+            "records": total_records,
+            "observations": stored_observations,
+            "evidence": stored_evidence,
             "dry_run": dry_run,
             "next_commands": [
                 f"python -m saber.ui.cli.main sessions show {session_id}",
@@ -153,7 +243,14 @@ def run_cli_mission(
         runtime.close()
 
 
-def persist_mission_result(runtime: SaberRuntime, result: MissionRunResult, mission_started_at: float = 0.0) -> None:
+def persist_mission_result(
+    runtime: SaberRuntime,
+    result: MissionRunResult,
+    mission_started_at: float = 0.0,
+    process_evidence: bool = True,
+    save_plan: bool = True,
+    save_observations: bool = True,
+) -> None:
     """Persist an orchestrator result into storage."""
 
     session_id = result.session.session_id
@@ -168,7 +265,8 @@ def persist_mission_result(runtime: SaberRuntime, result: MissionRunResult, miss
         },
     )
 
-    runtime.session_store.save_plan(session_id, result.plan)
+    if save_plan:
+        runtime.session_store.save_plan(session_id, result.plan)
 
     for step in result.plan.steps:
         runtime.session_store.save_step(session_id, step)
@@ -193,10 +291,12 @@ def persist_mission_result(runtime: SaberRuntime, result: MissionRunResult, miss
                 },
             )
 
-    for observation in result.observations:
-        _save_agent_observation(runtime, session_id, observation)
+    if save_observations:
+        for observation in result.observations:
+            _save_agent_observation(runtime, session_id, observation)
 
-    _index_sandbox_evidence(runtime, session_id, mission_started_at=mission_started_at)
+    if process_evidence:
+        _index_sandbox_evidence(runtime, session_id, mission_started_at=mission_started_at)
 
 
 def filter_plan_for_profile(plan: ExecutionPlan, profile: str) -> ExecutionPlan:
@@ -236,6 +336,116 @@ def _save_agent_observation(runtime: SaberRuntime, session_id: str, observation:
 
 
 
+
+def split_plan_for_reporting(plan: ExecutionPlan) -> tuple[ExecutionPlan, ExecutionPlan | None]:
+    """Split a plan into pre-report steps and report-only steps.
+
+    This lets SABER parse evidence before the reporter agent runs.
+    """
+
+    reporter_steps = [step for step in plan.steps if step.agent_name == "reporter_agent"]
+    if not reporter_steps:
+        return plan, None
+
+    pre_report_steps = [step for step in plan.steps if step.agent_name != "reporter_agent"]
+
+    adjusted_reporter_steps = []
+    for step in reporter_steps:
+        try:
+            adjusted_reporter_steps.append(replace(step, depends_on=[]))
+        except TypeError:
+            step.depends_on = []
+            adjusted_reporter_steps.append(step)
+
+    return _replace_plan_steps(plan, pre_report_steps), _replace_plan_steps(plan, adjusted_reporter_steps)
+
+
+def _replace_plan_steps(plan: ExecutionPlan, steps: list) -> ExecutionPlan:
+    """Return a copy of an ExecutionPlan with different steps."""
+
+    try:
+        return replace(plan, steps=steps)
+    except TypeError:
+        plan.steps = steps
+        return plan
+
+
+def _load_observations_for_reporter(
+    runtime: SaberRuntime,
+    session_id: str,
+    fallback_observations: list[AgentObservation] | None = None,
+) -> list[AgentObservation]:
+    """Load stored observations and convert them back to AgentObservation objects."""
+
+    observations: list[AgentObservation] = []
+
+    try:
+        rows = runtime.finding_store.list_observations(session_id)
+    except Exception:
+        rows = []
+
+    for row in rows:
+        observation = _row_to_agent_observation(row)
+        if observation is not None:
+            observations.append(observation)
+
+    if observations:
+        return observations
+
+    return list(fallback_observations or [])
+
+
+def _row_to_agent_observation(row: object) -> AgentObservation | None:
+    """Convert a stored observation row/dict into an AgentObservation."""
+
+    if not isinstance(row, dict):
+        if hasattr(row, "to_dict"):
+            try:
+                row = row.to_dict()
+            except Exception:
+                return None
+        elif hasattr(row, "model_dump"):
+            try:
+                row = row.model_dump(mode="json")
+            except Exception:
+                return None
+        else:
+            return None
+
+    raw = row.get("observation") if isinstance(row.get("observation"), dict) else row
+
+    summary = (
+        raw.get("summary")
+        or raw.get("description")
+        or raw.get("title")
+        or row.get("summary")
+        or "Stored observation"
+    )
+
+    metadata = raw.get("metadata") or row.get("metadata") or {}
+    if not isinstance(metadata, dict):
+        metadata = {"raw_metadata": metadata}
+
+    try:
+        return AgentObservation(
+            summary=str(summary),
+            success=bool(raw.get("success", True)),
+            tool_name=raw.get("tool_name") or row.get("tool_name"),
+            action=raw.get("action") or row.get("action"),
+            metadata=metadata,
+        )
+    except Exception:
+        return None
+
+
+def _safe_count(loader) -> int:
+    """Safely count list-returning storage calls."""
+
+    try:
+        return len(loader())
+    except Exception:
+        return 0
+
 def _index_sandbox_evidence(runtime: SaberRuntime, session_id: str, mission_started_at: float = 0.0) -> list[str]:
     """Index sandbox EvidenceStore files into Storage EvidenceIndex.
 
@@ -262,6 +472,9 @@ def _index_sandbox_evidence(runtime: SaberRuntime, session_id: str, mission_star
                 continue
 
             try:
+                if _evidence_path_already_indexed(runtime, session_id, candidate):
+                    continue
+
                 resolved_tool = tool_name or metadata.get("tool_name") or metadata.get("tool")
                 resolved_action = metadata.get("tool_action") or metadata.get("action")
                 evidence_id = runtime.evidence_index.add_evidence(
@@ -362,6 +575,21 @@ def _guess_tool_action_from_path(path: Path) -> tuple[str | None, str | None]:
             return part, action
     return None, None
 
+
+
+def _evidence_path_already_indexed(runtime: SaberRuntime, session_id: str, path: Path) -> bool:
+    """Return True if an evidence path has already been indexed for this session."""
+
+    try:
+        existing = runtime.evidence_index.list_evidence(session_id)
+    except Exception:
+        return False
+
+    path_str = str(path)
+    for item in existing:
+        if str(item.get("path")) == path_str:
+            return True
+    return False
 
 def _record_candidate_paths(record: object) -> list[Path]:
     """Extract likely evidence file paths from an EvidenceRecord."""
