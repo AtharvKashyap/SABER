@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
+from saber.core.env_loader import load_env_file
+
 
 class LlmProvider(StrEnum):
     """Supported provider modes."""
@@ -43,7 +45,9 @@ class LlmConfig:
 
     @classmethod
     def from_env(cls) -> "LlmConfig":
-        """Load LLM config from environment variables."""
+        """Load LLM config from .env/environment variables."""
+
+        load_env_file()
 
         api_key = (
             os.getenv("SABER_LLM_API_KEY")
