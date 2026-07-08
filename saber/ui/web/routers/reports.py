@@ -24,9 +24,8 @@ class ReportGenerateRequest(BaseModel):
     """Report generation request."""
 
     format: str = Field(..., pattern="^(json|xlsx|pdf|markdown)$")
-    output_dir: str = "runs/reports"
-    target: str = "unknown"
-    mission_name: str | None = None
+    target: str = Field(default="unknown", max_length=512)
+    mission_name: str | None = Field(default=None, max_length=256)
 
 
 def _session_store(request: Request) -> SessionStore:
@@ -45,6 +44,12 @@ def _evidence_index(request: Request) -> EvidenceIndex:
     """Return EvidenceIndex from app state."""
 
     return request.app.state.evidence_index
+
+
+def _reports_root(request: Request) -> Path:
+    """Return safe reports root."""
+
+    return Path(request.app.state.reports_dir).resolve()
 
 
 @router.get("/reports")
@@ -83,7 +88,10 @@ def generate_report(
     session_id: str,
     generate_request: ReportGenerateRequest,
 ) -> dict[str, Any]:
-    """Generate a report artifact for a session."""
+    """Generate a report artifact for a session.
+
+    Output path is server-controlled to prevent arbitrary file write/path traversal.
+    """
 
     session_store = _session_store(request)
     finding_store = _finding_store(request)
@@ -107,11 +115,12 @@ def generate_report(
         },
     )
 
-    output_dir = Path(generate_request.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     suffix = "md" if generate_request.format == "markdown" else generate_request.format
-    output_path = output_dir / f"{session_id}_report.{suffix}"
+    output_path = _safe_report_path(
+        root=_reports_root(request),
+        session_id=session_id,
+        suffix=suffix,
+    )
 
     if generate_request.format == "json":
         path = JsonExporter().export(document, output_path)
@@ -157,6 +166,7 @@ def get_report_artifact(request: Request, report_id: str) -> dict[str, Any]:
     for session in session_store.list_sessions(limit=1000):
         for artifact in session_store.list_report_artifacts(session["session_id"]):
             if artifact.get("report_id") == report_id:
+                _safe_existing_file(_reports_root(request), Path(str(artifact.get("path"))))
                 return {"report": artifact}
 
     raise HTTPException(status_code=404, detail=f"Report not found: {report_id}")
@@ -167,10 +177,7 @@ def download_report_artifact(request: Request, report_id: str) -> FileResponse:
     """Download a report artifact by ID."""
 
     report = get_report_artifact(request, report_id)["report"]
-    path = Path(str(report.get("path")))
-
-    if not path.exists() or not path.is_file():
-        raise HTTPException(status_code=404, detail=f"Report file not found: {path}")
+    path = _safe_existing_file(_reports_root(request), Path(str(report.get("path"))))
 
     return FileResponse(
         path=path,
@@ -186,6 +193,43 @@ def _ensure_session(request: Request, session_id: str) -> dict[str, Any]:
     if not session:
         raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
     return session
+
+
+def _safe_report_path(root: Path, session_id: str, suffix: str) -> Path:
+    """Build a safe server-controlled report path."""
+
+    safe_session_id = "".join(character if character.isalnum() or character in {"_", "-"} else "_" for character in session_id)
+    safe_suffix = "".join(character for character in suffix.lower() if character.isalnum())
+
+    if not safe_session_id:
+        raise HTTPException(status_code=400, detail="Invalid session ID.")
+    if safe_suffix not in {"json", "xlsx", "pdf", "md"}:
+        raise HTTPException(status_code=400, detail="Invalid report suffix.")
+
+    path = (root / f"{safe_session_id}_report.{safe_suffix}").resolve()
+    _ensure_under_root(root, path)
+    return path
+
+
+def _safe_existing_file(root: Path, path: Path) -> Path:
+    """Resolve and validate existing report path."""
+
+    resolved = path.resolve()
+    _ensure_under_root(root, resolved)
+
+    if not resolved.exists() or not resolved.is_file():
+        raise HTTPException(status_code=404, detail=f"Report file not found: {resolved.name}")
+
+    return resolved
+
+
+def _ensure_under_root(root: Path, path: Path) -> None:
+    """Ensure path is inside root."""
+
+    try:
+        path.relative_to(root)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="Report path is outside the configured reports directory.") from exc
 
 
 def _media_type(report_type: str | None) -> str:

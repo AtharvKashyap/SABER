@@ -10,3 +10,4 @@ mypy>=1.0
 
 # Optional developer helpers
 pre-commit>=3.0
+httpx>=0.27
