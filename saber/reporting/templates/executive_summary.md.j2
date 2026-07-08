@@ -1,0 +1,52 @@
+# Executive Summary
+
+**Mission:** {{ document.mission_name }}  
+**Target:** {{ document.target }}  
+**Generated:** {{ document.generated_at }}
+
+## Overall Risk
+
+{{ document.executive_summary }}
+
+## Finding Summary
+
+| Severity | Count |
+|---|---:|
+| Critical | {{ severity_counts.critical }} |
+| High | {{ severity_counts.high }} |
+| Medium | {{ severity_counts.medium }} |
+| Low | {{ severity_counts.low }} |
+| Info | {{ severity_counts.info }} |
+| Unknown | {{ severity_counts.unknown }} |
+
+## Highest Priority Findings
+
+{% if priority_findings %}
+{% for finding in priority_findings %}
+### {{ loop.index }}. {{ finding.title }}
+
+- **Severity:** {{ finding.severity }}
+- **Source:** {{ finding.source_tool or "unknown" }}
+
+{{ finding.description }}
+
+{% if finding.references %}
+**References:**
+
+{% for reference in finding.references %}
+- {{ reference }}
+{% endfor %}
+{% endif %}
+
+{% endfor %}
+{% else %}
+No high-priority findings were included in this report.
+{% endif %}
+
+## Recommended Next Steps
+
+- Validate all high and critical findings against the approved scope.
+- Patch, mitigate, or compensate for confirmed vulnerabilities.
+- Review exposed services and unnecessary attack surface.
+- Retest remediated findings to confirm closure.
+- Preserve evidence and remediation notes for auditability.
