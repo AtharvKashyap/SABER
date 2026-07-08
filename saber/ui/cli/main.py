@@ -18,6 +18,7 @@ from saber.storage.session_store import SessionStore
 from saber.ui.cli.approval_prompt import ApprovalPrompt, format_approval_list
 from saber.ui.cli.doctor import SaberDoctor, format_doctor_report
 from saber.ui.cli.live_panel import LivePanel
+from saber.ui.cli.run_command import run_cli_mission
 from saber.ui.cli.sandbox_commands import SandboxCommands
 
 
@@ -28,6 +29,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--db", default="runs/saber.db", help="Path to SABER SQLite database.")
 
     subcommands = parser.add_subparsers(dest="command", required=True)
+
+    run = subcommands.add_parser("run", help="Run a SABER mission.")
+    run.add_argument("--target", required=True, help="Mission target, such as example.com or 127.0.0.1.")
+    run.add_argument("--profile", choices=["recon", "web", "network", "ad", "full"], default="recon")
+    run.add_argument("--mission-name")
+    run.add_argument("--objective")
+    run.add_argument("--evidence-dir", default="runs/evidence")
+    run.add_argument("--reports-dir", default="runs/reports")
+    run.add_argument("--max-steps", type=int, default=50)
+    run.add_argument("--no-approval", action="store_true", help="Disable approval requirement in mission constraints.")
+    run.add_argument("--dry-run", action="store_true", help="Pass dry-run constraint to agents.")
 
     doctor = subcommands.add_parser("doctor", help="Run environment checks.")
     doctor.add_argument("--json", action="store_true", help="Output JSON.")
@@ -125,6 +137,22 @@ def dispatch(
     evidence_index: EvidenceIndex,
 ) -> int:
     """Dispatch parsed CLI args."""
+
+    if args.command == "run":
+        result = run_cli_mission(
+            target_value=args.target,
+            profile=args.profile,
+            mission_name=args.mission_name,
+            objective=args.objective,
+            db_path=args.db,
+            evidence_dir=args.evidence_dir,
+            reports_dir=args.reports_dir,
+            require_approval=not args.no_approval,
+            max_steps=args.max_steps,
+            dry_run=args.dry_run,
+        )
+        print(json.dumps(result, indent=2, sort_keys=True, default=str))
+        return 0
 
     if args.command == "doctor":
         report = SaberDoctor(db_path=args.db).run()

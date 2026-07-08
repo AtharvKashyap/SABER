@@ -73,7 +73,9 @@ class StorageConnection:
             self._ensure_schema_migrations_table()
 
             if not self.migrations_dir.exists():
-                return []
+                raise FileNotFoundError(
+                    f"Migrations directory does not exist: {self.migrations_dir}"
+                )
 
             applied = self._applied_versions()
             newly_applied: list[str] = []
