@@ -13,7 +13,7 @@ from saber.reporting.json_exporter import ReportFinding, ReportObservation, Repo
 from saber.storage.finding_store import FindingStore
 
 
-class TestConnection:
+class FakeConnection:
     """Small sqlite test connection with the store interface."""
 
     def __init__(self) -> None:
@@ -82,7 +82,7 @@ class TestConnection:
 def store() -> FindingStore:
     """Create finding store."""
 
-    return FindingStore(TestConnection())
+    return FindingStore(FakeConnection())
 
 
 def parsed_finding() -> ParsedFinding:

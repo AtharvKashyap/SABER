@@ -13,7 +13,7 @@ import pytest
 from saber.storage.session_store import SessionStore
 
 
-class TestConnection:
+class FakeConnection:
     """Small sqlite test connection with the store interface."""
 
     def __init__(self) -> None:
@@ -206,7 +206,7 @@ class FakePlan:
 def store() -> SessionStore:
     """Create session store."""
 
-    return SessionStore(TestConnection())
+    return SessionStore(FakeConnection())
 
 
 class TestSessionStore:

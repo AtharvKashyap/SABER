@@ -12,7 +12,7 @@ import pytest
 from saber.storage.evidence_index import EvidenceIndex
 
 
-class TestConnection:
+class FakeConnection:
     """Small sqlite test connection with the store interface."""
 
     def __init__(self) -> None:
@@ -66,7 +66,7 @@ class TestConnection:
 def store() -> EvidenceIndex:
     """Create evidence index."""
 
-    return EvidenceIndex(TestConnection())
+    return EvidenceIndex(FakeConnection())
 
 
 def write_file(path: Path, content: str) -> Path:

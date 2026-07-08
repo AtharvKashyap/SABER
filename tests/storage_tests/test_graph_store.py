@@ -11,7 +11,7 @@ from saber.parsers.base import ParsedObservation
 from saber.storage.graph_store import GraphStore
 
 
-class TestConnection:
+class FakeConnection:
     """Small sqlite test connection with the store interface."""
 
     def __init__(self) -> None:
@@ -83,7 +83,7 @@ class TestConnection:
 def store() -> GraphStore:
     """Create graph store."""
 
-    return GraphStore(TestConnection())
+    return GraphStore(FakeConnection())
 
 
 class TestGraphStore:
