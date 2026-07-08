@@ -209,7 +209,7 @@ class TestXlsxExporter:
         XlsxExporter().export(document, output_path)
         workbook = load_workbook(output_path)
 
-        assert workbook["Summary"]["B6"].value == 0
+        assert workbook["Summary"]["B7"].value == 0
         assert workbook["Findings"].max_row == 1
         assert workbook["Observations"].max_row == 1
         assert workbook["Evidence"].max_row == 1
