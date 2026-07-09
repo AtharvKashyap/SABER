@@ -10,6 +10,8 @@ from typing import Any
 from uuid import uuid4
 
 from saber.agents.base_agent import AgentObservation
+from saber.agents.llm_decision_engine import LlmDecisionEngine
+from saber.core.prompt_loader import PromptLoader
 from saber.core.runtime import SaberConfig, SaberRuntime, build_saber_runtime
 from saber.models.session import MissionSession
 from saber.models.target import Target, TargetType
@@ -73,6 +75,7 @@ def run_cli_mission(
 
     mission_started_at = time.time()
     runtime = build_saber_runtime(config)
+    _configure_llm_agents(runtime, agent_mode=agent_mode)
 
     try:
         session = _make_session(session_id, resolved_mission_name, target_value, normalized_profile, dry_run)
@@ -89,6 +92,7 @@ def run_cli_mission(
                     "objective": resolved_objective,
                     "dry_run": dry_run,
                     "require_approval": require_approval,
+                    "agent_mode": agent_mode,
                     "agent_mode": agent_mode,
                     "started_at": datetime.now(UTC).isoformat(),
                 },
@@ -124,6 +128,7 @@ def run_cli_mission(
                     "profile": normalized_profile,
                     "dry_run": dry_run,
                     "require_approval": require_approval,
+                    "agent_mode": agent_mode,
                 },
                 metadata={
                     "source": "cli_run",
@@ -151,6 +156,7 @@ def run_cli_mission(
                     "profile": normalized_profile,
                     "dry_run": dry_run,
                     "require_approval": require_approval,
+                    "agent_mode": agent_mode,
                     "phase": "pre_report",
                 },
                 metadata={
@@ -189,6 +195,7 @@ def run_cli_mission(
                     "profile": normalized_profile,
                     "dry_run": dry_run,
                     "require_approval": require_approval,
+                    "agent_mode": agent_mode,
                     "phase": "report",
                 },
                 metadata={
@@ -341,6 +348,24 @@ def _save_agent_observation(runtime: SaberRuntime, session_id: str, observation:
 
 
 
+
+
+def _configure_llm_agents(runtime: SaberRuntime, agent_mode: str) -> None:
+    """Attach LLM decision engine to compatible agents in LLM mode."""
+
+    if str(agent_mode).lower() != "llm":
+        return
+
+    engine = LlmDecisionEngine(
+        llm_client=runtime.llm_client,
+        tool_catalog=runtime.tool_catalog,
+        prompt_loader=PromptLoader(),
+    )
+
+    for agent in runtime.agents.values():
+        setter = getattr(agent, "set_llm_decision_engine", None)
+        if callable(setter):
+            setter(engine)
 
 def split_plan_for_reporting(plan: ExecutionPlan) -> tuple[ExecutionPlan, ExecutionPlan | None]:
     """Split a plan into pre-report steps and report-only steps.

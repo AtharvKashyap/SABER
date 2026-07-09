@@ -198,17 +198,17 @@ def _infer_actions(*, name: str, category: str, phase: str) -> list[ToolActionSp
         "masscan": [
             ToolActionSpec(
                 tool_name="masscan",
-                action="fast_port_scan",
-                description="High-speed port discovery. Can be noisy.",
+                action="top_ports",
+                description="High-speed top-port discovery. Can be noisy.",
                 risk="medium",
                 requires_approval=True,
-                example_args={"target": "127.0.0.1", "ports": "1-65535", "rate": "1000"},
+                example_args={"target": "127.0.0.1", "ports": "1-1000", "rate": 1000},
             )
         ],
         "subfinder": [
             ToolActionSpec(
                 tool_name="subfinder",
-                action="subdomain_enum",
+                action="passive",
                 description="Passive subdomain enumeration for a domain target.",
                 risk="low",
                 requires_approval=False,
@@ -228,11 +228,21 @@ def _infer_actions(*, name: str, category: str, phase: str) -> list[ToolActionSp
         "dnsrecon": [
             ToolActionSpec(
                 tool_name="dnsrecon",
-                action="dns_enum",
+                action="standard",
                 description="DNS record enumeration.",
                 risk="low",
                 requires_approval=False,
                 example_args={"domain": "example.com"},
+            )
+        ],
+        "theharvester": [
+            ToolActionSpec(
+                tool_name="theharvester",
+                action="search",
+                description="OSINT harvesting for emails, hosts, and public references.",
+                risk="low",
+                requires_approval=False,
+                example_args={"domain": "example.com", "source": "all"},
             )
         ],
         "whatweb": [

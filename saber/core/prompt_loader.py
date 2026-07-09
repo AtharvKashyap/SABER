@@ -49,9 +49,15 @@ class PromptLoader:
 
         common = self.load_optional("common_agent_policy.txt")
 
+        short_name = agent_name.replace("_agent", "")
+
         candidates = [
             f"{agent_name}.txt",
-            f"{agent_name.replace('_agent', '')}.txt",
+            f"{agent_name}_prompt.txt",
+            f"{short_name}.txt",
+            f"{short_name}_agent.txt",
+            f"{short_name}_agent_prompt.txt",
+            f"{short_name}_prompt.txt",
         ]
 
         agent_prompt = ""
