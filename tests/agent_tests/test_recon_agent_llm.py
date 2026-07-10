@@ -65,7 +65,8 @@ def test_recon_agent_uses_llm_decision_in_llm_mode(tmp_path) -> None:
         prompt_loader=PromptLoader(prompt_dir),
     )
 
-    agent = ReconAgent(llm_decision_engine=engine)
+    agent = ReconAgent()
+    agent.set_llm_decision_engine(engine)
 
     context = AgentContext(
         session=MissionSession(session_id="test_session", mission_name="Test Mission"),
@@ -82,7 +83,7 @@ def test_recon_agent_uses_llm_decision_in_llm_mode(tmp_path) -> None:
     assert decision.tool_call is not None
     assert decision.tool_call.tool_name == "nmap"
     assert decision.tool_call.action == "service_scan"
-    assert decision.metadata["workflow_step"] == "llm_selected_recon"
+    assert decision.metadata["workflow_step"] == "llm_selected_action"
 
 
 def test_recon_agent_rejects_invalid_llm_tool(tmp_path) -> None:
@@ -107,7 +108,8 @@ def test_recon_agent_rejects_invalid_llm_tool(tmp_path) -> None:
         prompt_loader=PromptLoader(prompt_dir),
     )
 
-    agent = ReconAgent(llm_decision_engine=engine)
+    agent = ReconAgent()
+    agent.set_llm_decision_engine(engine)
 
     context = AgentContext(
         session=MissionSession(session_id="test_session", mission_name="Test Mission"),
