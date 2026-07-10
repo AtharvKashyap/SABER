@@ -43,6 +43,9 @@ class NetworkAgent(BaseAgent):
 
         objective = context.objective.strip() or "Enumerate network services."
 
+        if llm_decision := self.try_llm_decision(context, objective=objective):
+            return llm_decision
+
         if self._mentions_smb(context):
             return AgentDecision(
                 action_type=AgentActionType.TOOL,
