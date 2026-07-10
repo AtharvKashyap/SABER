@@ -43,6 +43,9 @@ class ReverseEngineerAgent(BaseAgent):
 
         objective = context.objective.strip() or "Analyze binary."
 
+        if llm_decision := self.try_llm_decision(context, objective=objective):
+            return llm_decision
+
         if self._is_complete(context):
             return AgentDecision(
                 action_type=AgentActionType.STOP,
