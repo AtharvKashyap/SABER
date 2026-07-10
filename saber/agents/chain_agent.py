@@ -43,6 +43,9 @@ class ChainAgent(BaseAgent):
 
         objective = context.objective.strip() or "Coordinate the next evidence-backed chain step."
 
+        if llm_decision := self.try_llm_decision(context, objective=objective):
+            return llm_decision
+
         if not context.observations:
             return AgentDecision(
                 action_type=AgentActionType.HANDOFF,
