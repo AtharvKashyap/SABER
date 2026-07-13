@@ -73,6 +73,15 @@ class ChainAgent(BaseAgent):
                 metadata={"reason": "web_surface_observed"},
             )
 
+        if self._has_network_surface(context.observations):
+            return AgentDecision(
+                action_type=AgentActionType.HANDOFF,
+                objective=objective,
+                handoff_agent="network_agent",
+                message="Network service surface was observed. Hand off to network testing.",
+                metadata={"reason": "network_surface_observed"},
+            )
+
         if self._has_possible_vulnerability(context.observations):
             return AgentDecision(
                 action_type=AgentActionType.HANDOFF,
@@ -83,10 +92,11 @@ class ChainAgent(BaseAgent):
             )
 
         return AgentDecision(
-            action_type=AgentActionType.STOP,
+            action_type=AgentActionType.HANDOFF,
             objective=objective,
-            message="No actionable chain step found from current observations.",
-            metadata={"reason": "no_actionable_chain"},
+            handoff_agent="reporter_agent",
+            message="No additional actionable chain step found. Hand off to reporting.",
+            metadata={"reason": "ready_for_reporting"},
         )
 
     def build_custom_cli_decision(
@@ -129,6 +139,50 @@ class ChainAgent(BaseAgent):
             ChainAgent._contains_any(
                 observation,
                 ["http", "https", "web", "port 80", "port 443", "nginx", "apache", "iis"],
+            )
+            for observation in observations
+        )
+
+    @staticmethod
+    def _has_network_surface(observations: list[AgentObservation]) -> bool:
+        """Return whether observations mention non-web network service surface."""
+
+        return any(
+            ChainAgent._contains_any(
+                observation,
+                [
+                    "ssh",
+                    "smb",
+                    "microsoft-ds",
+                    "netbios",
+                    "ldap",
+                    "kerberos",
+                    "rdp",
+                    "ms-wbt-server",
+                    "winrm",
+                    "snmp",
+                    "rpcbind",
+                    "rpc",
+                    "nfs",
+                    "ftp",
+                    "telnet",
+                    "mysql",
+                    "postgres",
+                    "mssql",
+                    "redis",
+                    "mongodb",
+                    "port 22",
+                    "port 21",
+                    "port 23",
+                    "port 111",
+                    "port 135",
+                    "port 139",
+                    "port 161",
+                    "port 389",
+                    "port 445",
+                    "port 3389",
+                    "open_service",
+                ],
             )
             for observation in observations
         )

@@ -200,9 +200,13 @@ class NetworkAgent(BaseAgent):
 
     @staticmethod
     def _needs_vulnerability_scan(context: AgentContext) -> bool:
-        """Return whether context suggests broader vulnerability scanning."""
+        """Return whether context explicitly requests OpenVAS/GVM workflow.
 
-        return NetworkAgent._context_contains(context, ["openvas", "vulnerability scan", "many services", "scan target"])
+        Do not trigger OpenVAS just because many services exist. OpenVAS depends
+        on an external scanner service and should only run when explicitly asked.
+        """
+
+        return NetworkAgent._context_contains(context, ["openvas", "gvm", "greenbone"])
 
     @staticmethod
     def _context_contains(context: AgentContext, needles: list[str]) -> bool:

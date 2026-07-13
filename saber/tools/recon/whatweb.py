@@ -192,3 +192,21 @@ class WhatWebWrapper(BaseToolWrapper):
         if parsed <= 0:
             raise ValueError(f"{key} must be a positive integer")
         return parsed
+
+    @staticmethod
+    def _validate_aggression(value: Any) -> int:
+        """Validate WhatWeb aggression level.
+
+        WhatWeb accepts 1, 3, or 4. Level 1 is safest/default.
+        """
+
+        try:
+            aggression = int(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("aggression must be one of: 1, 3, 4") from exc
+
+        if aggression not in {1, 3, 4}:
+            raise ValueError("aggression must be one of: 1, 3, 4")
+
+        return aggression
+

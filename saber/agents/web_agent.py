@@ -62,8 +62,8 @@ class WebAgent(BaseAgent):
                 tool_call=AgentToolCall(
                     tool_name="whatweb",
                     action="fingerprint",
-                    args={"aggression": 2},
-                    reason="Start web testing with technology fingerprinting.",
+                    args={"aggression": 1},
+                    reason="Start web testing with safe technology fingerprinting.",
                     metadata={"workflow_step": "web_fingerprinting"},
                 ),
                 metadata={"workflow_step": "web_fingerprinting"},

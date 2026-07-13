@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -85,6 +86,8 @@ class ResultProcessor:
         It supports SABER ToolResult objects, dictionaries, and simple fake test
         objects.
         """
+
+        self._ensure_session_exists(session_id)
 
         metadata = dict(metadata or {})
         inferred_tool = tool_name or self._get(tool_result, "tool_name") or self._get(tool_result, "tool") or "unknown"
@@ -160,6 +163,16 @@ class ResultProcessor:
                     )
                     observation_ids.append(observation_id)
 
+                    promoted_finding = self._finding_from_observation(observation)
+                    if promoted_finding is not None:
+                        finding_id = self.finding_store.save_finding(
+                            session_id=session_id,
+                            finding=promoted_finding,
+                            step_id=step_id,
+                            evidence_id=evidence_ids[0] if evidence_ids else None,
+                        )
+                        finding_ids.append(finding_id)
+
                     if self.graph_store.save_from_observation(session_id, observation):
                         graph_updates += 1
                 except Exception as exc:
@@ -207,6 +220,8 @@ class ResultProcessor:
         this method does not write duplicate raw evidence files.
         """
 
+        self._ensure_session_exists(session_id)
+
         errors: list[str] = []
         finding_ids: list[str] = []
         observation_ids: list[str] = []
@@ -221,6 +236,21 @@ class ResultProcessor:
             "evidence_id": evidence_id,
             "path": str(path),
         }
+
+        if evidence_id is None:
+            try:
+                evidence_id = self.evidence_index.add_evidence(
+                    session_id=session_id,
+                    step_id=step_id,
+                    tool_name=tool_name,
+                    action=action,
+                    title=f"{tool_name} evidence",
+                    path=path,
+                    metadata=parse_metadata,
+                )
+                parse_metadata["evidence_id"] = evidence_id
+            except Exception as exc:
+                errors.append(f"evidence_index:{type(exc).__name__}: {exc}")
 
         dispatch = self.parser_registry.parse_file(
             tool_name=tool_name,
@@ -242,6 +272,16 @@ class ResultProcessor:
                         evidence_id=evidence_id,
                     )
                     observation_ids.append(observation_id)
+
+                    promoted_finding = self._finding_from_observation(observation)
+                    if promoted_finding is not None:
+                        finding_id = self.finding_store.save_finding(
+                            session_id=session_id,
+                            finding=promoted_finding,
+                            step_id=step_id,
+                            evidence_id=evidence_id,
+                        )
+                        finding_ids.append(finding_id)
 
                     if self.graph_store.save_from_observation(session_id, observation):
                         graph_updates += 1
@@ -346,6 +386,127 @@ class ResultProcessor:
             "result": None,
             "errors": [f"No parseable output found for tool: {tool_name}"],
         }
+
+    def _ensure_session_exists(self, session_id: str) -> None:
+        """Ensure FK parent session exists before evidence/finding writes.
+
+        ResultProcessor may be used from tests, CLI, GUI, or orchestrator paths.
+        Some callers create sessions earlier; some only pass a MissionSession-like
+        ID. This keeps evidence/finding persistence from failing FK checks.
+        """
+
+        if not session_id:
+            return
+
+        connection = getattr(self.evidence_index, "connection", None)
+        if connection is None:
+            return
+
+        try:
+            existing = connection.query_one(
+                "SELECT session_id FROM sessions WHERE session_id = ?",
+                (session_id,),
+            )
+            if existing:
+                return
+
+            now = datetime.now(UTC).isoformat()
+            connection.execute(
+                """
+                INSERT INTO sessions (
+                    session_id, mission_name, status, created_at, updated_at, metadata_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    session_id,
+                    session_id,
+                    "running",
+                    now,
+                    now,
+                    "{}",
+                ),
+            )
+        except Exception:
+            # Do not make session auto-creation fatal. The downstream insert will
+            # surface a precise storage error if the session still cannot exist.
+            return
+
+    def _finding_from_observation(self, observation: Any) -> dict[str, Any] | None:
+        """Promote important parser observations into reportable findings."""
+
+        kind = self._value_from_observation(observation, "kind")
+        data = self._value_from_observation(observation, "data") or {}
+        summary = self._value_from_observation(observation, "summary") or ""
+        source_tool = self._value_from_observation(observation, "source_tool") or "unknown"
+
+        if not isinstance(data, dict):
+            data = {}
+
+        if kind != "service":
+            return None
+
+        state = str(data.get("state") or "").lower()
+        if state != "open":
+            return None
+
+        host = data.get("host") or "unknown-host"
+        port = data.get("port") or "unknown-port"
+        protocol = data.get("protocol") or "tcp"
+        service = data.get("service") or "unknown"
+        product = data.get("product")
+        version = data.get("version")
+
+        service_label = " ".join(str(part) for part in [service, product, version] if part)
+
+        return {
+            "title": f"Open service discovered: {host}:{port}/{protocol}",
+            "severity": "info",
+            "description": summary
+            or f"{source_tool} discovered an open {service_label or service} service on {host}:{port}/{protocol}.",
+            "source_tool": source_tool,
+            "evidence": {
+                "host": host,
+                "port": port,
+                "protocol": protocol,
+                "service": service,
+                "product": product,
+                "version": version,
+            },
+            "references": [],
+            "metadata": {
+                "finding_type": "open_service",
+                "observation_kind": kind,
+                "observation_data": data,
+            },
+        }
+
+    @staticmethod
+    def _value_from_observation(observation: Any, key: str) -> Any:
+        """Read value from dict, dataclass, pydantic model, or plain object."""
+
+        if isinstance(observation, dict):
+            return observation.get(key)
+
+        if hasattr(observation, key):
+            return getattr(observation, key)
+
+        if hasattr(observation, "model_dump"):
+            dumped = observation.model_dump()
+            if isinstance(dumped, dict):
+                return dumped.get(key)
+
+        if hasattr(observation, "dict"):
+            dumped = observation.dict()
+            if isinstance(dumped, dict):
+                return dumped.get(key)
+
+        if hasattr(observation, "to_dict"):
+            dumped = observation.to_dict()
+            if isinstance(dumped, dict):
+                return dumped.get(key)
+
+        return None
 
     def _extract_outputs(self, tool_result: Any) -> dict[str, Any]:
         """Extract raw outputs from flexible tool result shapes."""

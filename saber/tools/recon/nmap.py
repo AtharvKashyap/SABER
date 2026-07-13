@@ -132,7 +132,9 @@ class NmapWrapper(BaseToolWrapper):
         }
 
         if action == "service_scan":
-            command = ["nmap", "-sV", "-sC"]
+            # Docker Desktop on macOS does not reliably allow raw socket scans.
+            # -sT uses TCP connect scan and works consistently in the sandbox.
+            command = ["nmap", "-sT", "-sV", "-sC"]
             relative_dir = "recon/nmap/service_scan"
             title = f"Nmap service scan: {destination}"
 

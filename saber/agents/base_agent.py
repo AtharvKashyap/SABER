@@ -199,13 +199,27 @@ class BaseAgent(ABC):
         self.validate_context(context)
         decision = self.decide(context)
 
-        if decision.requires_approval or decision.action_type == AgentActionType.ASK_APPROVAL:
+        tool_call_requires_approval = (
+            decision.tool_call.requires_approval if decision.tool_call is not None else False
+        )
+
+        if (
+            decision.requires_approval
+            or tool_call_requires_approval
+            or decision.action_type == AgentActionType.ASK_APPROVAL
+        ):
             return AgentRunResult(
                 agent_name=self.config.name,
                 status=AgentRunStatus.NEEDS_APPROVAL,
                 decision=decision,
                 observations=[],
-                metadata={**self.config.default_metadata, "phase": self.config.phase.value},
+                metadata={
+                    **self.config.default_metadata,
+                    "phase": self.config.phase.value,
+                    "approval_gate": True,
+                    "decision_requires_approval": decision.requires_approval,
+                    "tool_call_requires_approval": tool_call_requires_approval,
+                },
             )
 
         if decision.action_type == AgentActionType.STOP:

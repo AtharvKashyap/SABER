@@ -203,6 +203,8 @@ def build_saber_runtime(
         sandbox=runtime_sandbox,
         step_runner=step_runner,
         chain_runner=chain_runner,
+        result_processor=result_processor,
+        reports_dir=runtime_config.reports_dir,
         max_steps=runtime_config.max_steps,
     )
 
