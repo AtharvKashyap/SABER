@@ -10,6 +10,8 @@ from typing import Any
 from uuid import uuid4
 
 from saber.agents.base_agent import AgentObservation
+from saber.agents.llm_decision_engine import LlmDecisionEngine
+from saber.core.prompt_loader import PromptLoader
 from saber.core.runtime import SaberConfig, SaberRuntime, build_saber_runtime
 from saber.models.session import MissionSession
 from saber.models.target import Target, TargetType
@@ -48,6 +50,8 @@ def run_cli_mission(
     require_approval: bool = True,
     max_steps: int = 50,
     dry_run: bool = False,
+    agent_mode: str = "deterministic",
+    session_id: str | None = None,
 ) -> dict[str, Any]:
     """Run a SABER mission from the CLI and persist the result."""
 
@@ -55,7 +59,7 @@ def run_cli_mission(
     if normalized_profile not in PROFILE_AGENTS:
         raise ValueError(f"Unsupported profile: {profile}. Expected one of: {', '.join(sorted(PROFILE_AGENTS))}")
 
-    session_id = f"session_{uuid4().hex[:12]}"
+    session_id = session_id or f"session_{uuid4().hex[:12]}"
     resolved_mission_name = mission_name or f"SABER {normalized_profile} mission for {target_value}"
     resolved_objective = objective or _objective_for_profile(normalized_profile, target_value)
 
@@ -66,11 +70,13 @@ def run_cli_mission(
         profile=normalized_profile,
         require_approval=require_approval,
         max_steps=max_steps,
+        agent_mode=agent_mode,
         metadata={"source": "cli_run"},
     )
 
     mission_started_at = time.time()
     runtime = build_saber_runtime(config)
+    _configure_llm_agents(runtime, agent_mode=agent_mode)
 
     try:
         session = _make_session(session_id, resolved_mission_name, target_value, normalized_profile, dry_run)
@@ -87,6 +93,8 @@ def run_cli_mission(
                     "objective": resolved_objective,
                     "dry_run": dry_run,
                     "require_approval": require_approval,
+                    "agent_mode": agent_mode,
+                    "agent_mode": agent_mode,
                     "started_at": datetime.now(UTC).isoformat(),
                 },
             }
@@ -121,6 +129,7 @@ def run_cli_mission(
                     "profile": normalized_profile,
                     "dry_run": dry_run,
                     "require_approval": require_approval,
+                    "agent_mode": agent_mode,
                 },
                 metadata={
                     "source": "cli_run",
@@ -148,6 +157,7 @@ def run_cli_mission(
                     "profile": normalized_profile,
                     "dry_run": dry_run,
                     "require_approval": require_approval,
+                    "agent_mode": agent_mode,
                     "phase": "pre_report",
                 },
                 metadata={
@@ -186,6 +196,7 @@ def run_cli_mission(
                     "profile": normalized_profile,
                     "dry_run": dry_run,
                     "require_approval": require_approval,
+                    "agent_mode": agent_mode,
                     "phase": "report",
                 },
                 metadata={
@@ -225,6 +236,8 @@ def run_cli_mission(
             "observations": stored_observations,
             "evidence": stored_evidence,
             "dry_run": dry_run,
+            "agent_mode": agent_mode,
+            "llm_enabled": runtime.llm_client.enabled,
             "next_commands": [
                 f"python -m saber.ui.cli.main sessions show {session_id}",
                 f"python -m saber.ui.cli.main live {session_id} --once",
@@ -336,6 +349,24 @@ def _save_agent_observation(runtime: SaberRuntime, session_id: str, observation:
 
 
 
+
+
+def _configure_llm_agents(runtime: SaberRuntime, agent_mode: str) -> None:
+    """Attach LLM decision engine to compatible agents in LLM mode."""
+
+    if str(agent_mode).lower() != "llm":
+        return
+
+    engine = LlmDecisionEngine(
+        llm_client=runtime.llm_client,
+        tool_catalog=runtime.tool_catalog,
+        prompt_loader=PromptLoader(),
+    )
+
+    for agent in runtime.agents.values():
+        setter = getattr(agent, "set_llm_decision_engine", None)
+        if callable(setter):
+            setter(engine)
 
 def split_plan_for_reporting(plan: ExecutionPlan) -> tuple[ExecutionPlan, ExecutionPlan | None]:
     """Split a plan into pre-report steps and report-only steps.

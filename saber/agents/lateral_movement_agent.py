@@ -43,6 +43,9 @@ class LateralMovementAgent(BaseAgent):
 
         objective = context.objective.strip() or "Plan and validate lateral movement."
 
+        if llm_decision := self.try_llm_decision(context, objective=objective):
+            return llm_decision
+
         if not context.observations:
             return AgentDecision(
                 action_type=AgentActionType.STOP,

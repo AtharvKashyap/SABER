@@ -3,17 +3,35 @@
 from __future__ import annotations
 
 from collections import Counter
+from threading import Thread
 from typing import Any
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, Field
 
 from saber.storage.evidence_index import EvidenceIndex
 from saber.storage.finding_store import FindingStore
 from saber.storage.graph_store import GraphStore
 from saber.storage.session_store import SessionStore
+from saber.ui.cli.run_command import PROFILE_AGENTS, run_cli_mission
 
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
+
+
+class MissionRunRequest(BaseModel):
+    """Start mission request from the web UI."""
+
+    target: str = Field(..., min_length=1, max_length=512)
+    profile: str = Field(default="recon", min_length=1, max_length=64)
+    mission_name: str | None = Field(default=None, max_length=256)
+    objective: str | None = Field(default=None, max_length=2048)
+    max_steps: int = Field(default=20, ge=1, le=200)
+    require_approval: bool = True
+    dry_run: bool = False
+    agent_mode: str = Field(default="deterministic", pattern="^(deterministic|llm)$")
+
 
 
 def _session_store(request: Request) -> SessionStore:
@@ -54,6 +72,57 @@ def list_sessions(request: Request, limit: int = 100) -> dict[str, Any]:
         "charts": {
             "mission_status": _chart_rows(status_counts, "status"),
         },
+    }
+
+
+
+@router.post("/run")
+def run_mission_from_web(request: Request, run_request: MissionRunRequest) -> dict[str, Any]:
+    """Start a SABER mission from the web UI.
+
+    The mission runs in a daemon thread. The response returns immediately with a
+    session ID that the UI can poll through existing session/timeline/report APIs.
+    """
+
+    profile = run_request.profile.strip().lower()
+    if profile not in PROFILE_AGENTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported profile: {profile}. Expected one of: {', '.join(sorted(PROFILE_AGENTS))}",
+        )
+
+    session_id = f"session_{uuid4().hex[:12]}"
+    db_path = str(getattr(request.app.state, "db_path", "runs/saber.db"))
+    reports_dir = str(getattr(request.app.state, "reports_dir", "runs/reports"))
+    evidence_dir = str(getattr(request.app.state, "evidence_dir", "runs/evidence"))
+
+    kwargs = {
+        "session_id": session_id,
+        "target_value": run_request.target.strip(),
+        "profile": profile,
+        "mission_name": run_request.mission_name,
+        "objective": run_request.objective,
+        "db_path": db_path,
+        "evidence_dir": evidence_dir,
+        "reports_dir": reports_dir,
+        "require_approval": run_request.require_approval,
+        "max_steps": run_request.max_steps,
+        "dry_run": run_request.dry_run,
+        "agent_mode": run_request.agent_mode,
+    }
+
+    thread = Thread(target=run_cli_mission, kwargs=kwargs, daemon=True)
+    thread.start()
+
+    return {
+        "session_id": session_id,
+        "status": "started",
+        "target": run_request.target.strip(),
+        "profile": profile,
+        "detail_url": f"/ui/sessions/{session_id}",
+        "api_url": f"/sessions/{session_id}",
+        "timeline_url": f"/sessions/{session_id}/timeline",
+        "reports_url": f"/sessions/{session_id}/reports",
     }
 
 

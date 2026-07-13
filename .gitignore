@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyc
 
 # Python build / packaging
 build/
@@ -51,6 +52,8 @@ sessions/*
 !sessions/.gitkeep
 output/*
 !output/.gitkeep
+runs/*
+!runs/.gitkeep
 
 # Evidence and generated reports
 reports/

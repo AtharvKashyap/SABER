@@ -16,6 +16,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from saber.agents.llm_decision import LlmDecisionType
+from saber.agents.llm_decision_engine import LlmDecisionContext, LlmDecisionEngine
 from saber.core.sandbox import Sandbox, SandboxExecutionResult
 from saber.models.scope import AssessmentPhase
 from saber.models.session import MissionSession
@@ -185,6 +187,7 @@ class BaseAgent(ABC):
         """Initialize base agent."""
 
         self.config = config
+        self.llm_decision_engine: LlmDecisionEngine | None = None
 
     @abstractmethod
     def decide(self, context: AgentContext) -> AgentDecision:
@@ -196,13 +199,27 @@ class BaseAgent(ABC):
         self.validate_context(context)
         decision = self.decide(context)
 
-        if decision.requires_approval or decision.action_type == AgentActionType.ASK_APPROVAL:
+        tool_call_requires_approval = (
+            decision.tool_call.requires_approval if decision.tool_call is not None else False
+        )
+
+        if (
+            decision.requires_approval
+            or tool_call_requires_approval
+            or decision.action_type == AgentActionType.ASK_APPROVAL
+        ):
             return AgentRunResult(
                 agent_name=self.config.name,
                 status=AgentRunStatus.NEEDS_APPROVAL,
                 decision=decision,
                 observations=[],
-                metadata={**self.config.default_metadata, "phase": self.config.phase.value},
+                metadata={
+                    **self.config.default_metadata,
+                    "phase": self.config.phase.value,
+                    "approval_gate": True,
+                    "decision_requires_approval": decision.requires_approval,
+                    "tool_call_requires_approval": tool_call_requires_approval,
+                },
             )
 
         if decision.action_type == AgentActionType.STOP:
@@ -266,6 +283,187 @@ class BaseAgent(ABC):
                 **tool_call.metadata,
             },
         )
+
+    def set_llm_decision_engine(self, engine: LlmDecisionEngine | None) -> None:
+        """Attach or replace the LLM decision engine."""
+
+        self.llm_decision_engine = engine
+
+    def try_llm_decision(self, context: AgentContext, objective: str | None = None) -> AgentDecision | None:
+        """Return an LLM-produced AgentDecision when LLM mode is enabled.
+
+        Returns None when deterministic mode is active or no engine is attached.
+        """
+
+        if not self._should_use_llm(context):
+            return None
+
+        return self._decide_with_llm(
+            context=context,
+            objective=(objective or context.objective or self.config.description or "Continue mission.").strip(),
+        )
+
+    def _should_use_llm(self, context: AgentContext) -> bool:
+        """Return whether this agent should use LLM decision mode."""
+
+        mode = (
+            context.constraints.get("agent_mode")
+            or context.metadata.get("agent_mode")
+            or context.constraints.get("mode")
+            or context.metadata.get("mode")
+            or "deterministic"
+        )
+        return str(mode).lower() == "llm" and self.llm_decision_engine is not None
+
+    def _decide_with_llm(self, context: AgentContext, objective: str) -> AgentDecision:
+        """Use LLM decision engine to select the next action."""
+
+        assert self.llm_decision_engine is not None
+
+        result = self.llm_decision_engine.decide(
+            LlmDecisionContext(
+                agent_name=self.config.name,
+                objective=objective,
+                target=self._target_to_dict(context),
+                profile=str(context.constraints.get("profile", "recon")),
+                execution_mode=str(context.constraints.get("execution_mode", "assessment")),
+                scope=self._dict_from_context(context, "scope"),
+                roe=self._dict_from_context(context, "roe"),
+                observations=[self._observation_to_dict(obs) for obs in context.observations],
+                metadata={
+                    "agent_phase": self.config.phase.value,
+                    "constraints": context.constraints,
+                    "metadata": context.metadata,
+                },
+            )
+        )
+
+        if not result.valid:
+            return AgentDecision(
+                action_type=AgentActionType.STOP,
+                objective=objective,
+                message=f"LLM decision for {self.config.name} failed validation.",
+                metadata={
+                    "reason": "llm_decision_invalid",
+                    "errors": result.validation.errors,
+                    "decision": result.decision.to_dict(),
+                    "raw_response": result.raw_response,
+                },
+            )
+
+        decision = result.decision
+
+        if decision.decision == LlmDecisionType.HANDOFF:
+            return AgentDecision(
+                action_type=AgentActionType.HANDOFF,
+                objective=objective,
+                handoff_agent=decision.handoff_agent,
+                message=decision.reason or f"LLM selected handoff to {decision.handoff_agent}.",
+                metadata={
+                    "reason": "llm_handoff",
+                    "llm_decision": decision.to_dict(),
+                },
+            )
+
+        if decision.decision == LlmDecisionType.STOP:
+            return AgentDecision(
+                action_type=AgentActionType.STOP,
+                objective=objective,
+                message=decision.reason or "LLM selected stop.",
+                metadata={
+                    "reason": "llm_stop",
+                    "llm_decision": decision.to_dict(),
+                },
+            )
+
+        if decision.decision == LlmDecisionType.REPORT:
+            return AgentDecision(
+                action_type=AgentActionType.HANDOFF,
+                objective=objective,
+                handoff_agent="reporter_agent",
+                message=decision.reason or "LLM selected reporting handoff.",
+                metadata={
+                    "reason": "llm_report_handoff",
+                    "llm_decision": decision.to_dict(),
+                },
+            )
+
+        if decision.decision in {LlmDecisionType.RUN_TOOL, LlmDecisionType.REQUEST_APPROVAL}:
+            requires_approval = (
+                decision.requires_approval
+                or result.validation.normalized_requires_approval
+                or decision.decision == LlmDecisionType.REQUEST_APPROVAL
+            )
+
+            return AgentDecision(
+                action_type=AgentActionType.ASK_APPROVAL if requires_approval else AgentActionType.TOOL,
+                objective=objective,
+                requires_approval=requires_approval,
+                message=decision.reason,
+                tool_call=AgentToolCall(
+                    tool_name=decision.tool_name or "",
+                    action=decision.tool_action or "",
+                    args=decision.args,
+                    reason=decision.reason,
+                    requires_approval=requires_approval,
+                    metadata={
+                        "workflow_step": "llm_selected_action",
+                        "llm_decision": decision.to_dict(),
+                        "expected_evidence": decision.expected_evidence,
+                    },
+                ),
+                metadata={
+                    "workflow_step": "llm_selected_action",
+                    "llm_decision": decision.to_dict(),
+                    "validation_requires_approval": result.validation.normalized_requires_approval,
+                },
+            )
+
+        return AgentDecision(
+            action_type=AgentActionType.STOP,
+            objective=objective,
+            message="Unsupported LLM decision.",
+            metadata={
+                "reason": "llm_decision_unsupported",
+                "llm_decision": decision.to_dict(),
+            },
+        )
+
+    @staticmethod
+    def _target_to_dict(context: AgentContext) -> dict[str, Any]:
+        """Serialize target for LLM context."""
+
+        target = context.target
+
+        if hasattr(target, "to_dict"):
+            return target.to_dict()
+
+        if hasattr(target, "model_dump"):
+            return target.model_dump(mode="json")
+
+        return {
+            "type": getattr(getattr(target, "type", None), "value", getattr(target, "type", "unknown")),
+            "value": getattr(target, "value", str(target)),
+        }
+
+    @staticmethod
+    def _observation_to_dict(observation: AgentObservation) -> dict[str, Any]:
+        """Serialize observation for LLM context."""
+
+        return {
+            "summary": observation.summary,
+            "tool_name": observation.tool_name,
+            "action": observation.action,
+            "success": observation.success,
+            "metadata": observation.metadata,
+        }
+
+    @staticmethod
+    def _dict_from_context(context: AgentContext, key: str) -> dict[str, Any]:
+        """Load dict from constraints or metadata."""
+
+        value = context.constraints.get(key) or context.metadata.get(key) or {}
+        return value if isinstance(value, dict) else {}
 
     def load_prompt(self) -> str:
         """Load this agent's prompt text, if configured."""

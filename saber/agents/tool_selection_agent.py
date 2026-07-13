@@ -88,6 +88,9 @@ class ToolSelectionAgent(BaseAgent):
         """Select a tool and return a TOOL decision."""
 
         objective = context.objective.strip() or "Select the next tool."
+
+        if llm_decision := self.try_llm_decision(context, objective=objective):
+            return llm_decision
         selection = self.select_tool(context)
 
         if selection is None:

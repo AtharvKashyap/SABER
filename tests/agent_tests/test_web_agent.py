@@ -105,7 +105,7 @@ class TestWebAgent:
         assert decision.tool_call is not None
         assert decision.tool_call.tool_name == "whatweb"
         assert decision.tool_call.action == "fingerprint"
-        assert decision.tool_call.args["aggression"] == 2
+        assert decision.tool_call.args["aggression"] == 1
         assert decision.metadata["workflow_step"] == "web_fingerprinting"
 
     def test_content_discovery_selects_feroxbuster(self) -> None:

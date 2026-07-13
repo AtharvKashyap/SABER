@@ -44,6 +44,9 @@ class WebAgent(BaseAgent):
 
         objective = context.objective.strip() or "Test web application."
 
+        if llm_decision := self.try_llm_decision(context, objective=objective):
+            return llm_decision
+
         if self._is_complete(context):
             return AgentDecision(
                 action_type=AgentActionType.STOP,
@@ -59,8 +62,8 @@ class WebAgent(BaseAgent):
                 tool_call=AgentToolCall(
                     tool_name="whatweb",
                     action="fingerprint",
-                    args={"aggression": 2},
-                    reason="Start web testing with technology fingerprinting.",
+                    args={"aggression": 1},
+                    reason="Start web testing with safe technology fingerprinting.",
                     metadata={"workflow_step": "web_fingerprinting"},
                 ),
                 metadata={"workflow_step": "web_fingerprinting"},
