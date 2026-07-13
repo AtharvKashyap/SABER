@@ -38,6 +38,7 @@ PUBLIC_PATHS = {
 def create_app(
     db_path: str | Path = "runs/saber.db",
     reports_dir: str | Path = "runs/reports",
+    evidence_dir: str | Path = "runs/evidence",
     allow_origins: list[str] | None = None,
     api_key: str | None = None,
     require_auth: bool | None = None,
@@ -73,9 +74,12 @@ def create_app(
 
     reports_root = Path(reports_dir).resolve()
     reports_root.mkdir(parents=True, exist_ok=True)
+    evidence_root = Path(evidence_dir).resolve()
+    evidence_root.mkdir(parents=True, exist_ok=True)
 
     app.state.db_path = str(db_path)
     app.state.reports_dir = str(reports_root)
+    app.state.evidence_dir = str(evidence_root)
     app.state.auth_required = auth_required
     app.state.api_key = resolved_api_key
     app.state.storage_connection = connection
@@ -166,6 +170,8 @@ def create_app(
             <a class="button secondary" href="/health">Health</a>
           </div>
         </section>
+
+        {_mission_start_panel()}
 
         <section class="cards">
           {_card("Sessions", len(session_rows), "Stored mission sessions")}
@@ -548,6 +554,129 @@ def _layout(title: str, body: str) -> str:
 </body>
 </html>"""
 
+
+
+def _mission_start_panel() -> str:
+    """Render mission start form."""
+
+    return """
+    <section class="panel">
+      <div class="section-title">
+        <div>
+          <h2>Start Mission</h2>
+          <p class="muted">Launch a scoped SABER mission from the browser.</p>
+        </div>
+      </div>
+
+      <form id="mission-start-form" class="mission-form" onsubmit="return startMission(event)">
+        <label>Target
+          <input id="mission-target" name="target" value="127.0.0.1" required />
+        </label>
+
+        <label>Profile
+          <select id="mission-profile" name="profile">
+            <option value="recon">recon</option>
+            <option value="web">web</option>
+            <option value="network">network</option>
+            <option value="full">full</option>
+          </select>
+        </label>
+
+        <label>Mode
+          <select id="mission-agent-mode" name="agent_mode">
+            <option value="deterministic">deterministic</option>
+            <option value="llm">llm</option>
+          </select>
+        </label>
+
+        <label>Max Steps
+          <input id="mission-max-steps" name="max_steps" type="number" min="1" max="200" value="20" />
+        </label>
+
+        <label class="checkbox-row">
+          <input id="mission-require-approval" name="require_approval" type="checkbox" checked />
+          Require approval for risky actions
+        </label>
+
+        <label class="checkbox-row">
+          <input id="mission-dry-run" name="dry_run" type="checkbox" />
+          Dry run
+        </label>
+
+        <label class="wide">Objective
+          <textarea id="mission-objective" name="objective" rows="3">Run a safe scoped assessment and produce reports.</textarea>
+        </label>
+
+        <button class="button" type="submit">Start Mission</button>
+      </form>
+
+      <div id="mission-start-result" class="muted"></div>
+
+      <script>
+      async function startMission(event) {
+        event.preventDefault();
+
+        const result = document.getElementById("mission-start-result");
+        result.innerHTML = "Starting mission...";
+
+        const payload = {
+          target: document.getElementById("mission-target").value,
+          profile: document.getElementById("mission-profile").value,
+          agent_mode: document.getElementById("mission-agent-mode").value,
+          max_steps: parseInt(document.getElementById("mission-max-steps").value || "20", 10),
+          require_approval: document.getElementById("mission-require-approval").checked,
+          dry_run: document.getElementById("mission-dry-run").checked,
+          objective: document.getElementById("mission-objective").value
+        };
+
+        const response = await fetch("/sessions/run", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          result.innerHTML = "Error: " + (data.detail || JSON.stringify(data));
+          return false;
+        }
+
+        result.innerHTML = `
+          Mission started: <code>${data.session_id}</code><br>
+          <a class="button secondary" href="${data.detail_url}">Open mission progress</a>
+          <span id="mission-poll-status">Waiting for session...</span>
+        `;
+
+        pollMissionFromDashboard(data.session_id, data.detail_url);
+        return false;
+      }
+
+      async function pollMissionFromDashboard(sessionId, detailUrl) {
+        const status = document.getElementById("mission-poll-status");
+
+        for (let i = 0; i < 120; i++) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+
+          const response = await fetch(`/sessions/${sessionId}`);
+          if (!response.ok) {
+            status.innerHTML = " Waiting for mission record...";
+            continue;
+          }
+
+          const data = await response.json();
+          const sessionStatus = data.session.status;
+          status.innerHTML = ` Status: <strong>${sessionStatus}</strong>`;
+
+          if (["completed", "failed", "paused_for_approval", "stopped"].includes(sessionStatus)) {
+            status.innerHTML += ` · <a href="${detailUrl}">View results</a>`;
+            break;
+          }
+        }
+      }
+      </script>
+    </section>
+    """
 
 def _card(title: str, value: int, caption: str) -> str:
     return f"""

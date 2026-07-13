@@ -51,6 +51,7 @@ def run_cli_mission(
     max_steps: int = 50,
     dry_run: bool = False,
     agent_mode: str = "deterministic",
+    session_id: str | None = None,
 ) -> dict[str, Any]:
     """Run a SABER mission from the CLI and persist the result."""
 
@@ -58,7 +59,7 @@ def run_cli_mission(
     if normalized_profile not in PROFILE_AGENTS:
         raise ValueError(f"Unsupported profile: {profile}. Expected one of: {', '.join(sorted(PROFILE_AGENTS))}")
 
-    session_id = f"session_{uuid4().hex[:12]}"
+    session_id = session_id or f"session_{uuid4().hex[:12]}"
     resolved_mission_name = mission_name or f"SABER {normalized_profile} mission for {target_value}"
     resolved_objective = objective or _objective_for_profile(normalized_profile, target_value)
 
