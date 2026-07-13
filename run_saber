@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")"
+
+if [ ! -d ".venv" ]; then
+  echo "[-] .venv not found."
+  echo "    Create it with:"
+  echo "    python3 -m venv .venv"
+  echo "    source .venv/bin/activate"
+  echo "    pip install -r requirements.txt -r requirements-dev.txt"
+  exit 1
+fi
+
+source .venv/bin/activate
+python scripts/launch_saber.py "$@"

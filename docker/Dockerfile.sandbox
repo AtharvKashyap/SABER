@@ -73,6 +73,10 @@ RUN python3 -m pip install --break-system-packages -r /tmp/requirements.txt \
     && rm -f /tmp/requirements.txt
 
 # Runtime directories used by SABER when bind-mounted or copied into the container.
+# Docker Desktop can reject execution of binaries with file capabilities.
+# Remove nmap file capabilities; container runtime capabilities are added by SABER when needed.
+RUN setcap -r /usr/lib/nmap/nmap 2>/dev/null || true
+
 RUN mkdir -p /workspace/input /workspace/output /workspace/evidence /workspace/tmp
 
 # Non-root sandbox user. Some tools may still require elevated privileges in lab mode,
