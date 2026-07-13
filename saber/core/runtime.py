@@ -21,6 +21,8 @@ from saber.agents.recon_agent import ReconAgent
 from saber.agents.reporter_agent import ReporterAgent
 from saber.agents.reverse_engineering_agent import ReverseEngineerAgent
 from saber.agents.web_agent import WebAgent
+from saber.core.docker_runner import DockerSubprocessRunner
+from saber.core.env_loader import load_env_file
 from saber.core.evidence_store import EvidenceStore
 from saber.core.llm_client import LlmClient, LlmConfig
 from saber.core.result_processor import ResultProcessor
@@ -47,7 +49,10 @@ class SaberConfig:
     reports_dir: Path = Path("runs/reports")
     profile: str = "recon"
     require_approval: bool = True
-    sandbox_backend: str = "local"
+    sandbox_backend: str = "docker"
+    sandbox_image: str = "ghcr.io/atharvkashyap/saber-sandbox:kali-last-release"
+    docker_network: str = "host"
+    docker_user: str = ""
     default_timeout_seconds: int = 300
     max_steps: int = 50
     max_chain_depth: int = 20
@@ -61,13 +66,21 @@ class SaberConfig:
     def from_env(cls) -> SaberConfig:
         """Build config from environment variables."""
 
+        load_env_file()
+
         return cls(
             db_path=Path(os.environ.get("SABER_DB_PATH", "runs/saber.db")),
             evidence_dir=Path(os.environ.get("SABER_EVIDENCE_DIR", "runs/evidence")),
             reports_dir=Path(os.environ.get("SABER_REPORTS_DIR", "runs/reports")),
             profile=os.environ.get("SABER_PROFILE", "recon"),
             require_approval=_env_bool("SABER_REQUIRE_APPROVAL", default=True),
-            sandbox_backend=os.environ.get("SABER_SANDBOX_BACKEND", "local"),
+            sandbox_backend=os.environ.get("SABER_SANDBOX_BACKEND", "docker"),
+            sandbox_image=os.environ.get(
+                "SABER_SANDBOX_IMAGE",
+                "ghcr.io/atharvkashyap/saber-sandbox:kali-last-release",
+            ),
+            docker_network=os.environ.get("SABER_DOCKER_NETWORK", "host"),
+            docker_user=os.environ.get("SABER_DOCKER_USER", ""),
             default_timeout_seconds=int(os.environ.get("SABER_DEFAULT_TIMEOUT_SECONDS", "300")),
             max_steps=int(os.environ.get("SABER_MAX_STEPS", "50")),
             max_chain_depth=int(os.environ.get("SABER_MAX_CHAIN_DEPTH", "20")),
@@ -121,6 +134,9 @@ class SaberRuntime:
                 "profile": self.config.profile,
                 "require_approval": self.config.require_approval,
                 "sandbox_backend": self.config.sandbox_backend,
+                "sandbox_image": self.config.sandbox_image,
+                "docker_network": self.config.docker_network,
+                "docker_user": self.config.docker_user,
                 "default_timeout_seconds": self.config.default_timeout_seconds,
                 "max_steps": self.config.max_steps,
                 "max_chain_depth": self.config.max_chain_depth,
@@ -242,15 +258,25 @@ def build_default_agents(tool_registry: ToolRegistry) -> dict[str, Any]:
 
 
 def _build_sandbox(config: SaberConfig) -> Sandbox:
-    """Build sandbox dependencies.
-
-    The default runtime runner is local subprocess execution with shell=False.
-    Tool wrappers must provide commands as argument lists, not shell strings.
-    """
+    """Build sandbox dependencies."""
 
     evidence_store = EvidenceStore(config.evidence_dir)
-    runner = LocalSubprocessRunner(default_timeout_seconds=config.default_timeout_seconds)
-    return Sandbox(evidence_store=evidence_store, runner=runner)
+    backend = config.sandbox_backend.strip().lower()
+
+    if backend == "docker":
+        runner = DockerSubprocessRunner(
+            image=config.sandbox_image,
+            default_timeout_seconds=config.default_timeout_seconds,
+            network=config.docker_network,
+            user=config.docker_user,
+        )
+        return Sandbox(evidence_store=evidence_store, runner=runner)
+
+    if backend == "local":
+        runner = LocalSubprocessRunner(default_timeout_seconds=config.default_timeout_seconds)
+        return Sandbox(evidence_store=evidence_store, runner=runner)
+
+    raise ValueError(f"Unsupported SABER_SANDBOX_BACKEND: {config.sandbox_backend}")
 
 
 @dataclass(frozen=True)
