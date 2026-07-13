@@ -44,7 +44,8 @@ def test_docker_runner_maps_repo_local_paths(tmp_path) -> None:
         command=["nmap", "-oX", str(output_file), "127.0.0.1"]
     )
 
-    assert "/workspace/runs/evidence/nmap.xml" in command
+    normalized_command = [str(part).replace("\\", "/") for part in command]
+    assert "/workspace/runs/evidence/nmap.xml" in normalized_command
     assert str(output_file) not in command
 
 
