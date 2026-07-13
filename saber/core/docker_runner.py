@@ -6,13 +6,13 @@ import os
 import shutil
 import subprocess
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 
 DEFAULT_SHARED_IMAGE = "ghcr.io/atharvkashyap/saber-sandbox:kali-last-release"
 DEFAULT_LOCAL_IMAGE = "saber/sandbox:kali-last-release"
-CONTAINER_WORKSPACE = Path("/workspace")
+CONTAINER_WORKSPACE = PurePosixPath("/workspace")
 
 
 @dataclass(slots=True)
@@ -29,6 +29,14 @@ class CommandResult:
         """Return True when command succeeded."""
 
         return self.returncode == 0
+
+
+def _normalize_container_arg(value: str) -> str:
+    """Keep container paths POSIX-style even when SABER runs on Windows."""
+
+    if value.startswith("\\workspace") or value.startswith("/workspace"):
+        return value.replace("\\", "/")
+    return value
 
 
 @dataclass(frozen=True)
@@ -141,9 +149,9 @@ class DockerSubprocessRunner:
 
         docker_command.append(self.image)
         docker_command.extend(self._map_command_paths(command))
-        return docker_command
+        return [_normalize_container_arg(str(part)) for part in docker_command]
 
-    def _container_workdir(self, working_directory: str | Path | None) -> Path:
+    def _container_workdir(self, working_directory: str | Path | None) -> PurePosixPath:
         """Map host working directory to container working directory."""
 
         if working_directory is None:
@@ -152,14 +160,14 @@ class DockerSubprocessRunner:
         path = Path(working_directory)
 
         if not path.is_absolute():
-            return CONTAINER_WORKSPACE / path
+            return CONTAINER_WORKSPACE / path.as_posix()
 
         try:
             relative = path.resolve().relative_to(self.repo_dir.resolve())
         except ValueError:
             return CONTAINER_WORKSPACE
 
-        return CONTAINER_WORKSPACE / relative
+        return CONTAINER_WORKSPACE / relative.as_posix()
 
     def _map_command_paths(self, command: list[str]) -> list[str]:
         """Map absolute repo-local host paths in command args into container paths."""
@@ -184,7 +192,7 @@ class DockerSubprocessRunner:
         except ValueError:
             return arg
 
-        return str(CONTAINER_WORKSPACE / relative)
+        return str(CONTAINER_WORKSPACE / relative.as_posix())
 
     @staticmethod
     def _validate_command(command: list[str]) -> None:
