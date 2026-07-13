@@ -32,7 +32,8 @@ class FakeLlmClient(LlmClient):
         self.response = response
         super().__init__(
             LlmConfig(
-                provider=LlmProvider.OPENAI_COMPATIBLE,
+                provider=LlmProvider.OPENROUTER,
+                model="anthropic/claude-3.5-sonnet",
                 api_key="test-key",
                 base_url="https://example.test/v1",
             )
