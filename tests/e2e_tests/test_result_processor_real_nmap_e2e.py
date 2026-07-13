@@ -113,6 +113,7 @@ def test_result_processor_parses_real_nmap_xml_from_docker(tmp_path) -> None:
     run_result = runner.run(
         [
             "nmap",
+            "-sT",
             "-oX",
             str(evidence_path),
             "127.0.0.1",

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+from uuid import uuid4
 
 from saber.agents.base_agent import (
     AgentActionType,
@@ -19,6 +20,8 @@ from saber.agents.base_agent import (
     BaseAgent,
 )
 from saber.models.scope import AssessmentPhase
+from saber.models.target import Target
+from saber.orchestration.execution_plan import ExecutionPlan, ExecutionStep
 
 
 @dataclass(frozen=True)
@@ -187,6 +190,101 @@ class PlannerAgent(BaseAgent):
             phases=phases,
             metadata={"observation_count": len(observations)},
         )
+
+    def build_execution_plan(
+        self,
+        *,
+        mission_name: str,
+        target: Target,
+        objective: str,
+        observations: list[AgentObservation] | None = None,
+        available_agents: set[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> ExecutionPlan:
+        """Build an executable orchestration plan from the high-level mission plan."""
+
+        mission_plan = self.build_mission_plan(
+            objective=objective,
+            observations=observations or [],
+        )
+
+        steps: list[ExecutionStep] = []
+        step_id_by_agent: dict[str, str] = {}
+
+        for index, phase in enumerate(mission_plan.phases, start=1):
+            if available_agents is not None and phase.agent_name not in available_agents:
+                continue
+
+            step_id = f"{index:02d}_{phase.agent_name}"
+            step_id_by_agent[phase.agent_name] = step_id
+
+            depends_on = [
+                step_id_by_agent[agent_name]
+                for agent_name in phase.depends_on
+                if agent_name in step_id_by_agent
+            ]
+
+            steps.append(
+                ExecutionStep(
+                    step_id=step_id,
+                    agent_name=phase.agent_name,
+                    objective=phase.objective,
+                    phase=self._phase_from_name(phase.phase),
+                    target=target,
+                    depends_on=depends_on,
+                    metadata={
+                        "planned_by": self.config.name,
+                        "phase": phase.phase,
+                        **phase.metadata,
+                    },
+                )
+            )
+
+        if not steps:
+            steps.append(
+                ExecutionStep(
+                    step_id="01_recon_agent",
+                    agent_name="recon_agent",
+                    objective="Discover live targets, exposed services, domains, and initial attack surface.",
+                    phase=AssessmentPhase.RECON,
+                    target=target,
+                    metadata={"planned_by": self.config.name, "fallback": True},
+                )
+            )
+
+        return ExecutionPlan(
+            plan_id=f"plan_{uuid4().hex[:12]}",
+            mission_name=mission_name,
+            steps=steps,
+            metadata={
+                "planned_by": self.config.name,
+                "planner_objective": objective,
+                "mission_plan": mission_plan.to_dict(),
+                **(metadata or {}),
+            },
+        )
+
+    @staticmethod
+    def _phase_from_name(phase: str) -> AssessmentPhase:
+        """Map planner phase string to AssessmentPhase safely."""
+
+        normalized = phase.strip().upper().replace("-", "_")
+
+        aliases = {
+            "RECONNAISSANCE": "RECON",
+            "WEB_APPLICATION": "WEB",
+            "EXPLOIT": "EXPLOITATION",
+            "POST_EXPLOIT": "POST_EXPLOITATION",
+            "POSTEXPLOITATION": "POST_EXPLOITATION",
+            "LATERAL": "LATERAL_MOVEMENT",
+            "REPORT": "REPORTING",
+            "REPORTER": "REPORTING",
+            "REVERSE_ENGINEER": "REVERSE_ENGINEERING",
+            "REVERSING": "REVERSE_ENGINEERING",
+        }
+
+        enum_name = aliases.get(normalized, normalized)
+        return getattr(AssessmentPhase, enum_name, AssessmentPhase.RECON)
 
     def select_next_agent(self, context: AgentContext) -> str | None:
         """Select the next specialist agent from objective and observations."""

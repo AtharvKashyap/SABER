@@ -133,7 +133,21 @@ class MissionOrchestrator:
         objective: str,
         metadata: dict[str, Any] | None = None,
     ) -> ExecutionPlan:
-        """Create a default execution plan."""
+        """Create an execution plan.
+
+        Prefer PlannerAgent when present. Fall back to the static default plan.
+        """
+
+        planner = self.agents.get("planner_agent")
+        if planner is not None and hasattr(planner, "build_execution_plan"):
+            return planner.build_execution_plan(
+                mission_name=mission_name,
+                target=target,
+                objective=objective,
+                observations=[],
+                available_agents=set(self.agents),
+                metadata=metadata,
+            )
 
         return build_default_execution_plan(
             mission_name=mission_name,
@@ -541,19 +555,24 @@ class MissionOrchestrator:
 
         output_path = output_dir / "mission_result.json"
 
+        artifact = MissionArtifact(
+            path=str(output_path),
+            kind="mission_result_json",
+            metadata={"status": result.status.value},
+        )
+
         payload = result.to_dict()
-        payload["artifacts"] = [artifact.to_dict() for artifact in result.artifacts]
+        payload["artifacts"] = [
+            artifact.to_dict()
+            for artifact in [*result.artifacts, artifact]
+        ]
 
         output_path.write_text(
             json.dumps(payload, indent=2, sort_keys=True, default=str),
             encoding="utf-8",
         )
 
-        return MissionArtifact(
-            path=str(output_path),
-            kind="mission_result_json",
-            metadata={"status": result.status.value},
-        )
+        return artifact
 
     @staticmethod
     def _collect_existing_paths(value: Any) -> list[Path]:

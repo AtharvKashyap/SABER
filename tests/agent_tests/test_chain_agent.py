@@ -136,7 +136,7 @@ class TestChainAgent:
         assert decision.handoff_agent == "post_exploit_agent"
         assert decision.metadata["reason"] == "confirmed_foothold"
 
-    def test_no_actionable_observation_stops(self) -> None:
+    def test_no_actionable_observation_hands_off_to_reporter(self) -> None:
         """Non-actionable observations should stop."""
 
         agent = ChainAgent()
@@ -144,8 +144,8 @@ class TestChainAgent:
 
         decision = agent.decide(make_context(observations=observations))
 
-        assert decision.action_type == AgentActionType.STOP
-        assert decision.metadata["reason"] == "no_actionable_chain"
+        assert decision.action_type == AgentActionType.HANDOFF
+        assert decision.metadata["reason"] == "ready_for_reporting"
 
     def test_run_handoff_result(self) -> None:
         """Run should return handoff status."""

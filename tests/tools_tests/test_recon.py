@@ -349,7 +349,7 @@ class TestNmapWrapper:
             output_prefix="nmap/service",
         )
 
-        assert command.command == ["nmap", "-sV", "-sC", "-p", "80,443", "-oA", "nmap/service", "192.0.2.10"]
+        assert command.command == ["nmap", "-sT", "-sV", "-sC", "-p", "80,443", "-oA", "nmap/service", "192.0.2.10"]
         assert command.action == "service_scan"
 
     def test_vuln_scan_delegates_to_sandbox(self) -> None:
