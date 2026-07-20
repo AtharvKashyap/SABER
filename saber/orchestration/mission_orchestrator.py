@@ -7,21 +7,27 @@ import json
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from saber.agents.base_agent import AgentObservation, BaseAgent
 from saber.core.sandbox import Sandbox
+from saber.models.mission_state import AutonomyLevel, MissionState
+from saber.models.scope import AssessmentPhase
 from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.orchestration.chain_runner import ChainRunner
 from saber.orchestration.execution_plan import (
     ExecutionPlan,
     ExecutionStep,
+    ExecutionStepStatus,
     build_default_execution_plan,
 )
 from saber.orchestration.step_runner import StepRunRecord, StepRunner
 from saber.tools.registry import ToolRegistry
 from saber.reporting.finalizer import ReportFinalizer
+
+if TYPE_CHECKING:
+    from saber.orchestration.mission_loop import MissionLoop, MissionLoopResult
 
 
 class MissionRunStatus(StrEnum):
@@ -103,6 +109,7 @@ class MissionOrchestrator:
         reports_dir: Path | str | None = None,
         export_artifacts: bool = True,
         max_steps: int = 50,
+        mission_loop: MissionLoop | None = None,
     ) -> None:
         """Initialize mission orchestrator."""
 
@@ -114,6 +121,7 @@ class MissionOrchestrator:
         self.agents = agents
         self.tool_registry = tool_registry
         self.sandbox = sandbox
+        self.mission_loop = mission_loop
         self.step_runner = step_runner or StepRunner(
             agents=agents,
             tool_registry=tool_registry,
@@ -166,8 +174,25 @@ class MissionOrchestrator:
         constraints: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> MissionRunResult:
-        """Create or use a plan, then run until pause or completion."""
+        """Run a mission. State-first via MissionLoop when available."""
 
+        if self.mission_loop is not None:
+            constraints = constraints or {}
+            state = MissionState(
+                session_id=session.session_id,
+                target=target,
+                objective=objective,
+                scope=session.scope,
+                autonomy_level=AutonomyLevel(
+                    str(constraints.get("autonomy_level", AutonomyLevel.AUTONOMOUS.value))
+                ),
+                roe=constraints.get("roe", {}),
+                metadata=metadata or {},
+            )
+            loop_result = self.mission_loop.run(state=state, session=session)
+            return self._result_from_loop(loop_result)
+
+        # Legacy plan-first path retained only as an explicit fallback (removed in P5).
         active_plan = plan or self.create_plan(
             mission_name=session.mission_name,
             target=target,
@@ -182,6 +207,42 @@ class MissionOrchestrator:
             observations=initial_observations or [],
             constraints=constraints,
             metadata=metadata,
+        )
+
+    def _result_from_loop(self, loop_result: MissionLoopResult) -> MissionRunResult:
+        """Adapt a MissionLoopResult into the existing MissionRunResult shape.
+
+        The loop is state-first and has no static ExecutionPlan, so we synthesize
+        a single completed step to keep MissionRunResult's shape intact for
+        existing consumers. ExecutionPlan/ExecutionStep both reject empty
+        plan_id/steps/objective, so those fields are always populated.
+        """
+
+        plan = ExecutionPlan(
+            plan_id="mission_loop",
+            mission_name=loop_result.session.mission_name,
+            steps=[
+                ExecutionStep(
+                    step_id="mission_loop",
+                    agent_name="mission_loop",
+                    objective=(loop_result.state.objective or "Agentic mission loop"),
+                    phase=AssessmentPhase.RECON,
+                    status=ExecutionStepStatus.COMPLETED,
+                )
+            ],
+        )
+
+        return MissionRunResult(
+            session=loop_result.session,
+            plan=plan,
+            status=loop_result.status,
+            observations=[],
+            records=[],
+            artifacts=[],
+            metadata={
+                "reason": loop_result.reason,
+                "mission_state": loop_result.state.to_summary_dict(),
+            },
         )
 
     def run_until_pause_or_complete(

@@ -197,6 +197,35 @@ def build_saber_runtime(
         sandbox=runtime_sandbox,
     )
     chain_runner = ChainRunner(max_chain_depth=runtime_config.max_chain_depth)
+
+    from saber.agents.deciders.deterministic import DeterministicDecider
+    from saber.agents.deciders.llm import LlmDecider
+    from saber.core.state_merger import StateMerger
+    from saber.core.state_summary import StateSummarizer
+    from saber.orchestration.action_executor import ActionExecutor
+    from saber.orchestration.mission_loop import MissionLoop
+    from saber.orchestration.risk_gate import RiskGate
+    from saber.orchestration.stop_conditions import StopEvaluator
+    from saber.storage.mission_state_store import MissionStateStore
+
+    if runtime_config.agent_mode == "llm" and llm_client is not None and llm_client.enabled:
+        decider = LlmDecider(llm_client=llm_client, tool_catalog=tool_catalog)
+    else:
+        decider = DeterministicDecider()
+
+    mission_loop = MissionLoop(
+        decider=decider,
+        summarizer=StateSummarizer(),
+        risk_gate=RiskGate(tool_catalog=tool_catalog),
+        stop_evaluator=StopEvaluator(max_steps=runtime_config.max_steps),
+        executor=ActionExecutor(agents=agents, tool_registry=tools, sandbox=runtime_sandbox),
+        merger=StateMerger(),
+        state_store=MissionStateStore(connection),
+        result_processor=result_processor,
+        session_store=session_store,
+        max_steps=runtime_config.max_steps,
+    )
+
     orchestrator = MissionOrchestrator(
         agents=agents,
         tool_registry=tools,
@@ -206,6 +235,7 @@ def build_saber_runtime(
         result_processor=result_processor,
         reports_dir=runtime_config.reports_dir,
         max_steps=runtime_config.max_steps,
+        mission_loop=mission_loop,
     )
 
     return SaberRuntime(
