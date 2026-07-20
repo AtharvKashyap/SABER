@@ -55,7 +55,12 @@ class DeterministicDecider(NextActionDecider):
                     )
 
         # 3. Web fingerprint but no vuln scan yet.
-        if fingerprinted_hosts and not state.vulns and not state.metadata.get("web_scanned"):
+        if (
+            fingerprinted_hosts
+            and not state.vulns
+            and not state.metadata.get("web_scanned")
+            and ("nuclei", "template_scan") not in attempted
+        ):
             svc = next((s for s in state.services if s.port in _WEB_PORTS), None)
             if svc is not None:
                 url = f"http://{svc.host}:{svc.port}"
