@@ -109,7 +109,7 @@ class StateMerger:
                     "service": candidate.service or existing.service,
                     "product": candidate.product or existing.product,
                     "version": candidate.version or existing.version,
-                    "state": candidate.state or existing.state,
+                    "state": candidate.state if "state" in data else existing.state,
                 }
             )
         hosts.setdefault(host, KnownHost(address=host))
@@ -121,8 +121,11 @@ class StateMerger:
         name = str(data.get("name") or "").strip()
         if not host or not name:
             return
+        existing = technologies.get((host, name))
         technologies[(host, name)] = KnownTechnology(
-            host=host, name=name, version=data.get("version")
+            host=host,
+            name=name,
+            version=data.get("version") or (existing.version if existing else None),
         )
 
     def _merge_credential(
@@ -132,13 +135,14 @@ class StateMerger:
         if not username:
             return
         key = (username, data.get("host"), data.get("service"))
+        existing = credentials.get(key)
         credentials[key] = KnownCredential(
             username=username,
-            secret=data.get("secret"),
-            kind=str(data.get("kind") or "password"),
-            host=data.get("host"),
-            service=data.get("service"),
-            validated=bool(data.get("validated", False)),
+            secret=data.get("secret") or (existing.secret if existing else None),
+            kind=str(data.get("kind") or (existing.kind if existing else "password")),
+            host=data.get("host") or (existing.host if existing else None),
+            service=data.get("service") or (existing.service if existing else None),
+            validated=bool(data.get("validated", existing.validated if existing else False)),
         )
 
     def _merge_vuln(
@@ -148,14 +152,17 @@ class StateMerger:
         if not title:
             return
         key = self._vuln_key(title, data.get("host"), data.get("port"))
+        existing = vulns.get(key)
         vulns[key] = KnownVuln(
             title=title,
-            host=data.get("host"),
-            port=data.get("port"),
-            severity=str(data.get("severity") or "info"),
-            identifier=data.get("identifier"),
-            confirmed=bool(data.get("confirmed", False)),
-            evidence_refs=list(evidence_refs),
+            host=data.get("host") or (existing.host if existing else None),
+            port=data.get("port") or (existing.port if existing else None),
+            severity=str(data.get("severity") or (existing.severity if existing else "info")),
+            identifier=data.get("identifier") or (existing.identifier if existing else None),
+            confirmed=bool(data.get("confirmed", existing.confirmed if existing else False)),
+            evidence_refs=self._extend_unique(
+                existing.evidence_refs if existing else [], evidence_refs
+            ),
         )
 
     @staticmethod
