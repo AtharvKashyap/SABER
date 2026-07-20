@@ -54,7 +54,10 @@ class StateSummarizer:
         """Return a prioritized, capped summary."""
 
         open_services = [svc for svc in state.services if svc.state == "open"]
-        vulns_sorted = sorted(state.vulns, key=lambda v: _SEVERITY_RANK.get(v.severity, 5))
+        credentials_sorted = sorted(state.credentials, key=lambda c: not c.validated)
+        vulns_sorted = sorted(
+            state.vulns, key=lambda v: (v.confirmed, _SEVERITY_RANK.get(v.severity, 5))
+        )
         open_hypotheses = [h for h in state.hypotheses if h.status == "open"]
 
         return StateSummary(
@@ -65,7 +68,7 @@ class StateSummarizer:
             services=[svc.model_dump() for svc in open_services[: self.max_items]],
             technologies=[t.model_dump() for t in state.technologies[: self.max_items]],
             credentials=[
-                c.model_dump(exclude={"secret"}) for c in state.credentials[: self.max_items]
+                c.model_dump(exclude={"secret"}) for c in credentials_sorted[: self.max_items]
             ],
             vulns=[v.model_dump() for v in vulns_sorted[: self.max_items]],
             hypotheses=[h.model_dump() for h in open_hypotheses[: self.max_items]],

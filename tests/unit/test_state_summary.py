@@ -2,6 +2,7 @@ from saber.core.state_summary import StateSummarizer
 from saber.models.mission_state import (
     AttemptedAction,
     Hypothesis,
+    KnownCredential,
     KnownService,
     KnownVuln,
     MissionState,
@@ -38,3 +39,37 @@ def test_summary_includes_objective_and_counts():
     d = StateSummarizer().summarize(_state()).to_dict()
     assert d["objective"] == "assess"
     assert d["counts"]["services"] == 59
+
+
+def test_summary_prioritizes_validated_credentials_before_capping():
+    state = MissionState(
+        session_id="s",
+        target=Target(type=TargetType.IP, value="10.0.0.5"),
+        objective="assess",
+        credentials=[
+            KnownCredential(username="unvalidated-1", secret="x", validated=False),
+            KnownCredential(username="unvalidated-2", secret="x", validated=False),
+            KnownCredential(username="unvalidated-3", secret="x", validated=False),
+            KnownCredential(username="validated-admin", secret="s3cr3t", validated=True),
+        ],
+    )
+    summary = StateSummarizer(max_items=2).summarize(state)
+    creds = summary.to_dict()["credentials"]
+    assert len(creds) == 2
+    assert any(c["username"] == "validated-admin" for c in creds)
+    assert all("secret" not in c for c in creds)
+
+
+def test_summary_prioritizes_unconfirmed_vulns_over_confirmed_of_same_severity():
+    state = MissionState(
+        session_id="s",
+        target=Target(type=TargetType.IP, value="10.0.0.5"),
+        objective="assess",
+        vulns=[
+            KnownVuln(title="confirmed-high", severity="high", confirmed=True),
+            KnownVuln(title="unconfirmed-high", severity="high", confirmed=False),
+        ],
+    )
+    summary = StateSummarizer().summarize(state)
+    titles = [v["title"] for v in summary.to_dict()["vulns"]]
+    assert titles.index("unconfirmed-high") < titles.index("confirmed-high")
