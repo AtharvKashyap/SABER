@@ -56,6 +56,9 @@ class LlmDecider(NextActionDecider):
         return self._parse(raw)
 
     def _parse(self, raw: dict[str, Any]) -> ProposedAction:
+        if not isinstance(raw, dict):
+            return self._stop("non-object LLM response")
+
         kind = str(raw.get("kind") or "").strip().lower()
 
         if kind == "report":

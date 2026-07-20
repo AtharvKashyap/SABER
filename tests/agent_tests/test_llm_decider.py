@@ -1,4 +1,5 @@
-from saber.agents.deciders.base import ActionKind, RiskLevel
+import pytest
+from saber.agents.deciders.base import ActionKind, ProposedAction, RiskLevel
 from saber.agents.deciders.llm import LlmDecider
 from saber.core.state_summary import StateSummarizer
 from saber.core.tool_catalog import ToolActionSpec, ToolCatalog, ToolSpec
@@ -70,3 +71,14 @@ def test_report_decision():
     decider = LlmDecider(llm_client=client, tool_catalog=_catalog())
     action = decider.decide(_state(), StateSummarizer().summarize(_state()))
     assert action.kind == ActionKind.REPORT
+
+
+@pytest.mark.parametrize("bad_response", [[1, 2, 3], "done", 42, True, None])
+def test_non_object_llm_response_returns_stop(bad_response):
+    # A valid-but-non-object JSON response (list/scalar/null) must not crash the
+    # mission loop; the decider must degrade to STOP instead of raising.
+    client = _FakeClient(bad_response)
+    decider = LlmDecider(llm_client=client, tool_catalog=_catalog())
+    action = decider.decide(_state(), StateSummarizer().summarize(_state()))
+    assert isinstance(action, ProposedAction)
+    assert action.kind == ActionKind.STOP
