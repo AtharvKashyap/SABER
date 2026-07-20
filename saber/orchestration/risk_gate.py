@@ -13,7 +13,7 @@ from typing import Any
 from saber.agents.deciders.base import ActionKind, ProposedAction, RiskLevel
 from saber.models.mission_state import AutonomyLevel, MissionState
 
-EXPLOIT_CLASS = {"exploitation", "post_exploit", "lateral_movement"}
+EXPLOIT_CLASS = {"exploitation", "post_exploit", "post_exploitation", "lateral_movement"}
 
 
 class GateDecision(StrEnum):
