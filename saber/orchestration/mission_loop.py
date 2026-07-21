@@ -8,7 +8,7 @@ ResultProcessor, and the stores.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from saber.agents.deciders.base import ActionKind
@@ -25,6 +25,7 @@ from saber.storage.mission_state_store import MissionStateStore
 
 if TYPE_CHECKING:
     from saber.orchestration.strategies.base import TargetStrategy
+    from saber.reporting.finalizer import ReportArtifact, ReportFinalizer
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,7 @@ class MissionLoopResult:
     session: MissionSession
     status: MissionRunStatus
     reason: str
+    artifacts: list[ReportArtifact] = field(default_factory=list)
 
 
 class MissionLoop:
@@ -53,6 +55,7 @@ class MissionLoop:
         session_store=None,
         max_steps: int = 50,
         strategy: TargetStrategy | None = None,
+        report_finalizer: ReportFinalizer | None = None,
     ) -> None:
         """Initialize the loop.
 
@@ -60,6 +63,13 @@ class MissionLoop:
         When provided, the loop consults ``strategy.objective_met(state)`` after
         each merge and marks ``state.objective_met`` so the StopEvaluator can
         terminate the run. When ``None``, objective-met behavior is unchanged.
+
+        ``report_finalizer`` is an optional singleton dependency (default
+        ``None``). When provided, the loop calls
+        ``report_finalizer.finalize_from_state(...)`` on every terminal
+        COMPLETED/STOPPED return and surfaces the produced artifacts on the
+        result. When ``None``, no report is generated and the result carries no
+        artifacts.
         """
 
         self.decider = decider
@@ -73,6 +83,7 @@ class MissionLoop:
         self.session_store = session_store
         self.max_steps = max_steps
         self.strategy = strategy
+        self.report_finalizer = report_finalizer
 
     def run(
         self,
@@ -101,7 +112,7 @@ class MissionLoop:
                 reason = action.rationale or action.kind.value
                 state = state.model_copy(update={"stop_reason": reason})
                 self.state_store.snapshot(state)
-                return MissionLoopResult(state, session, MissionRunStatus.COMPLETED, reason)
+                return self._terminal(state, session, MissionRunStatus.COMPLETED, reason)
 
             gate = self.risk_gate.evaluate(state, action)
 
@@ -122,7 +133,7 @@ class MissionLoop:
                 stop = self.stop_evaluator.evaluate(state, action)
                 if stop.should_stop:
                     state = state.model_copy(update={"stop_reason": stop.reason})
-                    return MissionLoopResult(state, session, MissionRunStatus.STOPPED, stop.reason)
+                    return self._terminal(state, session, MissionRunStatus.STOPPED, stop.reason)
                 continue
 
             if gate.decision == GateDecision.CONFIRM:
@@ -184,11 +195,11 @@ class MissionLoop:
             if stop.should_stop:
                 state = state.model_copy(update={"stop_reason": stop.reason})
                 self.state_store.snapshot(state)
-                return MissionLoopResult(state, session, MissionRunStatus.STOPPED, stop.reason)
+                return self._terminal(state, session, MissionRunStatus.STOPPED, stop.reason)
 
         state = state.model_copy(update={"stop_reason": "max_steps exhausted"})
         self.state_store.snapshot(state)
-        return MissionLoopResult(state, session, MissionRunStatus.STOPPED, "max_steps exhausted")
+        return self._terminal(state, session, MissionRunStatus.STOPPED, "max_steps exhausted")
 
     def _apply_strategy_objective(
         self, state: MissionState, strategy: TargetStrategy | None
@@ -203,3 +214,43 @@ class MissionLoop:
         if strategy is not None and strategy.objective_met(state):
             return state.model_copy(update={"objective_met": True})
         return state
+
+    def _terminal(
+        self,
+        state: MissionState,
+        session: MissionSession,
+        status: MissionRunStatus,
+        reason: str,
+    ) -> MissionLoopResult:
+        """Build a terminal COMPLETED/STOPPED result, finalizing reports.
+
+        Every terminal return funnels through here so report finalization
+        happens exactly once, on the final state, for both COMPLETED and
+        STOPPED outcomes. Non-terminal returns (e.g. PAUSED_FOR_APPROVAL) do
+        not use this helper and carry no artifacts.
+        """
+
+        return MissionLoopResult(
+            state=state,
+            session=session,
+            status=status,
+            reason=reason,
+            artifacts=self._finalize(state, session),
+        )
+
+    def _finalize(
+        self, state: MissionState, session: MissionSession
+    ) -> list[ReportArtifact]:
+        """Emit final report artifacts via the injected finalizer.
+
+        No-op returning an empty list when no ``report_finalizer`` was injected
+        (the default), so loops built without one behave exactly as before. The
+        finalizer writes under its own ``output_dir`` (namespaced by
+        ``session_id``) and best-effort skips any exporter that fails.
+        """
+
+        if self.report_finalizer is None:
+            return []
+        return self.report_finalizer.finalize_from_state(
+            state, session, self.report_finalizer.output_dir
+        )

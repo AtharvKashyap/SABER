@@ -201,12 +201,19 @@ def build_saber_runtime(
     from saber.orchestration.mission_loop import MissionLoop
     from saber.orchestration.risk_gate import RiskGate
     from saber.orchestration.stop_conditions import StopEvaluator
+    from saber.reporting.finalizer import ReportFinalizer
     from saber.storage.mission_state_store import MissionStateStore
 
     if runtime_config.agent_mode == "llm" and llm_client is not None and llm_client.enabled:
         decider = LlmDecider(llm_client=llm_client, tool_catalog=tool_catalog)
     else:
         decider = DeterministicDecider()
+
+    report_finalizer = ReportFinalizer(
+        finding_store=finding_store,
+        output_dir=runtime_config.reports_dir,
+        connection=connection,
+    )
 
     mission_loop = MissionLoop(
         decider=decider,
@@ -219,6 +226,7 @@ def build_saber_runtime(
         result_processor=result_processor,
         session_store=session_store,
         max_steps=runtime_config.max_steps,
+        report_finalizer=report_finalizer,
     )
 
     orchestrator = MissionOrchestrator(
@@ -227,6 +235,7 @@ def build_saber_runtime(
         sandbox=runtime_sandbox,
         step_runner=step_runner,
         result_processor=result_processor,
+        report_finalizer=report_finalizer,
         reports_dir=runtime_config.reports_dir,
         max_steps=runtime_config.max_steps,
         mission_loop=mission_loop,

@@ -242,13 +242,29 @@ class MissionOrchestrator:
             ],
         )
 
+        # The loop surfaces report artifacts as reporting.ReportArtifact objects;
+        # adapt them to the orchestrator's MissionArtifact shape, preserving the
+        # integrity fields (size/hash) in metadata.
+        artifacts = [
+            MissionArtifact(
+                path=artifact.path,
+                kind=artifact.report_type,
+                metadata={
+                    **artifact.metadata,
+                    "size_bytes": artifact.size_bytes,
+                    "sha256": artifact.sha256,
+                },
+            )
+            for artifact in loop_result.artifacts
+        ]
+
         return MissionRunResult(
             session=loop_result.session,
             plan=plan,
             status=loop_result.status,
             observations=[],
             records=[],
-            artifacts=[],
+            artifacts=artifacts,
             metadata={
                 "reason": loop_result.reason,
                 "mission_state": loop_result.state.to_summary_dict(),
