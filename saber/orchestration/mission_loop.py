@@ -8,6 +8,7 @@ ResultProcessor, and the stores.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -26,6 +27,8 @@ from saber.storage.mission_state_store import MissionStateStore
 if TYPE_CHECKING:
     from saber.orchestration.strategies.base import TargetStrategy
     from saber.reporting.finalizer import ReportArtifact, ReportFinalizer
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -230,27 +233,52 @@ class MissionLoop:
         not use this helper and carry no artifacts.
         """
 
+        artifacts, state = self._finalize(state, session)
         return MissionLoopResult(
             state=state,
             session=session,
             status=status,
             reason=reason,
-            artifacts=self._finalize(state, session),
+            artifacts=artifacts,
         )
 
     def _finalize(
         self, state: MissionState, session: MissionSession
-    ) -> list[ReportArtifact]:
+    ) -> tuple[list[ReportArtifact], MissionState]:
         """Emit final report artifacts via the injected finalizer.
 
-        No-op returning an empty list when no ``report_finalizer`` was injected
-        (the default), so loops built without one behave exactly as before. The
+        Returns the artifacts alongside the (possibly updated) state. No-op
+        returning no artifacts when no ``report_finalizer`` was injected (the
+        default), so loops built without one behave exactly as before. The
         finalizer writes under its own ``output_dir`` (namespaced by
         ``session_id``) and best-effort skips any exporter that fails.
+
+        Report finalization must never abort an otherwise-complete mission: a
+        completed run that merely fails to *write its report* is still complete.
+        A finalizer that raises is caught here, the failure is recorded on the
+        returned state's metadata (and logged), and the run returns its terminal
+        COMPLETED/STOPPED result with no artifacts rather than raising.
         """
 
         if self.report_finalizer is None:
-            return []
-        return self.report_finalizer.finalize_from_state(
-            state, session, self.report_finalizer.output_dir
-        )
+            return [], state
+        try:
+            artifacts = self.report_finalizer.finalize_from_state(
+                state, session, self.report_finalizer.output_dir
+            )
+        except Exception as exc:  # noqa: BLE001 - report failure must not abort the mission
+            logger.exception(
+                "Report finalization failed for session %s; returning the "
+                "completed run without artifacts.",
+                state.session_id,
+            )
+            recorded = state.model_copy(
+                update={
+                    "metadata": {
+                        **state.metadata,
+                        "report_finalization_error": f"{type(exc).__name__}: {exc}",
+                    }
+                }
+            )
+            return [], recorded
+        return artifacts, state

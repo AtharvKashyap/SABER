@@ -72,6 +72,16 @@ class _FakeStore:
         pass
 
 
+class _RaisingFinalizer:
+    """A finalizer whose report generation always fails."""
+
+    def __init__(self, output_dir):
+        self.output_dir = output_dir
+
+    def finalize_from_state(self, state, session, reports_dir):
+        raise RuntimeError("boom: report generation failed")
+
+
 def _loop(report_finalizer=None):
     return MissionLoop(
         decider=_ScriptedDecider(),
@@ -123,3 +133,17 @@ def test_loop_without_finalizer_has_no_artifacts():
 
     assert result.status == MissionRunStatus.COMPLETED
     assert result.artifacts == []
+
+
+def test_finalizer_error_does_not_abort_completed_run(tmp_path):
+    """A finalizer that raises must not fail an otherwise-complete mission."""
+
+    state, session = _fixtures()
+
+    result = _loop(report_finalizer=_RaisingFinalizer(tmp_path)).run(state, session)
+
+    # The run still reaches a terminal COMPLETED outcome...
+    assert result.status == MissionRunStatus.COMPLETED
+    # ...but produces no artifacts, and the failure is recorded, not raised.
+    assert result.artifacts == []
+    assert "report_finalization_error" in result.state.metadata

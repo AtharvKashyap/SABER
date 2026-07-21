@@ -94,7 +94,6 @@ def run_cli_mission(
                     "dry_run": dry_run,
                     "require_approval": require_approval,
                     "agent_mode": agent_mode,
-                    "agent_mode": agent_mode,
                     "started_at": datetime.now(UTC).isoformat(),
                 },
             }
@@ -114,112 +113,39 @@ def run_cli_mission(
 
         runtime.session_store.save_plan(session_id, plan)
 
-        pre_report_plan, report_plan = split_plan_for_reporting(plan)
+        # Single pass: the state-first MissionLoop drives recon -> ... -> report
+        # and finalizes the report itself (via the shared ReportFinalizer), so
+        # the CLI calls run_mission exactly once. It previously ran the whole
+        # mission a second time for a separate reporting phase, which re-scanned
+        # the target, rewrote the report artifacts, and (in LLM mode) could
+        # overwrite the good report with an empty one built from a fresh state.
+        result = runtime.orchestrator.run_mission(
+            session=session,
+            target=target,
+            objective=resolved_objective,
+            plan=plan,
+            constraints={
+                "profile": normalized_profile,
+                "dry_run": dry_run,
+                "require_approval": require_approval,
+                "agent_mode": agent_mode,
+            },
+            metadata={
+                "source": "cli_run",
+                "profile": normalized_profile,
+                "dry_run": dry_run,
+            },
+        )
 
-        total_records = 0
-        final_status = "completed"
-
-        if report_plan is None:
-            result = runtime.orchestrator.run_mission(
-                session=session,
-                target=target,
-                objective=resolved_objective,
-                plan=pre_report_plan,
-                constraints={
-                    "profile": normalized_profile,
-                    "dry_run": dry_run,
-                    "require_approval": require_approval,
-                    "agent_mode": agent_mode,
-                },
-                metadata={
-                    "source": "cli_run",
-                    "profile": normalized_profile,
-                    "dry_run": dry_run,
-                },
-            )
-
-            persist_mission_result(
-                runtime,
-                result,
-                mission_started_at=mission_started_at,
-                process_evidence=True,
-                save_plan=True,
-            )
-            total_records += len(result.records)
-            final_status = str(result.status.value if hasattr(result.status, "value") else result.status)
-        else:
-            pre_result = runtime.orchestrator.run_mission(
-                session=session,
-                target=target,
-                objective=resolved_objective,
-                plan=pre_report_plan,
-                constraints={
-                    "profile": normalized_profile,
-                    "dry_run": dry_run,
-                    "require_approval": require_approval,
-                    "agent_mode": agent_mode,
-                    "phase": "pre_report",
-                },
-                metadata={
-                    "source": "cli_run",
-                    "profile": normalized_profile,
-                    "dry_run": dry_run,
-                    "phase": "pre_report",
-                },
-            )
-
-            # This is the important ordering change:
-            # persist pre-report observations/evidence, then parse evidence,
-            # then run the reporter with the parsed observations included.
-            persist_mission_result(
-                runtime,
-                pre_result,
-                mission_started_at=mission_started_at,
-                process_evidence=True,
-                save_plan=True,
-            )
-            total_records += len(pre_result.records)
-
-            report_observations = _load_observations_for_reporter(
-                runtime,
-                session_id,
-                fallback_observations=pre_result.observations,
-            )
-
-            report_result = runtime.orchestrator.run_mission(
-                session=session,
-                target=target,
-                objective="Generate evidence-backed assessment report from parsed observations.",
-                plan=report_plan,
-                initial_observations=report_observations,
-                constraints={
-                    "profile": normalized_profile,
-                    "dry_run": dry_run,
-                    "require_approval": require_approval,
-                    "agent_mode": agent_mode,
-                    "phase": "report",
-                },
-                metadata={
-                    "source": "cli_run",
-                    "profile": normalized_profile,
-                    "dry_run": dry_run,
-                    "phase": "report",
-                    "parsed_observation_count": len(report_observations),
-                },
-            )
-
-            persist_mission_result(
-                runtime,
-                report_result,
-                mission_started_at=mission_started_at,
-                process_evidence=False,
-                save_plan=False,
-                save_observations=False,
-            )
-            total_records += len(report_result.records)
-            final_status = str(
-                report_result.status.value if hasattr(report_result.status, "value") else report_result.status
-            )
+        persist_mission_result(
+            runtime,
+            result,
+            mission_started_at=mission_started_at,
+            process_evidence=True,
+            save_plan=True,
+        )
+        total_records = len(result.records)
+        final_status = str(result.status.value if hasattr(result.status, "value") else result.status)
 
         stored_observations = _safe_count(lambda: runtime.finding_store.list_observations(session_id))
         stored_evidence = _safe_count(lambda: runtime.evidence_index.list_evidence(session_id))
@@ -367,106 +293,6 @@ def _configure_llm_agents(runtime: SaberRuntime, agent_mode: str) -> None:
         setter = getattr(agent, "set_llm_decision_engine", None)
         if callable(setter):
             setter(engine)
-
-def split_plan_for_reporting(plan: ExecutionPlan) -> tuple[ExecutionPlan, ExecutionPlan | None]:
-    """Split a plan into pre-report steps and report-only steps.
-
-    This lets SABER parse evidence before the reporter agent runs.
-    """
-
-    reporter_steps = [step for step in plan.steps if step.agent_name == "reporter_agent"]
-    if not reporter_steps:
-        return plan, None
-
-    pre_report_steps = [step for step in plan.steps if step.agent_name != "reporter_agent"]
-
-    adjusted_reporter_steps = []
-    for step in reporter_steps:
-        try:
-            adjusted_reporter_steps.append(replace(step, depends_on=[]))
-        except TypeError:
-            step.depends_on = []
-            adjusted_reporter_steps.append(step)
-
-    return _replace_plan_steps(plan, pre_report_steps), _replace_plan_steps(plan, adjusted_reporter_steps)
-
-
-def _replace_plan_steps(plan: ExecutionPlan, steps: list) -> ExecutionPlan:
-    """Return a copy of an ExecutionPlan with different steps."""
-
-    try:
-        return replace(plan, steps=steps)
-    except TypeError:
-        plan.steps = steps
-        return plan
-
-
-def _load_observations_for_reporter(
-    runtime: SaberRuntime,
-    session_id: str,
-    fallback_observations: list[AgentObservation] | None = None,
-) -> list[AgentObservation]:
-    """Load stored observations and convert them back to AgentObservation objects."""
-
-    observations: list[AgentObservation] = []
-
-    try:
-        rows = runtime.finding_store.list_observations(session_id)
-    except Exception:
-        rows = []
-
-    for row in rows:
-        observation = _row_to_agent_observation(row)
-        if observation is not None:
-            observations.append(observation)
-
-    if observations:
-        return observations
-
-    return list(fallback_observations or [])
-
-
-def _row_to_agent_observation(row: object) -> AgentObservation | None:
-    """Convert a stored observation row/dict into an AgentObservation."""
-
-    if not isinstance(row, dict):
-        if hasattr(row, "to_dict"):
-            try:
-                row = row.to_dict()
-            except Exception:
-                return None
-        elif hasattr(row, "model_dump"):
-            try:
-                row = row.model_dump(mode="json")
-            except Exception:
-                return None
-        else:
-            return None
-
-    raw = row.get("observation") if isinstance(row.get("observation"), dict) else row
-
-    summary = (
-        raw.get("summary")
-        or raw.get("description")
-        or raw.get("title")
-        or row.get("summary")
-        or "Stored observation"
-    )
-
-    metadata = raw.get("metadata") or row.get("metadata") or {}
-    if not isinstance(metadata, dict):
-        metadata = {"raw_metadata": metadata}
-
-    try:
-        return AgentObservation(
-            summary=str(summary),
-            success=bool(raw.get("success", True)),
-            tool_name=raw.get("tool_name") or row.get("tool_name"),
-            action=raw.get("action") or row.get("action"),
-            metadata=metadata,
-        )
-    except Exception:
-        return None
 
 
 def _safe_count(loader) -> int:
