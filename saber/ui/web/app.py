@@ -17,8 +17,9 @@ from saber.storage.connection import StorageConnection
 from saber.storage.evidence_index import EvidenceIndex
 from saber.storage.finding_store import FindingStore
 from saber.storage.graph_store import GraphStore
+from saber.storage.mission_state_store import MissionStateStore
 from saber.storage.session_store import SessionStore
-from saber.ui.web.routers import findings, reports, sessions
+from saber.ui.web.routers import findings, mission_state, reports, sessions
 
 
 PUBLIC_PATHS = {
@@ -87,6 +88,7 @@ def create_app(
     app.state.finding_store = FindingStore(connection)
     app.state.evidence_index = EvidenceIndex(connection)
     app.state.graph_store = GraphStore(connection)
+    app.state.mission_state_store = MissionStateStore(connection)
 
     @app.middleware("http")
     async def security_middleware(request: Request, call_next: Any) -> Any:
@@ -128,6 +130,7 @@ def create_app(
     app.include_router(sessions.router)
     app.include_router(findings.router)
     app.include_router(reports.router)
+    app.include_router(mission_state.router)
 
     @app.get("/", response_class=HTMLResponse)
     def root(request: Request) -> HTMLResponse:
@@ -281,6 +284,8 @@ def create_app(
           {_card("Evidence", len(evidence), "Evidence files")}
           {_card("Approvals", len(approvals), "Pending approvals")}
         </section>
+
+        {_mission_state_panel(session_id)}
 
         <section class="grid two">
           <div class="panel">
@@ -677,6 +682,176 @@ def _mission_start_panel() -> str:
       </script>
     </section>
     """
+
+def _mission_state_panel(session_id: str) -> str:
+    """Render the live MissionState panel for the mission detail page.
+
+    The panel polls ``/api/sessions/{session_id}/state`` on the same 1s interval
+    as the dashboard mission-progress poll and re-renders hosts, services,
+    vulns, hypotheses, and the attempted-action timeline as they accumulate.
+    """
+
+    session_json = json.dumps(session_id)
+
+    markup = """
+    <section class="panel" id="mission-state-panel">
+      <div class="section-title">
+        <div>
+          <h2>Mission State</h2>
+          <p class="muted">Live working memory the agent loop reasons over.</p>
+        </div>
+        <span id="mission-state-status" class="muted">Loading live state...</span>
+      </div>
+
+      <div class="mini-grid" id="mission-state-counts"></div>
+
+      <div class="grid two">
+        <div>
+          <h2>Hosts</h2>
+          <div id="mission-state-hosts"><p class="muted">None yet.</p></div>
+        </div>
+        <div>
+          <h2>Services</h2>
+          <div id="mission-state-services"><p class="muted">None yet.</p></div>
+        </div>
+      </div>
+
+      <div class="grid two">
+        <div>
+          <h2>Vulnerabilities</h2>
+          <div id="mission-state-vulns"><p class="muted">None yet.</p></div>
+        </div>
+        <div>
+          <h2>Hypotheses</h2>
+          <div id="mission-state-hypotheses"><p class="muted">None yet.</p></div>
+        </div>
+      </div>
+
+      <h2>Action Timeline</h2>
+      <div id="mission-state-timeline"><p class="muted">None yet.</p></div>
+    </section>
+
+    <script>
+    (function () {
+      const sessionId = __SESSION_ID__;
+      const statusEl = document.getElementById("mission-state-status");
+      const countsEl = document.getElementById("mission-state-counts");
+      const hostsEl = document.getElementById("mission-state-hosts");
+      const servicesEl = document.getElementById("mission-state-services");
+      const vulnsEl = document.getElementById("mission-state-vulns");
+      const hypothesesEl = document.getElementById("mission-state-hypotheses");
+      const timelineEl = document.getElementById("mission-state-timeline");
+
+      function esc(value) {
+        return String(value === null || value === undefined ? "" : value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function miniStat(label, value) {
+        return '<div class="mini-stat"><strong>' + esc(value) +
+          '</strong><span class="muted">' + esc(label) + '</span></div>';
+      }
+
+      function renderTable(headers, rows) {
+        if (!rows.length) {
+          return '<p class="muted">None yet.</p>';
+        }
+        const head = headers.map(function (h) { return '<th>' + esc(h) + '</th>'; }).join("");
+        const body = rows.map(function (cells) {
+          const tds = cells.map(function (c) { return '<td>' + esc(c) + '</td>'; }).join("");
+          return '<tr>' + tds + '</tr>';
+        }).join("");
+        return '<table><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table>';
+      }
+
+      function render(data) {
+        const counts = (data.summary && data.summary.counts) || {};
+        countsEl.innerHTML =
+          miniStat("Hosts", counts.hosts || 0) +
+          miniStat("Services", counts.services || 0) +
+          miniStat("Technologies", counts.technologies || 0) +
+          miniStat("Vulns", counts.vulns || 0) +
+          miniStat("Hypotheses", counts.hypotheses || 0) +
+          miniStat("Actions", counts.attempted_actions || 0);
+
+        hostsEl.innerHTML = renderTable(
+          ["Address", "OS", "Hostnames"],
+          (data.hosts || []).map(function (h) {
+            return [h.address, h.os || "", (h.hostnames || []).join(", ")];
+          })
+        );
+
+        servicesEl.innerHTML = renderTable(
+          ["Host", "Port", "Proto", "Service", "Product", "Version"],
+          (data.services || []).map(function (s) {
+            return [s.host, s.port, s.protocol, s.service || "", s.product || "", s.version || ""];
+          })
+        );
+
+        vulnsEl.innerHTML = renderTable(
+          ["Severity", "Title", "Host", "Port", "Confirmed"],
+          (data.vulns || []).map(function (v) {
+            const port = v.port == null ? "" : v.port;
+            const confirmed = v.confirmed ? "yes" : "no";
+            return [v.severity, v.title, v.host || "", port, confirmed];
+          })
+        );
+
+        hypothesesEl.innerHTML = renderTable(
+          ["Statement", "Confidence", "Status"],
+          (data.hypotheses || []).map(function (h) {
+            return [h.statement, h.confidence, h.status];
+          })
+        );
+
+        timelineEl.innerHTML = renderTable(
+          ["Tool", "Action", "Result", "Reason"],
+          (data.timeline || []).map(function (a) {
+            return [a.tool_name, a.action, a.success ? "success" : "failed", a.reason || ""];
+          })
+        );
+      }
+
+      let stopped = false;
+
+      async function poll(iteration) {
+        if (stopped || iteration > 600) {
+          return;
+        }
+        try {
+          const response = await fetch("/api/sessions/" + encodeURIComponent(sessionId) + "/state");
+          if (response.status === 404) {
+            statusEl.textContent = "No mission state recorded yet.";
+          } else if (response.ok) {
+            const data = await response.json();
+            render(data);
+            const summary = data.summary || {};
+            const updated = summary.updated_at ? " - updated " + esc(summary.updated_at) : "";
+            if (summary.objective_met || summary.stop_reason) {
+              statusEl.innerHTML = "Final" + updated;
+              stopped = true;
+              return;
+            }
+            statusEl.innerHTML = "Live" + updated;
+          } else {
+            statusEl.textContent = "State unavailable (" + response.status + ")";
+          }
+        } catch (err) {
+          statusEl.textContent = "State poll error";
+        }
+        setTimeout(function () { poll(iteration + 1); }, 1000);
+      }
+
+      poll(0);
+    })();
+    </script>
+    """
+
+    return markup.replace("__SESSION_ID__", session_json)
+
 
 def _card(title: str, value: int, caption: str) -> str:
     return f"""
