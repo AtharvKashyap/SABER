@@ -216,7 +216,7 @@ class MissionOrchestrator:
             roe=constraints.get("roe", {}),
             metadata=seeded_metadata,
         )
-        loop_result = self.mission_loop.run(state=state, session=session)
+        loop_result = self.mission_loop.run(state=state, session=session, strategy=strategy)
         return self._result_from_loop(loop_result)
 
     def _result_from_loop(self, loop_result: MissionLoopResult) -> MissionRunResult:

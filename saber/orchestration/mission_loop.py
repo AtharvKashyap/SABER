@@ -74,8 +74,22 @@ class MissionLoop:
         self.max_steps = max_steps
         self.strategy = strategy
 
-    def run(self, state: MissionState, session: MissionSession) -> MissionLoopResult:
-        """Run the closed loop until pause, completion, or a stop condition."""
+    def run(
+        self,
+        state: MissionState,
+        session: MissionSession,
+        strategy: TargetStrategy | None = None,
+    ) -> MissionLoopResult:
+        """Run the closed loop until pause, completion, or a stop condition.
+
+        ``strategy`` is the per-mission strategy threaded from the caller. When
+        provided it overrides the constructor ``strategy`` (production builds the
+        loop as a target-agnostic singleton, so the per-mission strategy can only
+        arrive here). When ``None``, the constructor ``strategy`` is used as a
+        back-compat fallback; when both are ``None``, objective-met is a no-op.
+        """
+
+        active_strategy = strategy if strategy is not None else self.strategy
 
         self.state_store.snapshot(state)
 
@@ -103,7 +117,7 @@ class MissionLoop:
                         reason=f"refused: {gate.reason}",
                     ),
                 )
-                state = self._apply_strategy_objective(state)
+                state = self._apply_strategy_objective(state, active_strategy)
                 self.state_store.snapshot(state)
                 stop = self.stop_evaluator.evaluate(state, action)
                 if stop.should_stop:
@@ -163,7 +177,7 @@ class MissionLoop:
                 evidence_refs=evidence_refs,
                 finding_refs=finding_refs,
             )
-            state = self._apply_strategy_objective(state)
+            state = self._apply_strategy_objective(state, active_strategy)
             self.state_store.snapshot(state)
 
             stop = self.stop_evaluator.evaluate(state, action)
@@ -176,14 +190,16 @@ class MissionLoop:
         self.state_store.snapshot(state)
         return MissionLoopResult(state, session, MissionRunStatus.STOPPED, "max_steps exhausted")
 
-    def _apply_strategy_objective(self, state: MissionState) -> MissionState:
-        """Mark ``objective_met`` when the injected strategy reports success.
+    def _apply_strategy_objective(
+        self, state: MissionState, strategy: TargetStrategy | None
+    ) -> MissionState:
+        """Mark ``objective_met`` when the active strategy reports success.
 
-        No-op when no strategy is injected. Only ever sets ``objective_met`` to
+        No-op when no strategy is active. Only ever sets ``objective_met`` to
         True, so it never clears a flag set elsewhere; the StopEvaluator then
         terminates the run on the next stop check.
         """
 
-        if self.strategy is not None and self.strategy.objective_met(state):
+        if strategy is not None and strategy.objective_met(state):
             return state.model_copy(update={"objective_met": True})
         return state

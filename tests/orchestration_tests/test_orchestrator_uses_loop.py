@@ -12,7 +12,7 @@ def test_run_mission_delegates_to_mission_loop(monkeypatch):
     captured = {}
 
     class _FakeLoop:
-        def run(self, state, session):
+        def run(self, state, session, strategy=None):
             captured["state"] = state
             captured["session"] = session
             from saber.orchestration.mission_loop import MissionLoopResult

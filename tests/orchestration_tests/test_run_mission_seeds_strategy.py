@@ -11,7 +11,7 @@ def _orchestrator_with_capture(captured):
     """Build an orchestrator whose loop just records the state it receives."""
 
     class _FakeLoop:
-        def run(self, state, session):
+        def run(self, state, session, strategy=None):
             captured["state"] = state
             from saber.orchestration.mission_loop import MissionLoopResult
 
