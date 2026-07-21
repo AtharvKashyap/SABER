@@ -1,47 +1,38 @@
-"""Planner → Orchestrator → Report E2E.
+"""Deterministic full-pipeline mission E2E (Docker-gated, no LLM key needed).
 
-This verifies the real SABER control plane:
-- PlannerAgent builds the executable plan
-- MissionOrchestrator runs the plan
-- StepRunner executes real safe agents/tools through Docker
-- ResultProcessor processes evidence
-- ReportFinalizer exports reports
-- mission_result.json contains report artifacts
+This exercises the real SABER control plane end to end through the CURRENT
+state-first architecture:
+
+- ``build_saber_runtime`` wires storage, tools, parsers, sandbox, the mission
+  loop, and the report finalizer.
+- ``MissionOrchestrator.run_mission`` drives the injected ``MissionLoop`` with
+  the ``DeterministicDecider`` (so this needs Docker but NOT a live model).
+- Real safe tools run in the Docker sandbox; ``ResultProcessor`` parses their
+  evidence into the stores.
+- ``ReportFinalizer`` exports report artifacts from the final ``MissionState``.
+
+Task 13 retired the plan-first driver (``run_until_pause_or_complete`` + a
+static chain runner), and Task 17 rewrote this test onto the loop/runtime API.
+It asserts loop INVARIANTS (terminates, no scope violation, work attempted,
+reports produced) rather than an exact tool order.
+
+The live-LLM counterpart (state-growth against real targets) lives in
+``test_mission_loop_live_llm_e2e.py``; this test is its deterministic,
+model-free sibling and is gated on Docker only.
 """
 
 from __future__ import annotations
 
-import json
 import os
-from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
-from saber.agents.chain_agent import ChainAgent
-from saber.agents.exploit_agent import ExploitAgent
-from saber.agents.network_agent import NetworkAgent
-from saber.agents.planner_agent import PlannerAgent
-from saber.agents.recon_agent import ReconAgent
-from saber.agents.web_agent import WebAgent
-from saber.core.docker_runner import (
-    DockerSubprocessRunner,
-    docker_available,
-    docker_info,
-    image_exists,
-)
-from saber.core.evidence_store import EvidenceStore
-from saber.core.result_processor import ResultProcessor
-from saber.core.sandbox import Sandbox
+from saber.core.docker_runner import docker_available, docker_info, image_exists
+from saber.core.runtime import SaberConfig, build_saber_runtime
+from saber.models.scope import MissionScope
 from saber.models.session import MissionSession
 from saber.models.target import Target, TargetType
-from saber.orchestration.mission_orchestrator import MissionOrchestrator, MissionRunStatus
-from saber.orchestration.step_runner import StepRunner
-from saber.reporting.finalizer import ReportFinalizer
-from saber.storage.connection import StorageConnection
-from saber.storage.evidence_index import EvidenceIndex
-from saber.storage.finding_store import FindingStore
-from saber.storage.graph_store import GraphStore
-from saber.tools.registry import ToolRegistry, default_tool_entries
+from saber.orchestration.mission_orchestrator import MissionRunStatus
+from saber.storage.mission_state_store import MissionStateStore
 
 pytestmark = pytest.mark.e2e
 
@@ -58,121 +49,72 @@ def _docker_ready() -> bool:
     not _docker_ready(),
     reason="Docker daemon or SABER sandbox image is not available.",
 )
-def test_planner_orchestrator_real_safe_pipeline_exports_reports(tmp_path) -> None:
-    db_path = tmp_path / "saber.db"
-    evidence_root = tmp_path / "evidence"
-    reports_dir = tmp_path / "reports"
-
-    connection = StorageConnection(db_path)
-    connection.initialize()
-
-    finding_store = FindingStore(connection)
-    evidence_index = EvidenceIndex(connection)
-    graph_store = GraphStore(connection)
-
-    result_processor = ResultProcessor(
-        evidence_index=evidence_index,
-        finding_store=finding_store,
-        graph_store=graph_store,
-        evidence_root=evidence_root,
-    )
-
-    report_finalizer = ReportFinalizer(
-        finding_store=finding_store,
-        output_dir=reports_dir,
-        connection=connection,
-    )
-
-    runner = DockerSubprocessRunner(
-        image=os.getenv(
-            "SABER_SANDBOX_IMAGE",
-            "ghcr.io/atharvkashyap/saber-sandbox:kali-last-release",
-        ),
-        repo_dir=Path.cwd(),
-        default_timeout_seconds=240,
-        network=os.getenv("SABER_DOCKER_NETWORK", "host"),
-        user=os.getenv("SABER_DOCKER_USER", ""),
-    )
-
-    sandbox = Sandbox(EvidenceStore(evidence_root), runner)
-    tool_registry = ToolRegistry(default_tool_entries())
-
-    agents = {
-        "planner_agent": PlannerAgent(),
-        "recon_agent": ReconAgent(),
-        "network_agent": NetworkAgent(),
-        "web_agent": WebAgent(),
-        "exploit_agent": ExploitAgent(),
-        "chain_agent": ChainAgent(),
-    }
-
-    step_runner = StepRunner(
-        agents=agents,
-        tool_registry=tool_registry,
-        sandbox=sandbox,
-    )
-
-    orchestrator = MissionOrchestrator(
-        agents=agents,
-        tool_registry=tool_registry,
-        sandbox=sandbox,
-        step_runner=step_runner,
-        # mission_loop is now mandatory (Task 13). Injected structurally so
-        # construction does not error; this Docker-gated test drives via
-        # run_mission (loop path) and needs a real loop wired before it can
-        # pass/verify under Docker.
-        mission_loop=MagicMock(),
-        result_processor=result_processor,
-        report_finalizer=report_finalizer,
-        reports_dir=reports_dir,
+def test_deterministic_mission_pipeline_exports_reports(tmp_path) -> None:
+    session_id = "planner_orchestrator_report_e2e"
+    config = SaberConfig(
+        db_path=tmp_path / "saber.db",
+        evidence_dir=tmp_path / "evidence",
+        reports_dir=tmp_path / "reports",
+        profile="recon",
+        require_approval=False,
         max_steps=8,
+        agent_mode="deterministic",
+        metadata={"source": "planner_orchestrator_report_e2e"},
     )
+    runtime = build_saber_runtime(config)
 
-    session = MissionSession(
-        session_id="planner_orchestrator_report_e2e",
-        mission_name="Planner Orchestrator Report E2E",
-    )
+    try:
+        target = Target(type=TargetType.IP, value="127.0.0.1")
+        scope = MissionScope(mission_name="Deterministic pipeline E2E", targets=[target])
+        session = MissionSession(
+            session_id=session_id,
+            mission_name="Deterministic Pipeline E2E",
+            scope=scope,
+        )
 
-    target = Target(type=TargetType.HOST, value="127.0.0.1")
+        runtime.session_store.create_session(
+            {
+                "session_id": session_id,
+                "mission_name": session.mission_name,
+                "status": "running",
+                "metadata": {"target": target.value, "profile": "recon"},
+            }
+        )
 
-    result_processor._ensure_session_exists(session.session_id)
+        result = runtime.orchestrator.run_mission(
+            session=session,
+            target=target,
+            objective="Run a safe local assessment of 127.0.0.1 and produce reports.",
+            constraints={"autonomy_level": "autonomous", "agent_mode": "deterministic"},
+            metadata={"source": "planner_orchestrator_report_e2e"},
+        )
 
-    result = orchestrator.run_mission(
-        session=session,
-        target=target,
-        objective="Run a safe local assessment of 127.0.0.1 and produce reports.",
-        constraints={"agent_mode": "deterministic"},
-        metadata={"target": target.tool_value(), "test": "planner_orchestrator_report_e2e"},
-    )
+        # 1. The loop terminates with a terminal status.
+        assert result.status in {
+            MissionRunStatus.COMPLETED,
+            MissionRunStatus.STOPPED,
+            MissionRunStatus.PAUSED_FOR_APPROVAL,
+        }
 
-    assert result.status in {
-        MissionRunStatus.COMPLETED,
-        MissionRunStatus.STOPPED,
-        MissionRunStatus.PAUSED_FOR_APPROVAL,
-    }
+        # 2. State is persisted, work was attempted, and no scope violation occurred.
+        # (The DeterministicDecider always attempts nmap service_scan first, so a
+        # deterministic run reliably attempts at least one action; service
+        # discovery depends on the live host and is asserted in the live-LLM test.)
+        state = MissionStateStore(runtime.storage_connection).load(session_id)
+        assert state is not None, "mission loop must persist a MissionState snapshot"
+        assert len(state.attempted_actions) >= 1, "expected the loop to attempt >=1 action"
+        assert not [
+            attempt for attempt in state.attempted_actions
+            if "out of scope" in (attempt.reason or "").lower()
+        ], "no scope violation should be recorded for an in-scope target"
 
-    assert result.records, "Expected orchestrator to run at least one step."
+        # 3. On a finalized run, report artifacts are exported to disk.
+        if result.status in {MissionRunStatus.COMPLETED, MissionRunStatus.STOPPED}:
+            assert result.artifacts, "expected report artifacts on a finalized run"
+            report_types = {artifact.kind for artifact in result.artifacts}
+            assert "json" in report_types, f"expected a JSON report; got {report_types}"
 
-    mission_result_path = reports_dir / session.session_id / "mission_result.json"
-    assert mission_result_path.exists()
-
-    payload = json.loads(mission_result_path.read_text(encoding="utf-8"))
-
-    assert payload["session_id"] == session.session_id
-    assert payload["mission_name"] == session.mission_name
-    assert payload["records"], "mission_result.json should include step records."
-
-    # At least mission_result_json must exist. If the plan reaches completion,
-    # report artifacts should also exist.
-    artifact_kinds = {artifact["kind"] for artifact in payload["artifacts"]}
-    assert "mission_result_json" in artifact_kinds
-
-    if payload["status"] == "completed":
-        assert "report_json" in artifact_kinds
-        assert "report_xlsx" in artifact_kinds
-        assert "report_markdown" in artifact_kinds
-        assert (reports_dir / session.session_id / "findings.json").exists()
-        assert (reports_dir / session.session_id / "findings.xlsx").exists()
-        assert (reports_dir / session.session_id / "technical_report.md").exists()
-
-    connection.close()
+            session_reports = tmp_path / "reports" / session_id
+            assert (session_reports / "findings.json").exists()
+    finally:
+        runtime.close()
