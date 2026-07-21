@@ -30,3 +30,17 @@ def test_network_objective_met_when_vulns_and_scanned():
         metadata={"exploit_intel_done": True},
     )
     assert NetworkStrategy().objective_met(state) is True
+
+
+def test_web_objective_met_after_scan():
+    from saber.models.mission_state import KnownTechnology, MissionState
+    from saber.models.target import Target, TargetType
+    from saber.orchestration.strategies.web import WebStrategy
+
+    state = MissionState(
+        session_id="s",
+        target=Target(type=TargetType.URL, value="http://x/"),
+        technologies=[KnownTechnology(host="x", name="nginx")],
+        metadata={"web_scanned": True},
+    )
+    assert WebStrategy().objective_met(state) is True
