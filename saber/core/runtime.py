@@ -26,9 +26,8 @@ from saber.core.env_loader import load_env_file
 from saber.core.evidence_store import EvidenceStore
 from saber.core.llm_client import LlmClient, LlmConfig
 from saber.core.result_processor import ResultProcessor
-from saber.core.tool_catalog import ToolCatalog
 from saber.core.sandbox import Sandbox
-from saber.orchestration.chain_runner import ChainRunner
+from saber.core.tool_catalog import ToolCatalog
 from saber.orchestration.mission_orchestrator import MissionOrchestrator
 from saber.orchestration.step_runner import StepRunner
 from saber.parsers.registry import ParserRegistry, build_default_parser_registry
@@ -115,7 +114,6 @@ class SaberRuntime:
     sandbox: Sandbox
     agents: dict[str, Any]
     step_runner: StepRunner
-    chain_runner: ChainRunner
     orchestrator: MissionOrchestrator
 
     def close(self) -> None:
@@ -147,7 +145,6 @@ class SaberRuntime:
             "agents": sorted(self.agents.keys()),
             "sandbox": self.sandbox.__class__.__name__,
             "step_runner": self.step_runner.__class__.__name__,
-            "chain_runner": self.chain_runner.__class__.__name__,
             "orchestrator": self.orchestrator.__class__.__name__,
         }
 
@@ -196,8 +193,6 @@ def build_saber_runtime(
         tool_registry=tools,
         sandbox=runtime_sandbox,
     )
-    chain_runner = ChainRunner(max_chain_depth=runtime_config.max_chain_depth)
-
     from saber.agents.deciders.deterministic import DeterministicDecider
     from saber.agents.deciders.llm import LlmDecider
     from saber.core.state_merger import StateMerger
@@ -231,7 +226,6 @@ def build_saber_runtime(
         tool_registry=tools,
         sandbox=runtime_sandbox,
         step_runner=step_runner,
-        chain_runner=chain_runner,
         result_processor=result_processor,
         reports_dir=runtime_config.reports_dir,
         max_steps=runtime_config.max_steps,
@@ -253,7 +247,6 @@ def build_saber_runtime(
         sandbox=runtime_sandbox,
         agents=agents,
         step_runner=step_runner,
-        chain_runner=chain_runner,
         orchestrator=orchestrator,
     )
 

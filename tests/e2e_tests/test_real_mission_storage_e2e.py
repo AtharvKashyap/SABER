@@ -10,10 +10,15 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from unittest.mock import MagicMock
 
 import pytest
-
-from saber.core.docker_runner import DockerSubprocessRunner, docker_available, docker_info, image_exists
+from saber.core.docker_runner import (
+    DockerSubprocessRunner,
+    docker_available,
+    docker_info,
+    image_exists,
+)
 from saber.core.evidence_store import EvidenceStore
 from saber.core.result_processor import ResultProcessor
 from saber.core.sandbox import Sandbox
@@ -26,13 +31,10 @@ from saber.storage.evidence_index import EvidenceIndex
 from saber.storage.finding_store import FindingStore
 from saber.storage.graph_store import GraphStore
 from saber.tools.registry import ToolRegistry
-
 from tests.e2e_tests.test_result_processor_real_nmap_mission_e2e import (
-    CompleteAfterOneRecord,
     OneStepPlan,
     RealNmapStepRunner,
 )
-
 
 pytestmark = pytest.mark.e2e
 
@@ -109,7 +111,10 @@ def test_real_mission_stores_findings_from_real_nmap(tmp_path) -> None:
         tool_registry=ToolRegistry(),
         sandbox=sandbox,
         step_runner=step_runner,
-        chain_runner=CompleteAfterOneRecord(),
+        # mission_loop is now mandatory (Task 13). Injected structurally so
+        # construction does not error; this Docker-gated test still needs a
+        # loop-driven body rewrite before it can pass under Docker.
+        mission_loop=MagicMock(),
         result_processor=result_processor,
         reports_dir=reports_dir,
         max_steps=3,

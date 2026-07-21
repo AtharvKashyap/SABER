@@ -14,22 +14,26 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
-
 from saber.agents.chain_agent import ChainAgent
 from saber.agents.exploit_agent import ExploitAgent
 from saber.agents.network_agent import NetworkAgent
 from saber.agents.planner_agent import PlannerAgent
 from saber.agents.recon_agent import ReconAgent
 from saber.agents.web_agent import WebAgent
-from saber.core.docker_runner import DockerSubprocessRunner, docker_available, docker_info, image_exists
+from saber.core.docker_runner import (
+    DockerSubprocessRunner,
+    docker_available,
+    docker_info,
+    image_exists,
+)
 from saber.core.evidence_store import EvidenceStore
 from saber.core.result_processor import ResultProcessor
 from saber.core.sandbox import Sandbox
 from saber.models.session import MissionSession
 from saber.models.target import Target, TargetType
-from saber.orchestration.chain_runner import ChainRunner
 from saber.orchestration.mission_orchestrator import MissionOrchestrator, MissionRunStatus
 from saber.orchestration.step_runner import StepRunner
 from saber.reporting.finalizer import ReportFinalizer
@@ -38,7 +42,6 @@ from saber.storage.evidence_index import EvidenceIndex
 from saber.storage.finding_store import FindingStore
 from saber.storage.graph_store import GraphStore
 from saber.tools.registry import ToolRegistry, default_tool_entries
-
 
 pytestmark = pytest.mark.e2e
 
@@ -114,7 +117,11 @@ def test_planner_orchestrator_real_safe_pipeline_exports_reports(tmp_path) -> No
         tool_registry=tool_registry,
         sandbox=sandbox,
         step_runner=step_runner,
-        chain_runner=ChainRunner(),
+        # mission_loop is now mandatory (Task 13). Injected structurally so
+        # construction does not error; this Docker-gated test drives via
+        # run_mission (loop path) and needs a real loop wired before it can
+        # pass/verify under Docker.
+        mission_loop=MagicMock(),
         result_processor=result_processor,
         report_finalizer=report_finalizer,
         reports_dir=reports_dir,

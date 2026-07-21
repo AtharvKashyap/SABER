@@ -13,10 +13,15 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
-
-from saber.core.docker_runner import DockerSubprocessRunner, docker_available, docker_info, image_exists
+from saber.core.docker_runner import (
+    DockerSubprocessRunner,
+    docker_available,
+    docker_info,
+    image_exists,
+)
 from saber.core.evidence_store import EvidenceStore
 from saber.core.result_processor import ResultProcessor
 from saber.core.sandbox import Sandbox
@@ -29,7 +34,6 @@ from saber.storage.evidence_index import EvidenceIndex
 from saber.storage.finding_store import FindingStore
 from saber.storage.graph_store import GraphStore
 from saber.tools.registry import ToolRegistry
-
 
 pytestmark = pytest.mark.e2e
 
@@ -222,7 +226,10 @@ def test_result_processor_parses_real_nmap_evidence_during_mission(tmp_path) -> 
         tool_registry=ToolRegistry(),
         sandbox=sandbox,
         step_runner=step_runner,
-        chain_runner=CompleteAfterOneRecord(),
+        # mission_loop is now mandatory (Task 13). Injected structurally so
+        # construction does not error; this Docker-gated test still needs a
+        # loop-driven body rewrite before it can pass under Docker.
+        mission_loop=MagicMock(),
         result_processor=result_processor,
         reports_dir=reports_dir,
         max_steps=3,
