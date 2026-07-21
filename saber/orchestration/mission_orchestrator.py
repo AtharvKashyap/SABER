@@ -20,6 +20,7 @@ from saber.orchestration.execution_plan import (
     build_default_execution_plan,
 )
 from saber.orchestration.step_runner import StepRunner, StepRunRecord
+from saber.orchestration.strategies.base import select_strategy
 from saber.tools.registry import ToolRegistry
 
 if TYPE_CHECKING:
@@ -189,19 +190,31 @@ class MissionOrchestrator:
         ``plan`` and ``initial_observations`` are accepted for backward
         compatibility but are not used to drive: the loop builds its own
         ``MissionState`` from the target, objective, and session scope.
+
+        The target's ``TargetStrategy`` (selected from the target and caller
+        metadata) seeds the loop: a blank ``objective`` falls back to the
+        strategy's default objective, and the strategy's ``initial_metadata`` is
+        merged into ``MissionState.metadata``. Caller-provided metadata keys take
+        precedence over strategy defaults.
         """
 
         constraints = constraints or {}
+        caller_metadata = metadata or {}
+        strategy = select_strategy(target, caller_metadata)
+        seeded_objective = (
+            objective if (objective or "").strip() else strategy.seed_objective(target)
+        )
+        seeded_metadata = {**strategy.initial_metadata(target), **caller_metadata}
         state = MissionState(
             session_id=session.session_id,
             target=target,
-            objective=objective,
+            objective=seeded_objective,
             scope=session.scope,
             autonomy_level=AutonomyLevel(
                 str(constraints.get("autonomy_level", AutonomyLevel.AUTONOMOUS.value))
             ),
             roe=constraints.get("roe", {}),
-            metadata=metadata or {},
+            metadata=seeded_metadata,
         )
         loop_result = self.mission_loop.run(state=state, session=session)
         return self._result_from_loop(loop_result)
