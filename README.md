@@ -107,7 +107,7 @@ SABER currently supports the full local operator path:
 - The mission is driven by a **state-first agentic loop** over `MissionState`, not a static plan.
 - `MissionState` accumulates hosts, services, technologies, credentials, vulns, hypotheses, and the attempted/failed-action trace; it is persisted and snapshotted every step.
 - Two deciders are available: an **LLM-primary decider** and a **deterministic rule-based decider** for offline/CI runs.
-- **Risk-gated autonomy**: SABER runs autonomously by default and pauses only for high-risk/destructive/exploit actions; out-of-scope targets are always refused.
+- **Risk-gated autonomy**: SABER runs autonomously by default and pauses only for high-risk/destructive actions; out-of-scope targets are always refused.
 - The mission detail page shows a **live Mission State panel** in addition to steps, findings, evidence, and reports.
 - Reports (JSON, XLSX, Markdown, PDF) are finalized from the final `MissionState` and are downloadable from the GUI.
 - Local-first storage: SQLite database, evidence files, and reports all live under `runs/`.
@@ -127,7 +127,7 @@ If an action targets something outside the mission scope, or invokes a prohibite
 
 ### The high-risk confirmation gate
 
-By default SABER runs autonomously. Low- and medium-risk enumeration proceeds without interruption. Only **high-risk / destructive / exploit-class** actions (or actions the decider explicitly flags as requiring confirmation) pause the mission for a **one-click confirmation** before proceeding. When paused, the mission records an approval request and surfaces it in the GUI.
+By default SABER runs autonomously. Low- and medium-risk enumeration proceeds without interruption. Only **high-risk / destructive** actions (or actions the decider flags as requiring confirmation) pause the mission for a **one-click confirmation** before proceeding. When paused, the mission records an approval request and surfaces it in the GUI.
 
 ### Per-mission autonomy level
 
@@ -248,6 +248,8 @@ Mission fields:
 - Require approval
 - Dry run
 - Objective
+
+> Note: Pausing for approval is governed by the risk gate and the mission's autonomy level, not the **Require approval** toggle — the mission loop's `RiskGate` does not currently consume it.
 
 Profiles select which capability agents the loop may dispatch to:
 
@@ -449,7 +451,7 @@ Run a mission:
 python -m saber.ui.cli.main run --target 127.0.0.1 --profile recon --max-steps 8
 ```
 
-Choose the decider with `--mode {deterministic,llm}` (default `deterministic`). `--profile` accepts `recon`, `web`, `network`, `ad`, or `full`. Other useful flags: `--objective`, `--mission-name`, `--no-approval`, `--dry-run`.
+Choose the decider with `--mode {deterministic,llm}` (default `deterministic`). `--profile` accepts `recon`, `web`, `network`, `ad`, or `full`. Other useful flags: `--objective`, `--mission-name`, `--no-approval`, `--dry-run`. Note that `--no-approval` only records a mission constraint; pausing is governed by the risk gate and autonomy level (the loop's `RiskGate` does not currently consume it).
 
 Show live status:
 

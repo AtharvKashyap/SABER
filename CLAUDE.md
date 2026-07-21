@@ -39,7 +39,7 @@ State is snapshotted after every step, so the GUI and the final report always re
 - **The loop decides; agents execute.** `MissionLoop` calls `decider.decide()`; agents are capability lenses the executor dispatches to. The loop never calls `agent.decide()`, and agents no longer drive the mission's direction.
 - **`MissionState` is immutable-by-copy.** It is a pydantic model updated only via `model_copy(update=...)` (see `record_attempt`, `touch`). Never mutate a `MissionState` in place.
 - **State mutations go through `StateMerger`.** Parsed observations become hosts/services/technologies/credentials/vulns only via `StateMerger.merge`, which dedupes. Do not hand-edit these lists elsewhere.
-- **Risk-gated autonomy.** Autonomous by default; only high-risk / exploit-class / `requires_confirmation` actions pause for a one-click confirmation. Do not weaken `RiskGate`.
+- **Risk-gated autonomy.** Autonomous by default; only high-risk or explicitly confirmation-flagged actions pause for a one-click confirmation. Do not weaken `RiskGate`.
 - **Scope is a hard wall.** Out-of-scope targets or prohibited tool/actions are **refused** (never offered for confirmation), and scope is checked before any autonomy consideration.
 - **SQL is parameterized only; schema changes are static DDL migrations** under `saber/storage/migrations/*.sql`. Never build SQL by string interpolation.
 
@@ -73,7 +73,7 @@ Lint/types are **not** run by any `make` target: `ruff check <files>` and `mypy 
 
 Full list with defaults in `.env.example`. Key ones:
 
-- `SABER_AGENT_MODE` — documented in `.env.example`, but the actual decider mode is read from the CLI `--mode` flag / the web form's `agent_mode` field, **not** from the environment (it is not loaded in `config.py`). Setting only the env var does not change the mode.
+- `SABER_AGENT_MODE` — documented in `.env.example`, but the actual decider mode is read from the CLI `--mode` flag / the web form's `agent_mode` field, **not** from the environment (it is not read by `SaberConfig.from_env()` in `saber/core/runtime.py`). Setting only the env var does not change the mode.
 - `SABER_MODEL`, `SABER_MODEL_API_KEY`, `SABER_LOCAL_MODEL_URL` — model config (used only in LLM mode).
 - `SABER_SANDBOX_BACKEND` (docker), `SABER_SANDBOX_IMAGE` (`ghcr.io/atharvkashyap/saber-sandbox:kali-last-release`), `SABER_DOCKER_NETWORK` (host).
 - `SABER_RUN_DOCKER_E2E`, `SABER_RUN_LLM_E2E` — default `0`; gate the E2E and live-model tests (see `make e2e` / `make llm-e2e`).
