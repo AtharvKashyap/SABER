@@ -44,3 +44,24 @@ def test_web_objective_met_after_scan():
         metadata={"web_scanned": True},
     )
     assert WebStrategy().objective_met(state) is True
+
+
+def test_ctf_objective_met_when_flag_found():
+    from saber.models.mission_state import MissionState
+    from saber.models.target import Target, TargetType
+    from saber.orchestration.strategies.ctf import CtfStrategy
+
+    state = MissionState(
+        session_id="s",
+        target=Target(type=TargetType.IP, value="10.0.0.5"),
+        metadata={"flag": "picoCTF{...}"},
+    )
+    assert CtfStrategy().objective_met(state) is True
+
+
+def test_ctf_metadata_marks_lab():
+    from saber.models.target import Target, TargetType
+    from saber.orchestration.strategies.ctf import CtfStrategy
+
+    meta = CtfStrategy().initial_metadata(Target(type=TargetType.IP, value="10.0.0.5"))
+    assert meta["lab"] is True
