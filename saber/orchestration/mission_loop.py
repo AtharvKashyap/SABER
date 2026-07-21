@@ -9,6 +9,7 @@ ResultProcessor, and the stores.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from saber.agents.deciders.base import ActionKind
 from saber.core.result_processor import ResultProcessor
@@ -21,6 +22,9 @@ from saber.orchestration.mission_orchestrator import MissionRunStatus
 from saber.orchestration.risk_gate import GateDecision, RiskGate
 from saber.orchestration.stop_conditions import StopEvaluator
 from saber.storage.mission_state_store import MissionStateStore
+
+if TYPE_CHECKING:
+    from saber.orchestration.strategies.base import TargetStrategy
 
 
 @dataclass(frozen=True)
@@ -48,8 +52,15 @@ class MissionLoop:
         result_processor: ResultProcessor,
         session_store=None,
         max_steps: int = 50,
+        strategy: TargetStrategy | None = None,
     ) -> None:
-        """Initialize the loop."""
+        """Initialize the loop.
+
+        ``strategy`` is optional (default ``None``) for backward compatibility.
+        When provided, the loop consults ``strategy.objective_met(state)`` after
+        each merge and marks ``state.objective_met`` so the StopEvaluator can
+        terminate the run. When ``None``, objective-met behavior is unchanged.
+        """
 
         self.decider = decider
         self.summarizer = summarizer
@@ -61,6 +72,7 @@ class MissionLoop:
         self.result_processor = result_processor
         self.session_store = session_store
         self.max_steps = max_steps
+        self.strategy = strategy
 
     def run(self, state: MissionState, session: MissionSession) -> MissionLoopResult:
         """Run the closed loop until pause, completion, or a stop condition."""
@@ -91,6 +103,7 @@ class MissionLoop:
                         reason=f"refused: {gate.reason}",
                     ),
                 )
+                state = self._apply_strategy_objective(state)
                 self.state_store.snapshot(state)
                 stop = self.stop_evaluator.evaluate(state, action)
                 if stop.should_stop:
@@ -150,6 +163,7 @@ class MissionLoop:
                 evidence_refs=evidence_refs,
                 finding_refs=finding_refs,
             )
+            state = self._apply_strategy_objective(state)
             self.state_store.snapshot(state)
 
             stop = self.stop_evaluator.evaluate(state, action)
@@ -161,3 +175,15 @@ class MissionLoop:
         state = state.model_copy(update={"stop_reason": "max_steps exhausted"})
         self.state_store.snapshot(state)
         return MissionLoopResult(state, session, MissionRunStatus.STOPPED, "max_steps exhausted")
+
+    def _apply_strategy_objective(self, state: MissionState) -> MissionState:
+        """Mark ``objective_met`` when the injected strategy reports success.
+
+        No-op when no strategy is injected. Only ever sets ``objective_met`` to
+        True, so it never clears a flag set elsewhere; the StopEvaluator then
+        terminates the run on the next stop check.
+        """
+
+        if self.strategy is not None and self.strategy.objective_met(state):
+            return state.model_copy(update={"objective_met": True})
+        return state
