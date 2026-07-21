@@ -13,9 +13,12 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from saber.models.mission_state import MissionState
+from saber.models.session import MissionSession
 from saber.reporting.json_exporter import JsonExporter, ReportDocument
-from saber.reporting.xlsx_exporter import XlsxExporter
 from saber.reporting.pdf_exporter import PdfExporter
+from saber.reporting.state_report_adapter import MissionStateReportAdapter
+from saber.reporting.xlsx_exporter import XlsxExporter
 
 
 @dataclass(frozen=True)
@@ -106,9 +109,141 @@ class ReportFinalizer:
             },
         )
 
-        export_jobs = [
-            ("json", session_dir / "findings.json", lambda path: self.json_exporter.export(document, path)),
-            ("xlsx", session_dir / "findings.xlsx", lambda path: self.xlsx_exporter.export(document, path)),
+        export_jobs = self._build_export_jobs(document, session_dir)
+
+        for report_type, path, exporter in export_jobs:
+            try:
+                exported_path = Path(exporter(path))
+                artifact = self._artifact_for_path(
+                    path=exported_path,
+                    report_type=report_type,
+                    metadata={
+                        "session_id": session_id,
+                        "mission_name": mission_name,
+                        "target": target,
+                        "report_id": report_id,
+                    },
+                )
+                artifacts.append(artifact)
+                self._record_report_artifact(session_id=session_id, artifact=artifact)
+            except Exception as exc:
+                errors.append(f"{report_type}:{type(exc).__name__}: {exc}")
+
+        return ReportFinalizationResult(
+            report_id=report_id,
+            artifacts=artifacts,
+            errors=errors,
+        )
+
+    def finalize_from_state(
+        self,
+        state: MissionState,
+        session: MissionSession,
+        reports_dir: str | Path,
+    ) -> list[ReportArtifact]:
+        """Export reports directly from a mission's final ``MissionState``.
+
+        Mirrors :meth:`finalize` but derives the report document from the
+        accumulated ``MissionState`` (via ``MissionStateReportAdapter``) instead
+        of the persisted finding/observation stores. Reuses the exact same
+        JSON/XLSX/Markdown/PDF exporters and artifact recording. Returns the
+        exported artifacts; export failures are skipped best-effort so the JSON
+        report is always emitted when possible.
+        """
+
+        report_id = f"report_{uuid4().hex[:12]}"
+        session_id = state.session_id
+        session_dir = Path(reports_dir) / session_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+
+        context = MissionStateReportAdapter().build_report_context(state, session)
+
+        findings = [
+            {
+                "title": vuln.get("title") or "Vulnerability",
+                "severity": vuln.get("severity"),
+                "description": vuln.get("title") or "Vulnerability identified during the mission.",
+                "references": list(vuln.get("evidence_refs") or []),
+                "metadata": {
+                    "host": vuln.get("host"),
+                    "port": vuln.get("port"),
+                    "identifier": vuln.get("identifier"),
+                    "confirmed": vuln.get("confirmed"),
+                },
+            }
+            for vuln in context["vulns"]
+        ]
+        observations = [
+            {
+                "kind": "action",
+                "summary": (
+                    f"{entry['tool_name']}.{entry['action']} -> "
+                    f"{'ok' if entry['success'] else 'failed'}"
+                ),
+                "source_tool": entry["tool_name"],
+                "data": entry,
+            }
+            for entry in context["timeline"]
+        ]
+
+        document = self.json_exporter.build_document(
+            report_id=report_id,
+            mission_name=session.mission_name,
+            target=state.target.value,
+            findings=findings,
+            observations=observations,
+            metadata={
+                "session_id": session_id,
+                "mission_state": context,
+            },
+        )
+
+        export_jobs = self._build_export_jobs(document, session_dir)
+
+        artifacts: list[ReportArtifact] = []
+        for report_type, path, exporter in export_jobs:
+            try:
+                exported_path = Path(exporter(path))
+            except Exception:
+                continue
+            artifact = self._artifact_for_path(
+                path=exported_path,
+                report_type=report_type,
+                metadata={
+                    "session_id": session_id,
+                    "mission_name": session.mission_name,
+                    "target": state.target.value,
+                    "report_id": report_id,
+                    "source": "mission_state",
+                },
+            )
+            artifacts.append(artifact)
+            self._record_report_artifact(session_id=session_id, artifact=artifact)
+
+        return artifacts
+
+    def _build_export_jobs(
+        self,
+        document: ReportDocument,
+        session_dir: Path,
+    ) -> list[tuple[str, Path, Any]]:
+        """Return the ordered (report_type, path, exporter) jobs for a document.
+
+        Single source of truth for the exporter-call pattern shared by
+        :meth:`finalize` and :meth:`finalize_from_state`.
+        """
+
+        export_jobs: list[tuple[str, Path, Any]] = [
+            (
+                "json",
+                session_dir / "findings.json",
+                lambda path: self.json_exporter.export(document, path),
+            ),
+            (
+                "xlsx",
+                session_dir / "findings.xlsx",
+                lambda path: self.xlsx_exporter.export(document, path),
+            ),
         ]
 
         if self.export_markdown:
@@ -159,32 +294,12 @@ class ReportFinalizer:
                 ]
             )
 
-        for report_type, path, exporter in export_jobs:
-            try:
-                exported_path = Path(exporter(path))
-                artifact = self._artifact_for_path(
-                    path=exported_path,
-                    report_type=report_type,
-                    metadata={
-                        "session_id": session_id,
-                        "mission_name": mission_name,
-                        "target": target,
-                        "report_id": report_id,
-                    },
-                )
-                artifacts.append(artifact)
-                self._record_report_artifact(session_id=session_id, artifact=artifact)
-            except Exception as exc:
-                errors.append(f"{report_type}:{type(exc).__name__}: {exc}")
-
-        return ReportFinalizationResult(
-            report_id=report_id,
-            artifacts=artifacts,
-            errors=errors,
-        )
+        return export_jobs
 
     @staticmethod
-    def _artifact_for_path(path: Path, report_type: str, metadata: dict[str, Any]) -> ReportArtifact:
+    def _artifact_for_path(
+        path: Path, report_type: str, metadata: dict[str, Any]
+    ) -> ReportArtifact:
         return ReportArtifact(
             path=str(path),
             report_type=report_type,
