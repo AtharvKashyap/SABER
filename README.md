@@ -235,6 +235,25 @@ Launch without opening a browser:
 
 ---
 
+## Test against the lab
+
+SABER ships a reproducible lab of intentionally vulnerable targets for
+authorized local testing.
+
+```bash
+make lab-up      # build vulnbin, create saber-lab network, start targets, write runs/lab_scope.yaml
+# set SABER_DOCKER_NETWORK=saber-lab in .env, then:
+python -m saber.ui.cli.main run --target dvwa --profile web --strategy web --scope runs/lab_scope.yaml
+python -m saber.ui.cli.main run --target vulnbin --strategy ctf --lab --scope runs/lab_scope.yaml
+make lab-down
+```
+
+The mission loop is LLM-driven in production (`--mode llm`); deterministic mode
+is used for reproducible offline/CI runs. Targets: `dvwa`, `juiceshop`,
+`metasploitable`, `vulnbin`. See `docker/lab/README.md`.
+
+---
+
 ## GUI Workflow
 
 From `/ui`, use **Start Mission**.
@@ -243,6 +262,8 @@ Mission fields:
 
 - Target
 - Profile
+- Strategy (`auto`, `network`, `web`, or `ctf`)
+- Lab (marks the target as an owned lab, relaxing ownership assumptions)
 - Mode (deterministic or LLM)
 - Max steps
 - Require approval
@@ -451,7 +472,7 @@ Run a mission:
 python -m saber.ui.cli.main run --target 127.0.0.1 --profile recon --max-steps 8
 ```
 
-Choose the decider with `--mode {deterministic,llm}` (default `deterministic`). `--profile` accepts `recon`, `web`, `network`, `ad`, or `full`. Other useful flags: `--objective`, `--mission-name`, `--no-approval`, `--dry-run`. Note that `--no-approval` only records a mission constraint; pausing is governed by the risk gate and autonomy level (the loop's `RiskGate` does not currently consume it).
+Choose the decider with `--mode {deterministic,llm}` (default `deterministic`). `--profile` accepts `recon`, `web`, `network`, `ad`, or `full`. `--strategy {auto,network,web,ctf}` overrides which target strategy seeds the mission (default `auto`, chosen from the target type). `--lab` marks the target as an owned lab, relaxing ownership assumptions for lab testing. `--scope <file>` enforces a scope YAML file (for example the `runs/lab_scope.yaml` written by `make lab-up`). Other useful flags: `--objective`, `--mission-name`, `--no-approval`, `--dry-run`. Note that `--no-approval` only records a mission constraint; pausing is governed by the risk gate and autonomy level (the loop's `RiskGate` does not currently consume it).
 
 Show live status:
 
@@ -518,6 +539,9 @@ smoke      Compile core files and run high-value smoke tests
 preflight  Check whitespace, git status, and secret strings
 launch     Run ./run_saber
 final      Run smoke, unit, e2e, and preflight
+lab-up     Build vulnbin, create the saber-lab network, start lab targets,
+           and write runs/lab_scope.yaml
+lab-down   Stop and remove the lab targets and network
 ```
 
 The `SABER_RUN_DOCKER_E2E` and `SABER_RUN_LLM_E2E` flags default to `0`; the tests they gate are skipped unless the flag is set (see `.env.example`).
