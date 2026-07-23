@@ -19,7 +19,7 @@ from saber.core.state_merger import StateMerger
 from saber.core.state_summary import StateSummarizer
 from saber.models.mission_state import AttemptedAction, MissionState
 from saber.models.session import ApprovalRequest, MissionSession
-from saber.orchestration.action_executor import ActionExecutor
+from saber.orchestration.action_executor import ActionExecutionRecord, ActionExecutor
 from saber.orchestration.mission_orchestrator import MissionRunStatus
 from saber.orchestration.risk_gate import GateDecision, RiskGate
 from saber.orchestration.stop_conditions import StopEvaluator
@@ -209,7 +209,7 @@ class MissionLoop:
     def _detect_and_record_flag(
         self,
         state: MissionState,
-        record,
+        record: ActionExecutionRecord,
         parsed_observations: list[dict],
     ) -> MissionState:
         """Record a captured flag on state.metadata['flag'] if one appears.

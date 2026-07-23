@@ -263,7 +263,7 @@ Mission fields:
 - Target
 - Profile
 - Strategy (`auto`, `network`, `web`, or `ctf`)
-- Lab (marks the target as an owned lab, relaxing ownership assumptions)
+- Lab (marks the target as an owned lab and selects the CTF strategy; does not currently change risk-gating)
 - Mode (deterministic or LLM)
 - Max steps
 - Require approval
@@ -472,7 +472,7 @@ Run a mission:
 python -m saber.ui.cli.main run --target 127.0.0.1 --profile recon --max-steps 8
 ```
 
-Choose the decider with `--mode {deterministic,llm}` (default `deterministic`). `--profile` accepts `recon`, `web`, `network`, `ad`, or `full`. `--strategy {auto,network,web,ctf}` overrides which target strategy seeds the mission (default `auto`, chosen from the target type). `--lab` marks the target as an owned lab, relaxing ownership assumptions for lab testing. `--scope <file>` enforces a scope YAML file (for example the `runs/lab_scope.yaml` written by `make lab-up`). Other useful flags: `--objective`, `--mission-name`, `--no-approval`, `--dry-run`. Note that `--no-approval` only records a mission constraint; pausing is governed by the risk gate and autonomy level (the loop's `RiskGate` does not currently consume it).
+Choose the decider with `--mode {deterministic,llm}` (default `deterministic`). `--profile` accepts `recon`, `web`, `network`, `ad`, or `full`. `--strategy {auto,network,web,ctf}` overrides which target strategy seeds the mission (default `auto`, chosen from the target type). `--lab` marks the target as an owned lab and selects the CTF strategy; it does not currently change risk-gating. `--scope <file>` enforces a scope YAML file (for example the `runs/lab_scope.yaml` written by `make lab-up`). Other useful flags: `--objective`, `--mission-name`, `--no-approval`, `--dry-run`. Note that `--no-approval` only records a mission constraint; pausing is governed by the risk gate and autonomy level (the loop's `RiskGate` does not currently consume it).
 
 Show live status:
 
