@@ -594,6 +594,15 @@ def _mission_start_panel() -> str:
           </select>
         </label>
 
+        <label>Strategy
+          <select id="mission-strategy" name="strategy">
+            <option value="auto">auto</option>
+            <option value="network">network</option>
+            <option value="web">web</option>
+            <option value="ctf">ctf</option>
+          </select>
+        </label>
+
         <label>Max Steps
           <input id="mission-max-steps" name="max_steps" type="number" min="1" max="200" value="20" />
         </label>
@@ -606,6 +615,11 @@ def _mission_start_panel() -> str:
         <label class="checkbox-row">
           <input id="mission-dry-run" name="dry_run" type="checkbox" />
           Dry run
+        </label>
+
+        <label class="checkbox-row">
+          <input id="mission-lab" name="lab" type="checkbox" />
+          Lab target (owned)
         </label>
 
         <label class="wide">Objective
@@ -628,9 +642,11 @@ def _mission_start_panel() -> str:
           target: document.getElementById("mission-target").value,
           profile: document.getElementById("mission-profile").value,
           agent_mode: document.getElementById("mission-agent-mode").value,
+          strategy: document.getElementById("mission-strategy").value,
           max_steps: parseInt(document.getElementById("mission-max-steps").value || "20", 10),
           require_approval: document.getElementById("mission-require-approval").checked,
           dry_run: document.getElementById("mission-dry-run").checked,
+          lab: document.getElementById("mission-lab").checked,
           objective: document.getElementById("mission-objective").value
         };
 

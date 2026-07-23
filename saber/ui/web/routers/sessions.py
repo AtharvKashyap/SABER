@@ -31,6 +31,8 @@ class MissionRunRequest(BaseModel):
     require_approval: bool = True
     dry_run: bool = False
     agent_mode: str = Field(default="deterministic", pattern="^(deterministic|llm)$")
+    strategy: str = Field(default="auto", pattern="^(auto|network|web|ctf)$")
+    lab: bool = False
 
 
 
@@ -109,6 +111,8 @@ def run_mission_from_web(request: Request, run_request: MissionRunRequest) -> di
         "max_steps": run_request.max_steps,
         "dry_run": run_request.dry_run,
         "agent_mode": run_request.agent_mode,
+        "strategy": run_request.strategy,
+        "lab": run_request.lab,
     }
 
     thread = Thread(target=run_cli_mission, kwargs=kwargs, daemon=True)
