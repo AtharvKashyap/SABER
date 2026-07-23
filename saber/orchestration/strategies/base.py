@@ -38,13 +38,27 @@ class TargetStrategy(ABC):
 
 
 def select_strategy(target: Target, metadata: dict[str, Any] | None = None) -> TargetStrategy:
-    """Pick the right strategy for a target."""
+    """Pick the right strategy for a target.
+
+    Precedence: an explicit ``metadata["strategy_override"]`` in
+    {"network","web","ctf"} wins; then ``ctf``/``lab`` metadata selects CTF;
+    then the target type is auto-detected.
+    """
 
     from saber.orchestration.strategies.ctf import CtfStrategy
     from saber.orchestration.strategies.network import NetworkStrategy
     from saber.orchestration.strategies.web import WebStrategy
 
     metadata = metadata or {}
+
+    override = str(metadata.get("strategy_override") or "").strip().lower()
+    if override == "ctf":
+        return CtfStrategy()
+    if override == "web":
+        return WebStrategy()
+    if override == "network":
+        return NetworkStrategy()
+
     if metadata.get("ctf") or metadata.get("lab"):
         return CtfStrategy()
     if target.type == TargetType.URL or target.is_web_target:
