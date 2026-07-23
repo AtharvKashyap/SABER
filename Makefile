@@ -1,4 +1,4 @@
-.PHONY: test unit e2e e2e-one llm-e2e smoke preflight launch final
+.PHONY: test unit e2e e2e-one llm-e2e smoke preflight launch final lab-up lab-down
 
 test:
 	pytest -q
@@ -34,3 +34,13 @@ final:
 	$(MAKE) unit
 	$(MAKE) e2e
 	$(MAKE) preflight
+
+lab-up:
+	docker network inspect saber-lab >/dev/null 2>&1 || docker network create saber-lab
+	docker compose -f docker/lab/docker-compose.yml up -d --build
+	python scripts/lab_scope.py
+	@echo "Lab up. Set SABER_DOCKER_NETWORK=saber-lab in .env, then run missions with --scope runs/lab_scope.yaml"
+
+lab-down:
+	docker compose -f docker/lab/docker-compose.yml down -v
+	-docker network rm saber-lab
