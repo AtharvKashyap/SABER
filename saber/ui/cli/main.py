@@ -41,6 +41,9 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--max-steps", type=int, default=50)
     run.add_argument("--no-approval", action="store_true", help="Disable approval requirement in mission constraints.")
     run.add_argument("--dry-run", action="store_true", help="Pass dry-run constraint to agents.")
+    run.add_argument("--strategy", choices=["auto", "network", "web", "ctf"], default="auto")
+    run.add_argument("--lab", action="store_true", help="Mark the target as an owned lab (relaxes ownership assumptions).")
+    run.add_argument("--scope", dest="scope_path", default=None, help="Path to a scope YAML file to enforce.")
 
     doctor = subcommands.add_parser("doctor", help="Run environment checks.")
     doctor.add_argument("--json", action="store_true", help="Output JSON.")
@@ -152,6 +155,9 @@ def dispatch(
             max_steps=args.max_steps,
             dry_run=args.dry_run,
             agent_mode=args.mode,
+            strategy=args.strategy,
+            lab=args.lab,
+            scope_path=args.scope_path,
         )
         print(json.dumps(result, indent=2, sort_keys=True, default=str))
         return 0
