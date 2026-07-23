@@ -52,6 +52,9 @@ def run_cli_mission(
     dry_run: bool = False,
     agent_mode: str = "deterministic",
     session_id: str | None = None,
+    strategy: str = "auto",
+    lab: bool = False,
+    scope_path: str | None = None,
 ) -> dict[str, Any]:
     """Run a SABER mission from the CLI and persist the result."""
 
@@ -80,6 +83,10 @@ def run_cli_mission(
 
     try:
         session = _make_session(session_id, resolved_mission_name, target_value, normalized_profile, dry_run)
+        if scope_path:
+            from saber.core.scope_loader import load_scope
+
+            session = session.model_copy(update={"scope": load_scope(scope_path)})
         target = _make_target(target_value)
 
         runtime.session_store.create_session(
@@ -119,6 +126,16 @@ def run_cli_mission(
         # mission a second time for a separate reporting phase, which re-scanned
         # the target, rewrote the report artifacts, and (in LLM mode) could
         # overwrite the good report with an empty one built from a fresh state.
+        mission_metadata: dict[str, Any] = {
+            "source": "cli_run",
+            "profile": normalized_profile,
+            "dry_run": dry_run,
+        }
+        if strategy and strategy.strip().lower() != "auto":
+            mission_metadata["strategy_override"] = strategy.strip().lower()
+        if lab:
+            mission_metadata["lab"] = True
+
         result = runtime.orchestrator.run_mission(
             session=session,
             target=target,
@@ -130,11 +147,7 @@ def run_cli_mission(
                 "require_approval": require_approval,
                 "agent_mode": agent_mode,
             },
-            metadata={
-                "source": "cli_run",
-                "profile": normalized_profile,
-                "dry_run": dry_run,
-            },
+            metadata=mission_metadata,
         )
 
         persist_mission_result(
