@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from saber.agents.deciders.base import ActionKind
+from saber.core.flag_detector import detect_flag
 from saber.core.result_processor import ResultProcessor
 from saber.core.state_merger import StateMerger
 from saber.core.state_summary import StateSummarizer
@@ -191,6 +192,7 @@ class MissionLoop:
                 evidence_refs=evidence_refs,
                 finding_refs=finding_refs,
             )
+            state = self._detect_and_record_flag(state, record, parsed_observations)
             state = self._apply_strategy_objective(state, active_strategy)
             self.state_store.snapshot(state)
 
@@ -203,6 +205,45 @@ class MissionLoop:
         state = state.model_copy(update={"stop_reason": "max_steps exhausted"})
         self.state_store.snapshot(state)
         return self._terminal(state, session, MissionRunStatus.STOPPED, "max_steps exhausted")
+
+    def _detect_and_record_flag(
+        self,
+        state: MissionState,
+        record,
+        parsed_observations: list[dict],
+    ) -> MissionState:
+        """Record a captured flag on state.metadata['flag'] if one appears.
+
+        A malformed ``state.metadata["flag_regex"]`` (user-supplied) must never
+        crash the loop: any exception raised while detecting is caught and the
+        state is returned unchanged.
+        """
+
+        if state.metadata.get("flag"):
+            return state
+
+        texts: list[str] = [record.observation.summary or ""]
+        for obs in parsed_observations:
+            texts.append(str(obs))
+        result = getattr(record, "sandbox_result", None)
+        for attr in ("stdout", "output", "reason"):
+            value = getattr(result, attr, None)
+            if isinstance(value, str):
+                texts.append(value)
+
+        extra = state.metadata.get("flag_regex")
+        try:
+            flag = detect_flag(texts, extra_patterns=[extra] if isinstance(extra, str) else None)
+        except Exception:
+            logger.exception(
+                "Flag detection failed for session %s (likely an invalid "
+                "flag_regex); leaving state unchanged.",
+                state.session_id,
+            )
+            return state
+        if not flag:
+            return state
+        return state.model_copy(update={"metadata": {**state.metadata, "flag": flag}})
 
     def _apply_strategy_objective(
         self, state: MissionState, strategy: TargetStrategy | None
