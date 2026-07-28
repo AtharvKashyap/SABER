@@ -38,7 +38,7 @@ final:
 lab-up:
 	docker network inspect saber-lab >/dev/null 2>&1 || docker network create saber-lab
 	docker compose -f docker/lab/docker-compose.yml up -d --build
-	python scripts/lab_scope.py
+	python3 scripts/lab_scope.py
 	@echo "Lab up. Set SABER_DOCKER_NETWORK=saber-lab in .env, then run missions with --scope runs/lab_scope.yaml"
 
 lab-down:

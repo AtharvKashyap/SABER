@@ -31,4 +31,7 @@ services:
 networks:
   saber-lab:
     name: saber-lab
-    driver: bridge
+    # Created and owned by `make lab-up` (docker network create saber-lab) so the
+    # SABER sandbox can also attach to it via SABER_DOCKER_NETWORK=saber-lab.
+    # external: true tells Compose to attach to it rather than manage/label it.
+    external: true
