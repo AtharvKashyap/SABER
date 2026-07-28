@@ -4,14 +4,39 @@ from __future__ import annotations
 
 import json
 import os
+import ssl
 import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from enum import StrEnum
+from functools import lru_cache
 from typing import Any
 
 from saber.core.env_loader import load_env_file
+
+try:  # pragma: no cover - certifi is a normal dependency; guard is belt-and-suspenders
+    import certifi
+
+    _CA_BUNDLE: str | None = certifi.where()
+except Exception:  # noqa: BLE001
+    _CA_BUNDLE = None
+
+
+@lru_cache(maxsize=1)
+def _ssl_context() -> ssl.SSLContext:
+    """Return a TLS context that trusts a real CA bundle.
+
+    On some Python installs (notably macOS framework/venv builds) the stdlib
+    default context has no usable CA store, so ``urlopen`` fails every HTTPS
+    request with ``CERTIFICATE_VERIFY_FAILED`` — which silently turned every
+    LLM-mode mission into a no-op. Using certifi's bundle fixes this portably
+    while keeping certificate verification ON.
+    """
+
+    if _CA_BUNDLE:
+        return ssl.create_default_context(cafile=_CA_BUNDLE)
+    return ssl.create_default_context()
 
 
 class LlmProvider(StrEnum):
@@ -207,7 +232,9 @@ class LlmClient:
             request = urllib.request.Request(url=url, data=body, headers=headers, method="POST")
 
             try:
-                with urllib.request.urlopen(request, timeout=self.config.timeout_seconds) as response:
+                with urllib.request.urlopen(
+                    request, timeout=self.config.timeout_seconds, context=_ssl_context()
+                ) as response:
                     raw = response.read().decode("utf-8")
                     return json.loads(raw)
             except urllib.error.HTTPError as exc:

@@ -116,11 +116,12 @@ def test_client_posts_chat_completion(monkeypatch) -> None:
                 }
             ).encode("utf-8")
 
-    def fake_urlopen(request, timeout):
+    def fake_urlopen(request, timeout, context=None):
         captured["url"] = request.full_url
         captured["headers"] = dict(request.header_items())
         captured["payload"] = json.loads(request.data.decode("utf-8"))
         captured["timeout"] = timeout
+        captured["context"] = context
         return FakeHTTPResponse()
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
