@@ -275,7 +275,7 @@ class BaseAgent(ABC):
             target=context.target,
             session=context.session,
             action=tool_call.action,
-            **tool_call.args,
+            **self._safe_tool_args(tool_call.args),
             metadata={
                 "agent_name": self.config.name,
                 "agent_phase": self.config.phase.value,
@@ -283,6 +283,24 @@ class BaseAgent(ABC):
                 **tool_call.metadata,
             },
         )
+
+    # Kwargs the loop supplies explicitly to wrapper.run(); a decider that also
+    # puts these in its args would cause "multiple values for keyword argument".
+    _RESERVED_TOOL_KWARGS = frozenset({"target", "session", "action", "metadata"})
+
+    @staticmethod
+    def _safe_tool_args(args: dict[str, Any] | None) -> dict[str, Any]:
+        """Drop decider-supplied kwargs that collide with explicit run() params.
+
+        ``target`` in particular is authoritative and scope-gated by the loop,
+        so a decider-provided ``target`` must never override it via ``**args``.
+        """
+
+        return {
+            key: value
+            for key, value in (args or {}).items()
+            if key not in BaseAgent._RESERVED_TOOL_KWARGS
+        }
 
     def set_llm_decision_engine(self, engine: LlmDecisionEngine | None) -> None:
         """Attach or replace the LLM decision engine."""
