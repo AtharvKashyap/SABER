@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -11,6 +12,7 @@ from uuid import uuid4
 
 from saber.agents.base_agent import AgentObservation
 from saber.agents.llm_decision_engine import LlmDecisionEngine
+from saber.core.env_loader import load_env_file
 from saber.core.prompt_loader import PromptLoader
 from saber.core.runtime import SaberConfig, SaberRuntime, build_saber_runtime
 from saber.models.session import MissionSession
@@ -62,6 +64,11 @@ def run_cli_mission(
     if normalized_profile not in PROFILE_AGENTS:
         raise ValueError(f"Unsupported profile: {profile}. Expected one of: {', '.join(sorted(PROFILE_AGENTS))}")
 
+    # Load .env so env-driven sandbox settings (network/image/backend) are visible
+    # before we build SaberConfig by hand — otherwise they silently default and
+    # SABER_DOCKER_NETWORK (e.g. saber-lab) is ignored for CLI missions.
+    load_env_file()
+
     session_id = session_id or f"session_{uuid4().hex[:12]}"
     resolved_mission_name = mission_name or f"SABER {normalized_profile} mission for {target_value}"
     resolved_objective = objective or _objective_for_profile(normalized_profile, target_value)
@@ -74,6 +81,12 @@ def run_cli_mission(
         require_approval=require_approval,
         max_steps=max_steps,
         agent_mode=agent_mode,
+        sandbox_backend=os.environ.get("SABER_SANDBOX_BACKEND", "docker"),
+        sandbox_image=os.environ.get(
+            "SABER_SANDBOX_IMAGE", "ghcr.io/atharvkashyap/saber-sandbox:kali-last-release"
+        ),
+        docker_network=os.environ.get("SABER_DOCKER_NETWORK", "host"),
+        docker_user=os.environ.get("SABER_DOCKER_USER", ""),
         metadata={"source": "cli_run"},
     )
 
