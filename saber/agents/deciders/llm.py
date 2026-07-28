@@ -33,7 +33,7 @@ class LlmDecider(NextActionDecider):
         """Return the next action chosen by the LLM."""
 
         if not getattr(self.llm_client, "enabled", False):
-            return self._stop("LLM client disabled")
+            return self._error("LLM client disabled")
 
         system_prompt = self._load_prompt()
         payload = {
@@ -51,7 +51,7 @@ class LlmDecider(NextActionDecider):
                 metadata={"component": "next_action_decider"},
             )
         except Exception as exc:  # noqa: BLE001 - decider must never crash the loop
-            return self._stop(f"LLM error: {exc}")
+            return self._error(f"LLM error: {exc}")
 
         return self._parse(raw)
 
@@ -107,3 +107,14 @@ class LlmDecider(NextActionDecider):
     @staticmethod
     def _stop(reason: str) -> ProposedAction:
         return ProposedAction(kind=ActionKind.STOP, objective="Stop mission.", rationale=reason)
+
+    @staticmethod
+    def _error(reason: str) -> ProposedAction:
+        """Signal an unrecoverable decision error (LLM unreachable/misconfigured).
+
+        Distinct from STOP: the loop maps this to a FAILED mission rather than a
+        COMPLETED one, so a transient LLM/transport error never masquerades as a
+        successful, empty mission.
+        """
+
+        return ProposedAction(kind=ActionKind.ERROR, objective="Decision failed.", rationale=reason)

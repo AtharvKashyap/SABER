@@ -58,7 +58,7 @@ class LlmConfig:
     temperature: float = 0.1
     max_tokens: int = 2000
     timeout_seconds: int = 60
-    max_retries: int = 3
+    max_retries: int = 5
 
     @property
     def enabled(self) -> bool:
@@ -242,11 +242,13 @@ class LlmClient:
                 if exc.code not in {408, 409, 429, 500, 502, 503, 504}:
                     detail = exc.read().decode("utf-8", errors="replace")
                     raise RuntimeError(f"Model request failed with HTTP {exc.code}: {detail}") from exc
-            except urllib.error.URLError as exc:
+            except (urllib.error.URLError, ssl.SSLError, TimeoutError) as exc:
+                # Transient transport errors, incl. intermittent TLS record
+                # corruption (SSLV3_ALERT_BAD_RECORD_MAC). Retry with backoff.
                 last_error = exc
 
             if attempt < self.config.max_retries - 1:
-                time.sleep(0.5 * (attempt + 1))
+                time.sleep(min(0.75 * (2**attempt), 8.0))
 
         raise RuntimeError(f"Model request failed after retries: {last_error}") from last_error
 

@@ -40,6 +40,8 @@ class ActionKind(StrEnum):
     TOOL = "tool"
     STOP = "stop"
     REPORT = "report"
+    # decider could not decide (LLM unreachable/misconfigured): fail, never fake-complete
+    ERROR = "error"
 
 
 @dataclass(frozen=True)

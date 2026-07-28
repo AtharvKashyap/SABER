@@ -112,6 +112,14 @@ class MissionLoop:
             summary = self.summarizer.summarize(state)
             action = self.decider.decide(state, summary)
 
+            if action.kind == ActionKind.ERROR:
+                # The decider could not decide (LLM unreachable/misconfigured).
+                # Fail the mission rather than reporting an empty COMPLETED run.
+                reason = action.rationale or "decision error"
+                state = state.model_copy(update={"stop_reason": reason})
+                self.state_store.snapshot(state)
+                return self._terminal(state, session, MissionRunStatus.FAILED, reason)
+
             if action.kind in {ActionKind.STOP, ActionKind.REPORT}:
                 reason = action.rationale or action.kind.value
                 state = state.model_copy(update={"stop_reason": reason})
