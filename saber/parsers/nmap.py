@@ -51,6 +51,7 @@ class NmapParser(BaseParser):
                     summary=f"Host {address} is {state}.",
                     source_tool=self.source_tool,
                     data={
+                        "address": address,
                         "host": address,
                         "state": state,
                         "hostnames": hostnames,
@@ -93,7 +94,12 @@ class NmapParser(BaseParser):
                         kind="host",
                         summary=f"Host {current_host} was reported by Nmap.",
                         source_tool=self.source_tool,
-                        data={"host": current_host, "state": "unknown", "raw": raw_host},
+                        data={
+                            "address": current_host,
+                            "host": current_host,
+                            "state": "unknown",
+                            "raw": raw_host,
+                        },
                         metadata={"format": "stdout"},
                     )
                 )
@@ -219,7 +225,7 @@ class NmapParser(BaseParser):
                     kind="host",
                     summary=f"Host {host} was reported by Nmap.",
                     source_tool=self.source_tool,
-                    data=record,
+                    data={"address": host, **record},
                     metadata={"format": "json"},
                 )
             )
