@@ -10,15 +10,19 @@ from saber.parsers.amass import AmassParser
 from saber.parsers.base import BaseParser, ParserResult
 from saber.parsers.bloodhound import BloodHoundParser
 from saber.parsers.dnsrecon import DNSReconParser
+from saber.parsers.feroxbuster import FeroxbusterParser
 from saber.parsers.masscan import MasscanParser
 from saber.parsers.nikto import NiktoParser
 from saber.parsers.nmap import NmapParser
 from saber.parsers.nuclei import NucleiParser
+from saber.parsers.responder import ResponderParser
 from saber.parsers.searchsploit import SearchSploitParser
+from saber.parsers.snmpwalk import SnmpwalkParser
 from saber.parsers.sqlmap import SqlmapParser
 from saber.parsers.subfinder import SubfinderParser
 from saber.parsers.theharvester import TheHarvesterParser
 from saber.parsers.whatweb import WhatWebParser
+from saber.parsers.zap import ZapParser
 
 
 @dataclass(frozen=True)
@@ -300,6 +304,30 @@ def default_parser_entries() -> list[ParserRegistryEntry]:
             tool_name="theharvester",
             parser=TheHarvesterParser(),
             aliases=("theHarvester", "osint_harvest", "email_harvest"),
+            file_extensions=("json", "txt"),
+        ),
+        ParserRegistryEntry(
+            tool_name="responder",
+            parser=ResponderParser(),
+            aliases=("responder_listen", "llmnr_poison", "ntlm_capture"),
+            file_extensions=("txt", "log"),
+        ),
+        ParserRegistryEntry(
+            tool_name="snmpwalk",
+            parser=SnmpwalkParser(),
+            aliases=("snmp_enum", "snmp_walk"),
+            file_extensions=("txt",),
+        ),
+        ParserRegistryEntry(
+            tool_name="zap",
+            parser=ZapParser(),
+            aliases=("zap_api", "owasp_zap"),
+            file_extensions=("json",),
+        ),
+        ParserRegistryEntry(
+            tool_name="feroxbuster",
+            parser=FeroxbusterParser(),
+            aliases=("content_discovery", "dirbust"),
             file_extensions=("json", "txt"),
         ),
     ]

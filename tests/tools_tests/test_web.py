@@ -114,6 +114,7 @@ class TestFeroxbusterWrapper:
             "https://example.com/",
             "-w",
             "wordlists/common.txt",
+            "--json",
             "-t",
             "25",
             "-x",
@@ -139,6 +140,7 @@ class TestFeroxbusterWrapper:
             "https://example.com/",
             "-w",
             "wordlists/common.txt",
+            "--json",
             "-t",
             "20",
         ]

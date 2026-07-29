@@ -10,6 +10,47 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="responder",
+    category="network",
+    phase="network",
+    description=(
+        "LLMNR/NBT-NS/mDNS listener that captures NetNTLM authentication material "
+        "from hosts on the local segment."
+    ),
+    parser="responder",
+    actions=(
+        ActionContract(
+            action="listen",
+            description=(
+                "Run the Responder listener on an interface. With analyze_only=True (-A) it "
+                "only observes name-resolution traffic; with analyze_only=False it actively "
+                "poisons answers to coerce authentication."
+            ),
+            args=(
+                ArgSpec(
+                    "interface",
+                    "str",
+                    required=True,
+                    description="Sandbox interface to listen on, e.g. eth0.",
+                ),
+                ArgSpec(
+                    "analyze_only",
+                    "bool",
+                    required=False,
+                    default=True,
+                    description="True = passive analyze (-A). False = actively poison answers.",
+                ),
+            ),
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("credential", "note"),
+            example_args={"interface": "eth0", "analyze_only": True},
+        ),
+    ),
+)
 
 
 class ResponderWrapper(BaseToolWrapper):

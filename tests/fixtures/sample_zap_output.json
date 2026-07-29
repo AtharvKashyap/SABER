@@ -1,0 +1,53 @@
+{
+  "@version": "2.14.0",
+  "@generated": "Wed, 29 Jul 2026 00:00:00",
+  "site": [
+    {
+      "@name": "http://192.168.56.101:8080",
+      "@host": "192.168.56.101",
+      "@port": "8080",
+      "@ssl": "false",
+      "alerts": [
+        {
+          "pluginid": "40012",
+          "alertRef": "40012",
+          "name": "Cross Site Scripting (Reflected)",
+          "riskcode": "3",
+          "confidence": "2",
+          "riskdesc": "High (Medium)",
+          "desc": "Reflected XSS allows attacker-supplied script to run in the victim's browser.",
+          "solution": "Validate and encode all untrusted input before rendering it.",
+          "reference": "https://owasp.org/www-community/attacks/xss/",
+          "cweid": "79",
+          "wascid": "8",
+          "instances": [
+            {
+              "uri": "http://192.168.56.101:8080/search?q=test",
+              "method": "GET",
+              "param": "q"
+            }
+          ]
+        },
+        {
+          "pluginid": "10038",
+          "alertRef": "10038",
+          "name": "Content Security Policy (CSP) Header Not Set",
+          "riskcode": "1",
+          "confidence": "3",
+          "riskdesc": "Low (High)",
+          "desc": "CSP is an added layer of security that helps mitigate content injection attacks.",
+          "solution": "Configure the web server to send a Content-Security-Policy header.",
+          "reference": "https://owasp.org/www-community/controls/Content_Security_Policy",
+          "cweid": "693",
+          "wascid": "15",
+          "instances": [
+            {
+              "uri": "http://192.168.56.101:8080/",
+              "method": "GET"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

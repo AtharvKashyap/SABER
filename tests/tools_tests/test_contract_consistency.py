@@ -7,15 +7,19 @@ _MIGRATED_TOOLS: set[str] = {
     "amass",
     "custom_cli",
     "dnsrecon",
+    "feroxbuster",
     "masscan",
     "nmap",
     "nuclei",
     "nikto",
+    "responder",
+    "snmpwalk",
     "whatweb",
     "searchsploit",
     "sqlmap",
     "subfinder",
     "theharvester",
+    "zap_api",
 }
 
 

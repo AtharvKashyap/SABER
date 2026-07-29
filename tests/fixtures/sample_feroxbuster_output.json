@@ -1,0 +1,8 @@
+{"type":"response","url":"http://192.168.56.101/admin","path":"/admin","status":301,"content_length":0,"line_count":0,"word_count":0}
+{"type":"response","url":"http://192.168.56.101/backup","path":"/backup","status":403,"content_length":278,"line_count":10,"word_count":40}
+{"type":"response","url":"http://192.168.56.101/index.php","path":"/index.php","status":200,"content_length":4521,"line_count":120,"word_count":900}
+{"type":"response","url":"http://192.168.56.101/secret.txt","path":"/secret.txt","status":401,"content_length":0,"line_count":0,"word_count":0}
+{"type":"response","url":"http://192.168.56.101/old","path":"/old","status":500,"content_length":12,"line_count":1,"word_count":2}
+{"type":"response","url":"http://192.168.56.101/gone","path":"/gone","status":404,"content_length":0,"line_count":0,"word_count":0}
+{"type":"heartbeat","done":12,"total":4614}
+{"type":"statistics","total_scans":1}

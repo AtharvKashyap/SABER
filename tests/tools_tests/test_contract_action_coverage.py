@@ -36,6 +36,9 @@ _ALIAS_ACTIONS: dict[str, set[str]] = {
     "searchsploit": {"search"},
     "sqlmap": {"test_url"},
     "whatweb": {"scan"},
+    # Original dispatch name, still used by network_agent/tool_selection_agent;
+    # the CONTRACT advertises the clearer "enumerate".
+    "snmpwalk": {"walk"},
 }
 
 

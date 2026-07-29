@@ -5,32 +5,18 @@ from __future__ import annotations
 from saber.core.tool_catalog import ToolCatalog
 from saber.tools.registry import build_default_registry
 from tests.support.catalog import build_test_catalog
+from tests.tools_tests.test_contract_consistency import _MIGRATED_TOOLS
 
 
 def test_from_registry_skips_contractless_tools() -> None:
     # F0.4: the catalog is generated from wrapper CONTRACTs. Wrappers without a
     # CONTRACT are simply skipped rather than getting a fabricated "default"
-    # action. As of F1.7, custom_cli, nmap, nuclei, nikto, whatweb,
-    # searchsploit, sqlmap, amass, dnsrecon, masscan, subfinder, and
-    # theharvester are migrated, so they are the only entries in the catalog
-    # (alphabetically sorted); every other (contractless) wrapper is absent.
+    # action. The migrated set is tracked in exactly one place — _MIGRATED_TOOLS —
+    # so this asserts against that rather than a list needing an edit per tool.
     catalog = ToolCatalog.from_registry(build_default_registry())
 
     names = [tool.name for tool in catalog.tools]
-    assert names == [
-        "amass",
-        "custom_cli",
-        "dnsrecon",
-        "masscan",
-        "nikto",
-        "nmap",
-        "nuclei",
-        "searchsploit",
-        "sqlmap",
-        "subfinder",
-        "theharvester",
-        "whatweb",
-    ]
+    assert names == sorted(_MIGRATED_TOOLS)
     # No fabricated "default" action; only the real contract actions surface.
     actions = {action.action for tool in catalog.tools for action in tool.actions}
     assert "default" not in actions

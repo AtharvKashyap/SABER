@@ -102,6 +102,27 @@ class SnmpwalkWrapper(BaseToolWrapper):
             metadata=metadata,
         )
 
+    def walk(
+        self,
+        target: Target,
+        session: MissionSession,
+        community: str = "public",
+        oid: str = "1.3.6.1.2.1",
+        version: str = "2c",
+        metadata: dict[str, Any] | None = None,
+    ) -> SandboxExecutionResult:
+        """Run SNMP walk against a target (original name; delegates to enumerate)."""
+
+        return self.run(
+            target=target,
+            session=session,
+            action="walk",
+            community=community,
+            oid=oid,
+            version=version,
+            metadata=metadata,
+        )
+
     def system_info(
         self,
         target: Target,
@@ -132,7 +153,10 @@ class SnmpwalkWrapper(BaseToolWrapper):
             target = None
         if action is None:
             raise ValueError("action is required")
-        if action != "enumerate":
+        # "walk" is the original dispatch name and is still used by
+        # network_agent/tool_selection_agent; "enumerate" is the name the
+        # CONTRACT advertises. Both build an identical command.
+        if action not in ("enumerate", "walk"):
             raise ValueError(f"Unsupported SNMPWalk action: {action}")
 
         destination = (
