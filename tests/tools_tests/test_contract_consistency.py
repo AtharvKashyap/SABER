@@ -7,6 +7,7 @@ _MIGRATED_TOOLS: set[str] = {
     "amass",
     "custom_cli",
     "dnsrecon",
+    "masscan",
     "nmap",
     "nuclei",
     "nikto",

@@ -10,6 +10,31 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="masscan",
+    category="recon",
+    phase="recon",
+    description="High-speed port discovery.",
+    parser="masscan",
+    actions=(
+        ActionContract(
+            action="scan_ports",
+            description="Masscan port scan (wrapper's real dispatch name; `top_ports` "
+            "is a higher-level convenience method that calls this action).",
+            args=(
+                ArgSpec("target", "str", required=True, description="Host/CIDR in scope."),
+                ArgSpec("ports", "str", required=True, example="80,443,445,3389,22"),
+                ArgSpec("rate", "int", required=False, default=1000),
+            ),
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=("host", "service"),
+            example_args={"target": "127.0.0.1", "ports": "80,443,445,3389,22", "rate": 1000},
+        ),
+    ),
+)
 
 
 class MasscanWrapper(BaseToolWrapper):
