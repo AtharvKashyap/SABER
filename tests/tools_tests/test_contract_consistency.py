@@ -6,6 +6,7 @@ from saber.tools.registry import build_default_registry
 _MIGRATED_TOOLS: set[str] = {
     "amass",
     "custom_cli",
+    "dnsrecon",
     "nmap",
     "nuclei",
     "nikto",

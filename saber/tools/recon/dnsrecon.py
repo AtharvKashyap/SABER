@@ -10,6 +10,26 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="dnsrecon",
+    category="recon",
+    phase="recon",
+    description="Standard DNS enumeration.",
+    parser="dnsrecon",
+    actions=(
+        ActionContract(
+            action="standard",
+            description="Standard DNSRecon enumeration (-t std).",
+            args=(ArgSpec("domain", "str", required=True, description="Domain in scope."),),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("host",),
+            example_args={"domain": "example.com"},
+        ),
+    ),
+)
 
 
 class DNSReconWrapper(BaseToolWrapper):
