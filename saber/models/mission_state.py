@@ -89,6 +89,68 @@ class KnownVuln(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class KnownShare(BaseModel):
+    """A network share discovered on a host."""
+
+    host: str
+    name: str
+    type: str = "smb"  # smb | nfs | ...
+    access: str = "none"  # read | write | none
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class KnownAccount(BaseModel):
+    """A user/computer account discovered (distinct from a usable credential)."""
+
+    username: str
+    domain: str | None = None
+    host: str | None = None
+    source: str | None = None
+    enabled: bool = True
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class KnownSession(BaseModel):
+    """An interactive foothold established on a host."""
+
+    host: str
+    kind: str = "shell"  # shell | meterpreter | winrm | ssh
+    user: str | None = None
+    privilege: str = "user"  # user | root | system
+    ref: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class KnownLoot(BaseModel):
+    """A collected artifact of value (file/hash/key/config)."""
+
+    description: str
+    kind: str = "file"  # file | hash | key | config
+    host: str | None = None
+    path: str | None = None
+    evidence_ref: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class KnownFlag(BaseModel):
+    """A captured flag / proof token."""
+
+    value: str
+    host: str | None = None
+    location: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class MissionNote(BaseModel):
+    """Free-form knowledge the decider should see (e.g. custom_cli output)."""
+
+    title: str
+    detail: str = ""
+    severity: str = "info"
+    refs: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class Hypothesis(BaseModel):
     """A ranked belief the loop is reasoning about."""
 
@@ -132,6 +194,12 @@ class MissionState(BaseModel):
     technologies: list[KnownTechnology] = Field(default_factory=list)
     credentials: list[KnownCredential] = Field(default_factory=list)
     vulns: list[KnownVuln] = Field(default_factory=list)
+    shares: list[KnownShare] = Field(default_factory=list)
+    accounts: list[KnownAccount] = Field(default_factory=list)
+    sessions: list[KnownSession] = Field(default_factory=list)
+    loot: list[KnownLoot] = Field(default_factory=list)
+    flags: list[KnownFlag] = Field(default_factory=list)
+    notes: list[MissionNote] = Field(default_factory=list)
     hypotheses: list[Hypothesis] = Field(default_factory=list)
     attempted_actions: list[AttemptedAction] = Field(default_factory=list)
 
@@ -180,6 +248,12 @@ class MissionState(BaseModel):
                 "technologies": len(self.technologies),
                 "credentials": len(self.credentials),
                 "vulns": len(self.vulns),
+                "shares": len(self.shares),
+                "accounts": len(self.accounts),
+                "sessions": len(self.sessions),
+                "loot": len(self.loot),
+                "flags": len(self.flags),
+                "notes": len(self.notes),
                 "hypotheses": len(self.hypotheses),
                 "attempted_actions": len(self.attempted_actions),
                 "failed_actions": len(self.failed_actions),
