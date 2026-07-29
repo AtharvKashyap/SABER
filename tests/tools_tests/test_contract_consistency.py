@@ -4,6 +4,7 @@ from saber.tools.registry import build_default_registry
 
 # Grows one entry per migrated tool. F1 adds the 11; F2-F6 append the rest.
 _MIGRATED_TOOLS: set[str] = {
+    "amass",
     "custom_cli",
     "nmap",
     "nuclei",
