@@ -10,6 +10,26 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="subfinder",
+    category="recon",
+    phase="recon",
+    description="Passive subdomain enumeration.",
+    parser="subfinder",
+    actions=(
+        ActionContract(
+            action="passive",
+            description="Passive subdomain enumeration (alias of `enumerate`).",
+            args=(ArgSpec("domain", "str", required=True, description="Domain in scope."),),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("host",),
+            example_args={"domain": "example.com"},
+        ),
+    ),
+)
 
 
 class SubfinderWrapper(BaseToolWrapper):
@@ -111,7 +131,7 @@ class SubfinderWrapper(BaseToolWrapper):
             **(kwargs.get("metadata") or {}),
         }
 
-        if action in {"enumerate", "enumerate_all_sources"}:
+        if action in {"enumerate", "enumerate_all_sources", "passive"}:
             domain = self._domain_from_target_or_kwargs(target, kwargs)
             command = ["subfinder", "-d", domain]
             if action == "enumerate_all_sources":
@@ -123,7 +143,12 @@ class SubfinderWrapper(BaseToolWrapper):
             if output_file:
                 command.extend(["-o", str(output_file)])
 
-            relative_dir = "recon/subfinder/enumerate_all_sources" if action == "enumerate_all_sources" else "recon/subfinder/enumerate"
+            if action == "enumerate_all_sources":
+                relative_dir = "recon/subfinder/enumerate_all_sources"
+            elif action == "passive":
+                relative_dir = "recon/subfinder/passive"
+            else:
+                relative_dir = "recon/subfinder/enumerate"
 
             return ToolCommand(
                 command=command,

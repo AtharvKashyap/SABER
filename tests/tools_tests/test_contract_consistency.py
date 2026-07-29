@@ -11,6 +11,7 @@ _MIGRATED_TOOLS: set[str] = {
     "whatweb",
     "searchsploit",
     "sqlmap",
+    "subfinder",
 }
 
 
