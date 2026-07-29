@@ -471,6 +471,14 @@ def default_tool_entries() -> list[ToolRegistryEntry]:
             description="OWASP ZAP API workflows.",
             aliases=("zap",),
         ),
+        ToolRegistryEntry(
+            name="custom_cli",
+            import_path="saber.tools.custom_cli",
+            class_name="CustomCliWrapper",
+            category=RequestedActionCategory.UNKNOWN,
+            phase=AssessmentPhase.RECON,
+            description="Authorized custom command/script/pipeline in the sandbox.",
+        ),
     ]
 
 
