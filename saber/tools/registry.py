@@ -11,12 +11,15 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from importlib import import_module
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from saber.core.sandbox import Sandbox
 from saber.models.scope import AssessmentPhase
 from saber.tools.base_wrapper import BaseToolWrapper
 from saber.tools.capability import RequestedActionCategory
+
+if TYPE_CHECKING:
+    from saber.tools.contract import ToolContract
 
 
 @dataclass(frozen=True)
@@ -58,6 +61,17 @@ class ToolRegistryEntry:
             raise TypeError(f"{self.import_path}.{self.class_name} is not a BaseToolWrapper subclass")
 
         return wrapper_cls
+
+    def load_contract(self) -> ToolContract | None:
+        """Import the wrapper module and return its module-level CONTRACT, if any."""
+
+        from saber.tools.contract import ToolContract
+
+        module = import_module(self.import_path)
+        contract = getattr(module, "CONTRACT", None)
+        if contract is not None and not isinstance(contract, ToolContract):
+            raise TypeError(f"{self.import_path}.CONTRACT is not a ToolContract")
+        return contract
 
     def create(self, sandbox: Sandbox, **kwargs: Any) -> BaseToolWrapper:
         """Instantiate the registered wrapper."""
