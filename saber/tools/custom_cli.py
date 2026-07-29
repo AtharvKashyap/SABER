@@ -17,6 +17,77 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="custom_cli",
+    category=RequestedActionCategory.UNKNOWN.value,
+    phase=AssessmentPhase.RECON.value,
+    description=(
+        "Explicitly authorized custom CLI execution for cases where preconfigured "
+        "tools are insufficient. Every action requires explicit authorization and "
+        "runs through bash in the sandbox."
+    ),
+    parser=None,
+    actions=(
+        ActionContract(
+            action="run_command",
+            description="Run one custom shell command through bash.",
+            args=(
+                ArgSpec(name="command", type="str", required=True,
+                        description="Shell command to execute."),
+                ArgSpec(name="reason", type="str", required=True,
+                        description="Justification for running this command."),
+                ArgSpec(name="expected_output", type="str", required=False,
+                        description="Optional description of the expected output."),
+                ArgSpec(name="risk_level", type="enum", required=False, default="medium",
+                        choices=("low", "medium", "high"),
+                        description="Operator-assessed risk level."),
+            ),
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("note",),
+        ),
+        ActionContract(
+            action="run_script",
+            description="Run a custom script file through bash.",
+            args=(
+                ArgSpec(name="script_path", type="str", required=True,
+                        description="Path to the script to execute."),
+                ArgSpec(name="reason", type="str", required=True,
+                        description="Justification for running this script."),
+                ArgSpec(name="script_args", type="list[str]", required=False,
+                        description="Optional arguments passed to the script."),
+                ArgSpec(name="expected_output", type="str", required=False,
+                        description="Optional description of the expected output."),
+                ArgSpec(name="risk_level", type="enum", required=False, default="medium",
+                        choices=("low", "medium", "high"),
+                        description="Operator-assessed risk level."),
+            ),
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("note",),
+        ),
+        ActionContract(
+            action="run_pipeline",
+            description="Run a custom shell pipeline through bash.",
+            args=(
+                ArgSpec(name="pipeline", type="str", required=True,
+                        description="Shell pipeline to execute."),
+                ArgSpec(name="reason", type="str", required=True,
+                        description="Justification for running this pipeline."),
+                ArgSpec(name="expected_output", type="str", required=False,
+                        description="Optional description of the expected output."),
+                ArgSpec(name="risk_level", type="enum", required=False, default="medium",
+                        choices=("low", "medium", "high"),
+                        description="Operator-assessed risk level."),
+            ),
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("note",),
+        ),
+    ),
+)
 
 
 class CustomCliWrapper(BaseToolWrapper):

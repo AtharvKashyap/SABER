@@ -49,9 +49,10 @@ class ToolCatalog:
         for entry in registry.list_entries():
             try:
                 contract = entry.load_contract()
-            except Exception:
-                # Wrapper module not importable yet (e.g. registry drift during
-                # the contract migration). Skip rather than crash the catalog.
+            except (ImportError, ModuleNotFoundError):
+                # Wrapper module not importable (e.g. the known impacket
+                # import_path drift). Skip only for a genuinely missing module;
+                # a malformed CONTRACT must fail loudly, not vanish.
                 continue
             if contract is None:
                 continue  # not yet migrated; do not fabricate a fake action
