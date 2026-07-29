@@ -10,20 +10,25 @@ from tests.support.catalog import build_test_catalog
 def test_from_registry_skips_contractless_tools() -> None:
     # F0.4: the catalog is generated from wrapper CONTRACTs. Wrappers without a
     # CONTRACT are simply skipped rather than getting a fabricated "default"
-    # action. As of F1.6, custom_cli, nmap, nuclei, nikto, whatweb,
-    # searchsploit, and sqlmap are migrated, so they are the only entries in
-    # the catalog (alphabetically sorted); every other (contractless) wrapper
-    # is absent.
+    # action. As of F1.7, custom_cli, nmap, nuclei, nikto, whatweb,
+    # searchsploit, sqlmap, amass, dnsrecon, masscan, subfinder, and
+    # theharvester are migrated, so they are the only entries in the catalog
+    # (alphabetically sorted); every other (contractless) wrapper is absent.
     catalog = ToolCatalog.from_registry(build_default_registry())
 
     names = [tool.name for tool in catalog.tools]
     assert names == [
+        "amass",
         "custom_cli",
+        "dnsrecon",
+        "masscan",
         "nikto",
         "nmap",
         "nuclei",
         "searchsploit",
         "sqlmap",
+        "subfinder",
+        "theharvester",
         "whatweb",
     ]
     # No fabricated "default" action; only the real contract actions surface.
