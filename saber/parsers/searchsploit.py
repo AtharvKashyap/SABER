@@ -9,7 +9,7 @@ from saber.parsers.base import BaseParser, ParsedObservation, ParserResult
 
 
 class SearchSploitParser(BaseParser):
-    """Parse SearchSploit JSON/stdout into exploit reference observations."""
+    """Parse SearchSploit JSON/stdout into canonical exploit-reference notes."""
 
     source_tool = "searchsploit"
 
@@ -49,17 +49,22 @@ class SearchSploitParser(BaseParser):
 
             observations.append(
                 ParsedObservation(
-                    kind="exploit_reference",
+                    kind="note",
                     summary=self._summary(title=title, edb_id=edb_id, platform=platform, exploit_type=exploit_type),
                     source_tool=self.source_tool,
                     data={
                         "title": title,
+                        "detail": self._detail(
+                            path=path, platform=platform, exploit_type=exploit_type, date=date
+                        ),
+                        "severity": "info",
+                        "refs": [str(edb_id)] if edb_id else [],
                         "edb_id": edb_id,
                         "path": path,
                         "platform": platform,
                         "type": exploit_type,
                         "date": date,
-                        "raw": record,
+                        "metadata": {"raw": record},
                     },
                     metadata={"format": "json"},
                 )
@@ -92,14 +97,19 @@ class SearchSploitParser(BaseParser):
             edb_id = self._extract_edb_id(right)
             observations.append(
                 ParsedObservation(
-                    kind="exploit_reference",
+                    kind="note",
                     summary=self._summary(title=left, edb_id=edb_id, platform=None, exploit_type=None),
                     source_tool=self.source_tool,
                     data={
                         "title": left,
-                        "path": right,
+                        "detail": self._detail(
+                            path=right, platform=None, exploit_type=None, date=None
+                        ),
+                        "severity": "info",
+                        "refs": [str(edb_id)] if edb_id else [],
                         "edb_id": edb_id,
-                        "raw": line,
+                        "path": right,
+                        "metadata": {"raw": line},
                     },
                     metadata={"format": "stdout"},
                 )
@@ -141,6 +151,21 @@ class SearchSploitParser(BaseParser):
 
         suffix = f" ({', '.join(details)})" if details else ""
         return f"Exploit reference found: {title}{suffix}."
+
+    @staticmethod
+    def _detail(path: Any, platform: Any, exploit_type: Any, date: Any) -> str:
+        """Build a human-readable detail string for the note."""
+
+        parts = []
+        if path:
+            parts.append(f"path={path}")
+        if platform:
+            parts.append(f"platform={platform}")
+        if exploit_type:
+            parts.append(f"type={exploit_type}")
+        if date:
+            parts.append(f"date={date}")
+        return ", ".join(parts)
 
     @staticmethod
     def _extract_edb_id(path: str) -> str | None:

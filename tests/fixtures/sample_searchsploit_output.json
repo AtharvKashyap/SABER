@@ -1,0 +1,21 @@
+{
+  "SEARCH": "Apache 2.4.49",
+  "RESULTS_EXPLOIT": [
+    {
+      "Title": "Apache HTTP Server 2.4.49 - Path Traversal & Remote Code Execution",
+      "EDB-ID": "50383",
+      "Path": "exploits/multiple/webapps/50383.py",
+      "Platform": "multiple",
+      "Type": "webapps",
+      "Date": "2021-10-08"
+    },
+    {
+      "Title": "Apache HTTP Server 2.4.49 - Path Traversal",
+      "EDB-ID": "50406",
+      "Path": "exploits/linux/remote/50406.sh",
+      "Platform": "linux",
+      "Type": "remote",
+      "Date": "2021-10-11"
+    }
+  ]
+}
