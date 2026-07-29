@@ -8,6 +8,7 @@ from typing import Any
 
 from saber.parsers.amass import AmassParser
 from saber.parsers.base import BaseParser, ParserResult
+from saber.parsers.bettercap import BettercapParser
 from saber.parsers.bloodhound import BloodHoundParser
 from saber.parsers.dnsrecon import DNSReconParser
 from saber.parsers.feroxbuster import FeroxbusterParser
@@ -15,6 +16,7 @@ from saber.parsers.masscan import MasscanParser
 from saber.parsers.nikto import NiktoParser
 from saber.parsers.nmap import NmapParser
 from saber.parsers.nuclei import NucleiParser
+from saber.parsers.openvas import OpenVASParser
 from saber.parsers.responder import ResponderParser
 from saber.parsers.searchsploit import SearchSploitParser
 from saber.parsers.snmpwalk import SnmpwalkParser
@@ -329,6 +331,18 @@ def default_parser_entries() -> list[ParserRegistryEntry]:
             parser=FeroxbusterParser(),
             aliases=("content_discovery", "dirbust"),
             file_extensions=("json", "txt"),
+        ),
+        ParserRegistryEntry(
+            tool_name="openvas",
+            parser=OpenVASParser(),
+            aliases=("openvas_api", "gvm"),
+            file_extensions=("xml",),
+        ),
+        ParserRegistryEntry(
+            tool_name="bettercap",
+            parser=BettercapParser(),
+            aliases=("net_probe", "net_recon", "net_show"),
+            file_extensions=("txt", "log"),
         ),
     ]
 

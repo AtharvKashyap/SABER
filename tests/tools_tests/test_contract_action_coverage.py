@@ -157,10 +157,16 @@ def test_migrated_tools_set_matches_contract_bearing_wrappers():
     with_contract = set()
     for name in _all_registry_names(reg):
         try:
-            if reg.get(name).load_contract() is not None:
-                with_contract.add(name)
+            contract = reg.get(name).load_contract()
         except Exception:  # noqa: BLE001 - unimportable wrappers are covered elsewhere
             continue
+        if contract is None:
+            continue
+        # Key on the contract's own tool_name, not the registry key: a wrapper
+        # reachable under an alias (openvas / openvas_api) must not be reported
+        # twice, and _MIGRATED_TOOLS holds the canonical name that
+        # test_contract_consistency asserts equals contract.tool_name.
+        with_contract.add(contract.tool_name)
 
     missing = with_contract - set(_MIGRATED_TOOLS)
     assert not missing, (

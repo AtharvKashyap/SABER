@@ -5,6 +5,7 @@ from saber.tools.registry import build_default_registry
 # Grows one entry per migrated tool. F1 adds the 11; F2-F6 append the rest.
 _MIGRATED_TOOLS: set[str] = {
     "amass",
+    "bettercap",
     "custom_cli",
     "dnsrecon",
     "feroxbuster",
@@ -12,6 +13,7 @@ _MIGRATED_TOOLS: set[str] = {
     "nmap",
     "nuclei",
     "nikto",
+    "openvas",
     "responder",
     "snmpwalk",
     "whatweb",

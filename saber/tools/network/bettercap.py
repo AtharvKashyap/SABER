@@ -10,6 +10,85 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="bettercap",
+    category="network",
+    phase="network",
+    description=(
+        "Network discovery, MITM, and capture toolkit. net_probe/net_recon "
+        "passively discover hosts on the segment; caplet runs an arbitrary "
+        "Bettercap script and can perform ARP spoofing / traffic manipulation."
+    ),
+    parser="bettercap",
+    actions=(
+        ActionContract(
+            action="net_probe",
+            description=(
+                "Actively probe the local segment for hosts (net.probe) and dump the "
+                "discovered table (net.show). Does not alter or redirect traffic."
+            ),
+            args=(
+                ArgSpec(
+                    "interface",
+                    "str",
+                    required=True,
+                    description="Sandbox interface to bind, e.g. eth0.",
+                ),
+            ),
+            risk="medium",
+            requires_approval=False,
+            emits_kinds=("host", "note"),
+            example_args={"interface": "eth0"},
+        ),
+        ActionContract(
+            action="net_recon",
+            description=(
+                "Passively build the host table from observed traffic (net.recon) and "
+                "dump it (net.show). Does not alter or redirect traffic."
+            ),
+            args=(
+                ArgSpec(
+                    "interface",
+                    "str",
+                    required=True,
+                    description="Sandbox interface to bind, e.g. eth0.",
+                ),
+            ),
+            risk="medium",
+            requires_approval=False,
+            emits_kinds=("host", "note"),
+            example_args={"interface": "eth0"},
+        ),
+        ActionContract(
+            action="caplet",
+            description=(
+                "Run an arbitrary Bettercap caplet script. Caplets can enable "
+                "ARP spoofing, DNS spoofing, or other active MITM modules, so this "
+                "is always high risk and gated on approval."
+            ),
+            args=(
+                ArgSpec(
+                    "interface",
+                    "str",
+                    required=True,
+                    description="Sandbox interface to bind, e.g. eth0.",
+                ),
+                ArgSpec(
+                    "caplet_path",
+                    "str",
+                    required=True,
+                    description="Path to the .cap caplet script inside the sandbox.",
+                ),
+            ),
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("host", "note"),
+            example_args={"interface": "eth0", "caplet_path": "/root/caplets/probe.cap"},
+        ),
+    ),
+)
 
 
 class BettercapWrapper(BaseToolWrapper):
@@ -41,7 +120,13 @@ class BettercapWrapper(BaseToolWrapper):
     ) -> SandboxExecutionResult:
         """Run Bettercap network probe."""
 
-        return self.run(target=target, session=session, action="net_probe", interface=interface, metadata=metadata)
+        return self.run(
+            target=target,
+            session=session,
+            action="net_probe",
+            interface=interface,
+            metadata=metadata,
+        )
 
     def net_recon(
         self,
@@ -52,7 +137,13 @@ class BettercapWrapper(BaseToolWrapper):
     ) -> SandboxExecutionResult:
         """Run Bettercap network recon."""
 
-        return self.run(target=target, session=session, action="net_recon", interface=interface, metadata=metadata)
+        return self.run(
+            target=target,
+            session=session,
+            action="net_recon",
+            interface=interface,
+            metadata=metadata,
+        )
 
     def caplet(
         self,
@@ -90,12 +181,24 @@ class BettercapWrapper(BaseToolWrapper):
         interface = self._required_string(kwargs, "interface")
 
         if action == "net_probe":
-            command = ["bettercap", "-iface", interface, "-eval", "net.probe on; sleep 10; net.show; quit"]
+            command = [
+                "bettercap",
+                "-iface",
+                interface,
+                "-eval",
+                "net.probe on; sleep 10; net.show; quit",
+            ]
             relative_dir = "network/bettercap/net_probe"
             evidence_title = f"Bettercap net probe: {interface}"
             requires_auth = False
         elif action == "net_recon":
-            command = ["bettercap", "-iface", interface, "-eval", "net.recon on; sleep 10; net.show; quit"]
+            command = [
+                "bettercap",
+                "-iface",
+                interface,
+                "-eval",
+                "net.recon on; sleep 10; net.show; quit",
+            ]
             relative_dir = "network/bettercap/net_recon"
             evidence_title = f"Bettercap net recon: {interface}"
             requires_auth = False
