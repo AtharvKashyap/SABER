@@ -12,6 +12,7 @@ from saber.parsers.nikto import NiktoParser
 from saber.parsers.nmap import NmapParser
 from saber.parsers.nuclei import NucleiParser
 from saber.parsers.searchsploit import SearchSploitParser
+from saber.parsers.sqlmap import SqlmapParser
 from saber.parsers.whatweb import WhatWebParser
 
 
@@ -253,6 +254,12 @@ def default_parser_entries() -> list[ParserRegistryEntry]:
             parser=SearchSploitParser(),
             aliases=("exploitdb", "exploit_search"),
             file_extensions=("json", "txt"),
+        ),
+        ParserRegistryEntry(
+            tool_name="sqlmap",
+            parser=SqlmapParser(),
+            aliases=("injection_test", "sql_injection"),
+            file_extensions=("txt", "log"),
         ),
         ParserRegistryEntry(
             tool_name="bloodhound",
