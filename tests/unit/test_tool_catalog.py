@@ -4,11 +4,22 @@ from __future__ import annotations
 
 from saber.core.tool_catalog import ToolCatalog
 from saber.tools.registry import build_default_registry
+from tests.support.catalog import build_test_catalog
 
 
-def test_tool_catalog_builds_from_default_registry() -> None:
-    registry = build_default_registry()
-    catalog = ToolCatalog.from_registry(registry)
+def test_from_registry_skips_contractless_tools() -> None:
+    # F0.4: the catalog is generated from wrapper CONTRACTs. Wrappers without a
+    # CONTRACT (all of them during the F0->F1 migration) are simply skipped
+    # rather than getting a fabricated "default" action.
+    catalog = ToolCatalog.from_registry(build_default_registry())
+
+    assert catalog.tools == []
+    assert catalog.to_dict() == {"tools": []}
+    assert catalog.to_prompt_text() == ""
+
+
+def test_tool_catalog_renders_contract_actions() -> None:
+    catalog = build_test_catalog()
 
     data = catalog.to_dict()
     prompt_text = catalog.to_prompt_text()
@@ -17,11 +28,12 @@ def test_tool_catalog_builds_from_default_registry() -> None:
     assert "tools" in data
     assert "nmap" in prompt_text
     assert "service_scan" in prompt_text
+    # per-action args are surfaced in the prompt text
+    assert "arg target: str, required" in prompt_text
 
 
 def test_tool_catalog_has_approval_for_risky_actions() -> None:
-    registry = build_default_registry()
-    catalog = ToolCatalog.from_registry(registry)
+    catalog = build_test_catalog()
 
     risky = [
         action

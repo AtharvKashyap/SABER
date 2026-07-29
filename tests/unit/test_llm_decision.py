@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from saber.agents.llm_decision import LlmDecision, LlmDecisionType, LlmDecisionValidator
-from saber.core.tool_catalog import ToolCatalog
-from saber.tools.registry import build_default_registry
+from tests.support.catalog import build_test_catalog
 
 
 def test_llm_decision_from_dict() -> None:
@@ -26,7 +25,7 @@ def test_llm_decision_from_dict() -> None:
 
 
 def test_validator_accepts_known_tool_action() -> None:
-    catalog = ToolCatalog.from_registry(build_default_registry())
+    catalog = build_test_catalog()
     validator = LlmDecisionValidator(catalog)
 
     decision = LlmDecision.from_dict(
@@ -49,7 +48,7 @@ def test_validator_accepts_known_tool_action() -> None:
 
 
 def test_validator_rejects_unknown_tool_action() -> None:
-    catalog = ToolCatalog.from_registry(build_default_registry())
+    catalog = build_test_catalog()
     validator = LlmDecisionValidator(catalog)
 
     decision = LlmDecision.from_dict(
@@ -68,7 +67,7 @@ def test_validator_rejects_unknown_tool_action() -> None:
 
 
 def test_validator_forces_approval_for_risky_catalog_action() -> None:
-    catalog = ToolCatalog.from_registry(build_default_registry())
+    catalog = build_test_catalog()
     validator = LlmDecisionValidator(catalog)
 
     decision = LlmDecision.from_dict(

@@ -9,8 +9,7 @@ from saber.agents.llm_decision import LlmDecisionType
 from saber.agents.llm_decision_engine import LlmDecisionContext, LlmDecisionEngine
 from saber.core.llm_client import LlmClient, LlmConfig, LlmProvider
 from saber.core.prompt_loader import PromptLoader
-from saber.core.tool_catalog import ToolCatalog
-from saber.tools.registry import build_default_registry
+from tests.support.catalog import build_test_catalog
 
 
 @dataclass
@@ -56,7 +55,7 @@ def test_llm_decision_engine_accepts_direct_decision(tmp_path) -> None:
                 "handoff_agent": None,
             }
         ),
-        tool_catalog=ToolCatalog.from_registry(build_default_registry()),
+        tool_catalog=build_test_catalog(),
         prompt_loader=PromptLoader(prompt_dir),
     )
 
@@ -101,7 +100,7 @@ def test_llm_decision_engine_normalizes_rich_selected_action(tmp_path) -> None:
                 },
             }
         ),
-        tool_catalog=ToolCatalog.from_registry(build_default_registry()),
+        tool_catalog=build_test_catalog(),
         prompt_loader=PromptLoader(prompt_dir),
     )
 
@@ -136,7 +135,7 @@ def test_llm_decision_engine_rejects_unknown_tool(tmp_path) -> None:
                 "risk": "low",
             }
         ),
-        tool_catalog=ToolCatalog.from_registry(build_default_registry()),
+        tool_catalog=build_test_catalog(),
         prompt_loader=PromptLoader(prompt_dir),
     )
 

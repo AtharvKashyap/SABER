@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import Any
 
 import pytest
-
 from saber.agents.base_agent import AgentActionType, AgentContext
 from saber.agents.exploit_agent import ExploitAgent
 from saber.agents.lateral_movement_agent import LateralMovementAgent
@@ -18,10 +17,11 @@ from saber.core.llm_client import LlmClient, LlmConfig, LlmProvider
 from saber.core.prompt_loader import PromptLoader
 from saber.core.runtime import LocalSubprocessRunner
 from saber.core.sandbox import Sandbox
-from saber.core.tool_catalog import ToolCatalog
 from saber.models.session import MissionSession
 from saber.models.target import Target, TargetType
 from saber.tools.registry import build_default_registry
+
+from tests.support.catalog import build_test_catalog
 
 
 @dataclass
@@ -66,7 +66,7 @@ def _engine(tmp_path, registry, response: dict[str, Any]) -> LlmDecisionEngine:
     (prompt_dir / "common_agent_policy.txt").write_text("COMMON", encoding="utf-8")
     return LlmDecisionEngine(
         llm_client=FakeLlmClient(response),
-        tool_catalog=ToolCatalog.from_registry(registry),
+        tool_catalog=build_test_catalog(),
         prompt_loader=PromptLoader(prompt_dir),
     )
 
@@ -75,9 +75,9 @@ def _engine(tmp_path, registry, response: dict[str, Any]) -> LlmDecisionEngine:
     ("agent_cls", "tool_name", "tool_action"),
     [
         (ExploitAgent, "sqlmap", "injection_test"),
-        (PostExploitAgent, "mimikatz", "default"),
-        (LateralMovementAgent, "impacket", "default"),
-        (ReverseEngineerAgent, "hashcat", "default"),
+        (PostExploitAgent, "mimikatz", "credential_dump"),
+        (LateralMovementAgent, "impacket", "secretsdump"),
+        (ReverseEngineerAgent, "hashcat", "crack"),
     ],
 )
 def test_high_risk_llm_decisions_are_approval_gated(tmp_path, agent_cls, tool_name, tool_action) -> None:
