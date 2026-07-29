@@ -349,7 +349,9 @@ class TestNmapWrapper:
             output_prefix="nmap/service",
         )
 
-        assert command.command == ["nmap", "-sT", "-sV", "-sC", "-p", "80,443", "-oA", "nmap/service", "192.0.2.10"]
+        assert command.command == [
+            "nmap", "-sT", "-sV", "-sC", "-Pn", "-p", "80,443", "-oA", "nmap/service", "192.0.2.10",
+        ]
         assert command.action == "service_scan"
 
     def test_vuln_scan_delegates_to_sandbox(self) -> None:
@@ -369,7 +371,7 @@ class TestNmapWrapper:
         wrapper = NmapWrapper(FakeSandbox())
         command = wrapper.build_command(target=make_host_target(), action="udp_scan", ports="53,161")
 
-        assert command.command == ["nmap", "-sU", "-p", "53,161", "192.0.2.10"]
+        assert command.command == ["nmap", "-sU", "-Pn", "-p", "53,161", "192.0.2.10"]
 
     def test_script_scan_command(self) -> None:
         """Script scan should include script name."""

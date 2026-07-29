@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import pytest
 from saber.core.tool_catalog import ToolActionSpec, ToolCatalog
 from saber.models.scope import AssessmentPhase
 from saber.tools.capability import RequestedActionCategory
 from saber.tools.registry import ToolRegistry, ToolRegistryEntry
 
 
-@pytest.mark.xfail(reason="nmap CONTRACT lands in F1", strict=False)
 def test_catalog_generates_actions_from_contract(monkeypatch):
     # nmap module will carry a CONTRACT after F1; generation must surface its actions + args.
     reg = ToolRegistry(
