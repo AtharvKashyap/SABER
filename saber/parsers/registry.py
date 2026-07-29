@@ -8,6 +8,7 @@ from typing import Any
 
 from saber.parsers.base import BaseParser, ParserResult
 from saber.parsers.bloodhound import BloodHoundParser
+from saber.parsers.nikto import NiktoParser
 from saber.parsers.nmap import NmapParser
 from saber.parsers.nuclei import NucleiParser
 from saber.parsers.searchsploit import SearchSploitParser
@@ -240,6 +241,12 @@ def default_parser_entries() -> list[ParserRegistryEntry]:
             parser=NucleiParser(),
             aliases=("nuclei_scan", "template_scan"),
             file_extensions=("json", "jsonl"),
+        ),
+        ParserRegistryEntry(
+            tool_name="nikto",
+            parser=NiktoParser(),
+            aliases=("nikto_scan", "web_scan"),
+            file_extensions=("txt",),
         ),
         ParserRegistryEntry(
             tool_name="searchsploit",

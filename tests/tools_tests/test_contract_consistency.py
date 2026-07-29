@@ -3,7 +3,7 @@ from saber.core.canonical_kinds import CANONICAL_KINDS
 from saber.tools.registry import build_default_registry
 
 # Grows one entry per migrated tool. F1 adds the 11; F2-F6 append the rest.
-_MIGRATED_TOOLS: set[str] = {"custom_cli", "nmap", "nuclei"}
+_MIGRATED_TOOLS: set[str] = {"custom_cli", "nmap", "nuclei", "nikto"}
 
 
 @pytest.mark.parametrize("tool_name", sorted(_MIGRATED_TOOLS))
