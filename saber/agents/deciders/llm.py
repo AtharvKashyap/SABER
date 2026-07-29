@@ -72,14 +72,16 @@ class LlmDecider(NextActionDecider):
 
         tool_name = raw.get("tool_name")
         tool_action = raw.get("tool_action")
-        if not self._catalog_has(tool_name, tool_action):
-            return self._stop(f"unknown tool/action: {tool_name}/{tool_action}")
+        args = raw.get("args") if isinstance(raw.get("args"), dict) else {}
+        errors = self._validate_args(tool_name, tool_action, args)
+        if errors:
+            return self._stop("; ".join(errors))
 
         return ProposedAction(
             kind=ActionKind.TOOL,
             tool_name=str(tool_name),
             tool_action=str(tool_action),
-            args=raw.get("args") if isinstance(raw.get("args"), dict) else {},
+            args=args,
             agent_name=raw.get("agent_name"),
             objective=str(raw.get("rationale") or f"Run {tool_name}.{tool_action}"),
             risk=RiskLevel.from_str(raw.get("risk")),
@@ -89,13 +91,38 @@ class LlmDecider(NextActionDecider):
             metadata={"category": str(raw.get("category") or ""), "llm_raw": raw},
         )
 
-    def _catalog_has(self, tool_name: Any, tool_action: Any) -> bool:
-        if not tool_name or not tool_action:
-            return False
+    def _validate_args(self, tool_name: Any, action: Any, args: dict[str, Any]) -> list[str]:
+        """Return a list of validation errors ([] = valid) for the proposed args."""
+
+        spec = None
         for tool in self.tool_catalog.tools:
             if tool.name == tool_name:
-                return any(action.action == tool_action for action in tool.actions)
-        return False
+                spec = next((a for a in tool.actions if a.action == action), None)
+                break
+        if spec is None:
+            return [f"unknown tool/action: {tool_name}/{action}"]
+
+        errors: list[str] = []
+        known = {arg.name: arg for arg in spec.args}
+        for name in args:
+            if name not in known:
+                errors.append(f"unknown arg: {name}")
+        for arg in spec.args:
+            if arg.required and args.get(arg.name) in (None, ""):
+                errors.append(f"missing required arg: {arg.name}")
+                continue
+            if arg.name not in args or args[arg.name] is None:
+                continue
+            value = args[arg.name]
+            if arg.type == "int" and not isinstance(value, int):
+                errors.append(f"arg {arg.name} must be int")
+            elif arg.type == "bool" and not isinstance(value, bool):
+                errors.append(f"arg {arg.name} must be bool")
+            elif arg.type == "list[str]" and not isinstance(value, list):
+                errors.append(f"arg {arg.name} must be list[str]")
+            elif arg.type == "enum" and arg.choices and value not in arg.choices:
+                errors.append(f"arg {arg.name} must be one of {arg.choices}")
+        return errors
 
     def _load_prompt(self) -> str:
         try:

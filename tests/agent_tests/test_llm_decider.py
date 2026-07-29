@@ -5,6 +5,7 @@ from saber.core.state_summary import StateSummarizer
 from saber.core.tool_catalog import ToolActionSpec, ToolCatalog, ToolSpec
 from saber.models.mission_state import MissionState
 from saber.models.target import Target, TargetType
+from saber.tools.contract import ArgSpec
 
 
 class _FakeClient:
@@ -25,7 +26,12 @@ def _catalog() -> ToolCatalog:
                 phase="reconnaissance",
                 description="scanner",
                 actions=[
-                    ToolActionSpec(tool_name="nmap", action="service_scan", description="scan")
+                    ToolActionSpec(
+                        tool_name="nmap",
+                        action="service_scan",
+                        description="scan",
+                        args=(ArgSpec("target", "str", required=True),),
+                    )
                 ],
             )
         ]
