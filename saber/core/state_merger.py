@@ -11,11 +11,17 @@ from typing import Any
 
 from saber.models.mission_state import (
     AttemptedAction,
+    KnownAccount,
     KnownCredential,
+    KnownFlag,
     KnownHost,
+    KnownLoot,
     KnownService,
+    KnownSession,
+    KnownShare,
     KnownTechnology,
     KnownVuln,
+    MissionNote,
     MissionState,
 )
 
@@ -33,43 +39,53 @@ class StateMerger:
     ) -> MissionState:
         """Return a new MissionState folding in the parsed observations."""
 
-        hosts = {host.address: host for host in state.hosts}
-        services = {svc.key: svc for svc in state.services}
-        technologies = {(tech.host, tech.name): tech for tech in state.technologies}
-        credentials = {(cred.username, cred.host, cred.service): cred for cred in state.credentials}
-        vulns = {self._vuln_key(v.title, v.host, v.port): v for v in state.vulns}
+        acc: dict[str, dict[Any, Any]] = {
+            "host": {h.address: h for h in state.hosts},
+            "service": {s.key: s for s in state.services},
+            "technology": {(t.host, t.name): t for t in state.technologies},
+            "credential": {(c.username, c.host, c.service): c for c in state.credentials},
+            "vuln": {self._vuln_key(v.title, v.host, v.port): v for v in state.vulns},
+            "share": {(s.host, s.name): s for s in state.shares},
+            "account": {(a.domain, a.username): a for a in state.accounts},
+            "session": {(s.host, s.kind, s.user): s for s in state.sessions},
+            "loot": {(loot_.host, loot_.path, loot_.kind): loot_ for loot_ in state.loot},
+            "flag": {f.value: f for f in state.flags},
+            "note": {n.title: n for n in state.notes},
+        }
 
         for observation in parsed_observations:
             kind = str(observation.get("kind") or "").lower()
             data = observation.get("data") or {}
             if not isinstance(data, dict):
                 continue
-
-            if kind == "host":
-                self._merge_host(hosts, data)
-            elif kind == "service":
-                self._merge_service(services, hosts, data)
-            elif kind == "technology":
-                self._merge_technology(technologies, data)
-            elif kind == "credential":
-                self._merge_credential(credentials, data)
-            elif kind == "vuln":
-                self._merge_vuln(vulns, data, evidence_refs or [])
+            merger = self._MERGERS.get(kind)
+            if merger is None:
+                continue
+            merger(self, acc, data, evidence_refs or [])
 
         updated = state.record_attempt(attempt)
         return updated.model_copy(
             update={
-                "hosts": list(hosts.values()),
-                "services": list(services.values()),
-                "technologies": list(technologies.values()),
-                "credentials": list(credentials.values()),
-                "vulns": list(vulns.values()),
+                "hosts": list(acc["host"].values()),
+                "services": list(acc["service"].values()),
+                "technologies": list(acc["technology"].values()),
+                "credentials": list(acc["credential"].values()),
+                "vulns": list(acc["vuln"].values()),
+                "shares": list(acc["share"].values()),
+                "accounts": list(acc["account"].values()),
+                "sessions": list(acc["session"].values()),
+                "loot": list(acc["loot"].values()),
+                "flags": list(acc["flag"].values()),
+                "notes": list(acc["note"].values()),
                 "evidence_refs": self._extend_unique(state.evidence_refs, evidence_refs),
                 "finding_refs": self._extend_unique(state.finding_refs, finding_refs),
             }
         )
 
-    def _merge_host(self, hosts: dict[str, KnownHost], data: dict[str, Any]) -> None:
+    def _merge_host(
+        self, acc: dict[str, Any], data: dict[str, Any], evidence_refs: list[str]
+    ) -> None:
+        hosts = acc["host"]
         address = str(data.get("address") or data.get("host") or "").strip()
         if not address:
             return
@@ -82,11 +98,10 @@ class StateMerger:
         )
 
     def _merge_service(
-        self,
-        services: dict[str, KnownService],
-        hosts: dict[str, KnownHost],
-        data: dict[str, Any],
+        self, acc: dict[str, Any], data: dict[str, Any], evidence_refs: list[str]
     ) -> None:
+        services = acc["service"]
+        hosts = acc["host"]
         host = str(data.get("host") or "").strip()
         port = data.get("port")
         if not host or port is None:
@@ -115,8 +130,9 @@ class StateMerger:
         hosts.setdefault(host, KnownHost(address=host))
 
     def _merge_technology(
-        self, technologies: dict[tuple, KnownTechnology], data: dict[str, Any]
+        self, acc: dict[str, Any], data: dict[str, Any], evidence_refs: list[str]
     ) -> None:
+        technologies = acc["technology"]
         host = str(data.get("host") or "").strip()
         name = str(data.get("name") or "").strip()
         if not host or not name:
@@ -129,8 +145,9 @@ class StateMerger:
         )
 
     def _merge_credential(
-        self, credentials: dict[tuple, KnownCredential], data: dict[str, Any]
+        self, acc: dict[str, Any], data: dict[str, Any], evidence_refs: list[str]
     ) -> None:
+        credentials = acc["credential"]
         username = str(data.get("username") or "").strip()
         if not username:
             return
@@ -146,8 +163,9 @@ class StateMerger:
         )
 
     def _merge_vuln(
-        self, vulns: dict[str, KnownVuln], data: dict[str, Any], evidence_refs: list[str]
+        self, acc: dict[str, Any], data: dict[str, Any], evidence_refs: list[str]
     ) -> None:
+        vulns = acc["vuln"]
         title = str(data.get("title") or "").strip()
         if not title:
             return
@@ -164,6 +182,127 @@ class StateMerger:
                 existing.evidence_refs if existing else [], evidence_refs
             ),
         )
+
+    def _merge_share(
+        self, acc: dict[str, Any], data: dict[str, Any], evidence_refs: list[str]
+    ) -> None:
+        shares = acc["share"]
+        host = str(data.get("host") or "").strip()
+        name = str(data.get("name") or "").strip()
+        if not host or not name:
+            return
+        existing = shares.get((host, name))
+        shares[(host, name)] = KnownShare(
+            host=host,
+            name=name,
+            type=str(data.get("type") or (existing.type if existing else "smb")),
+            access=str(data.get("access") or (existing.access if existing else "none")),
+            metadata={**(existing.metadata if existing else {}), **(data.get("metadata") or {})},
+        )
+
+    def _merge_account(
+        self, acc: dict[str, Any], data: dict[str, Any], evidence_refs: list[str]
+    ) -> None:
+        accounts = acc["account"]
+        username = str(data.get("username") or "").strip()
+        if not username:
+            return
+        domain = data.get("domain")
+        existing = accounts.get((domain, username))
+        accounts[(domain, username)] = KnownAccount(
+            username=username,
+            domain=domain or (existing.domain if existing else None),
+            host=data.get("host") or (existing.host if existing else None),
+            source=data.get("source") or (existing.source if existing else None),
+            enabled=bool(data.get("enabled", existing.enabled if existing else True)),
+            metadata={**(existing.metadata if existing else {}), **(data.get("metadata") or {})},
+        )
+
+    def _merge_session(
+        self, acc: dict[str, Any], data: dict[str, Any], evidence_refs: list[str]
+    ) -> None:
+        sessions = acc["session"]
+        host = str(data.get("host") or "").strip()
+        if not host:
+            return
+        kind = str(data.get("kind") or "shell")
+        user = data.get("user")
+        existing = sessions.get((host, kind, user))
+        sessions[(host, kind, user)] = KnownSession(
+            host=host,
+            kind=kind,
+            user=user or (existing.user if existing else None),
+            privilege=str(data.get("privilege") or (existing.privilege if existing else "user")),
+            ref=data.get("ref") or (existing.ref if existing else None),
+            metadata={**(existing.metadata if existing else {}), **(data.get("metadata") or {})},
+        )
+
+    def _merge_loot(
+        self, acc: dict[str, Any], data: dict[str, Any], evidence_refs: list[str]
+    ) -> None:
+        loot = acc["loot"]
+        description = str(data.get("description") or "").strip()
+        if not description:
+            return
+        host = data.get("host")
+        path = data.get("path")
+        kind = str(data.get("kind") or "file")
+        existing = loot.get((host, path, kind))
+        loot[(host, path, kind)] = KnownLoot(
+            description=description,
+            kind=kind,
+            host=host or (existing.host if existing else None),
+            path=path or (existing.path if existing else None),
+            evidence_ref=data.get("evidence_ref") or (existing.evidence_ref if existing else None),
+            metadata={**(existing.metadata if existing else {}), **(data.get("metadata") or {})},
+        )
+
+    def _merge_flag(
+        self, acc: dict[str, Any], data: dict[str, Any], evidence_refs: list[str]
+    ) -> None:
+        flags = acc["flag"]
+        value = str(data.get("value") or "").strip()
+        if not value:
+            return
+        existing = flags.get(value)
+        flags[value] = KnownFlag(
+            value=value,
+            host=data.get("host") or (existing.host if existing else None),
+            location=data.get("location") or (existing.location if existing else None),
+            metadata={**(existing.metadata if existing else {}), **(data.get("metadata") or {})},
+        )
+
+    def _merge_note(
+        self, acc: dict[str, Any], data: dict[str, Any], evidence_refs: list[str]
+    ) -> None:
+        notes = acc["note"]
+        title = str(data.get("title") or "").strip()
+        if not title:
+            return
+        existing = notes.get(title)
+        notes[title] = MissionNote(
+            title=title,
+            detail=str(data.get("detail") or (existing.detail if existing else "")),
+            severity=str(data.get("severity") or (existing.severity if existing else "info")),
+            refs=self._extend_unique(
+                existing.refs if existing else [], list(data.get("refs") or [])
+            ),
+            metadata={**(existing.metadata if existing else {}), **(data.get("metadata") or {})},
+        )
+
+    _MERGERS = {
+        "host": _merge_host,
+        "service": _merge_service,
+        "technology": _merge_technology,
+        "credential": _merge_credential,
+        "vuln": _merge_vuln,
+        "share": _merge_share,
+        "account": _merge_account,
+        "session": _merge_session,
+        "loot": _merge_loot,
+        "flag": _merge_flag,
+        "note": _merge_note,
+    }
 
     @staticmethod
     def _vuln_key(title: str, host: Any, port: Any) -> str:
