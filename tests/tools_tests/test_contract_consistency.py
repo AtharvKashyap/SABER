@@ -14,6 +14,7 @@ _MIGRATED_TOOLS: set[str] = {
     "searchsploit",
     "sqlmap",
     "subfinder",
+    "theharvester",
 }
 
 
