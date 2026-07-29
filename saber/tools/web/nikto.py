@@ -22,14 +22,11 @@ CONTRACT = ToolContract(
         ActionContract(
             action="web_scan",
             description="Run a Nikto scan against a web target.",
-            args=(
-                ArgSpec("target", "str", required=True, description="URL/host in scope."),
-                ArgSpec("port", "str", required=False, example="8080"),
-            ),
+            args=(ArgSpec("port", "str", required=False, example="8080"),),
             risk="medium",
             requires_approval=True,
             emits_kinds=("vuln",),
-            example_args={"target": "https://127.0.0.1"},
+            example_args={"port": "8080"},
         ),
     ),
 )

@@ -47,6 +47,12 @@ CONTRACT = ToolContract(
             risk="high",
             requires_approval=True,
             emits_kinds=("note",),
+            example_args={
+                "command": "curl -sS -I http://127.0.0.1:8080/admin",
+                "reason": "Confirm whether /admin responds before spending a full scan on it.",
+                "expected_output": "HTTP status line and response headers.",
+                "risk_level": "low",
+            },
         ),
         ActionContract(
             action="run_script",
@@ -67,6 +73,13 @@ CONTRACT = ToolContract(
             risk="high",
             requires_approval=True,
             emits_kinds=("note",),
+            example_args={
+                "script_path": "/tmp/saber/exploit.py",
+                "reason": "Run the exploit script written for the confirmed deserialization bug.",
+                "script_args": ["127.0.0.1", "8080"],
+                "expected_output": "A shell banner or the contents of /etc/passwd.",
+                "risk_level": "high",
+            },
         ),
         ActionContract(
             action="run_pipeline",
@@ -85,6 +98,12 @@ CONTRACT = ToolContract(
             risk="high",
             requires_approval=True,
             emits_kinds=("note",),
+            example_args={
+                "pipeline": "cat /tmp/saber/hosts.txt | sort -u | head -50",
+                "reason": "Deduplicate the harvested host list before feeding it to the next scan.",
+                "expected_output": "Up to 50 unique hostnames.",
+                "risk_level": "low",
+            },
         ),
     ),
 )

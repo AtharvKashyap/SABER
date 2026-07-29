@@ -58,6 +58,48 @@ CONTRACT = ToolContract(
             emits_kinds=("vuln", "note"),
             example_args={"url": "https://127.0.0.1/item?id=1"},
         ),
+        ActionContract(
+            action="test_request",
+            description=(
+                "Test a saved raw HTTP request file for SQL injection (sqlmap -r). Use when the "
+                "injectable parameter is in a POST body, header, or cookie rather than the URL."
+            ),
+            args=(
+                ArgSpec(
+                    "request_file",
+                    "str",
+                    required=True,
+                    description="Path to a raw HTTP request file inside the sandbox.",
+                ),
+                ArgSpec("risk", "int", required=False, default=1, description="--risk (1-3)."),
+                ArgSpec("level", "int", required=False, default=1, description="--level (1-5)."),
+                ArgSpec("batch", "bool", required=False, default=True),
+            ),
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("vuln", "note"),
+            example_args={"request_file": "/tmp/request.txt"},
+        ),
+        ActionContract(
+            action="dump_schema",
+            description=(
+                "Enumerate the database schema through a confirmed injection (sqlmap --schema). "
+                "Run only after injection_test has confirmed the vulnerability."
+            ),
+            args=(
+                ArgSpec(
+                    "url",
+                    "str",
+                    required=True,
+                    description="Target URL with the confirmed injectable parameter.",
+                ),
+                ArgSpec("batch", "bool", required=False, default=True),
+            ),
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("vuln", "note"),
+            example_args={"url": "https://127.0.0.1/item?id=1"},
+        ),
     ),
 )
 

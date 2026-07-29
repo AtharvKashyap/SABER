@@ -28,6 +28,57 @@ CONTRACT = ToolContract(
             emits_kinds=("host",),
             example_args={"domain": "example.com"},
         ),
+        ActionContract(
+            action="enum_passive",
+            description="Passive enumeration using OSINT sources only (no traffic to the target).",
+            args=(ArgSpec("domain", "str", required=True, description="Domain in scope."),),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("host",),
+            example_args={"domain": "example.com"},
+        ),
+        ActionContract(
+            action="enum_active",
+            description="Active enumeration: resolves and probes the target's DNS infrastructure.",
+            args=(
+                ArgSpec("domain", "str", required=True, description="Domain in scope."),
+                ArgSpec("resolvers_file", "str", required=False, description="Custom resolver list."),
+            ),
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=("host",),
+            example_args={"domain": "example.com"},
+        ),
+        ActionContract(
+            action="intel",
+            description="Collect organisation intel (whois-adjacent) to widen the attack surface.",
+            args=(
+                ArgSpec("domain", "str", required=True, description="Domain in scope."),
+                ArgSpec("whois", "bool", required=False, default=True),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("host",),
+            example_args={"domain": "example.com", "whois": True},
+        ),
+        ActionContract(
+            action="db_export",
+            description="Export previously collected Amass graph data as JSON.",
+            args=(
+                ArgSpec("domain", "str", required=True, description="Domain in scope."),
+                ArgSpec(
+                    "output_file",
+                    "str",
+                    required=True,
+                    default="amass_graph.json",
+                    description="Destination path for the JSON graph export.",
+                ),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("host",),
+            example_args={"domain": "example.com", "output_file": "amass_graph.json"},
+        ),
     ),
 )
 

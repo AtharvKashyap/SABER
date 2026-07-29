@@ -23,7 +23,6 @@ CONTRACT = ToolContract(
             action="template_scan",
             description="Run Nuclei templates filtered by severity against a target.",
             args=(
-                ArgSpec("target", "str", required=True, description="URL/host in scope."),
                 ArgSpec(
                     "severity",
                     "str",
@@ -34,7 +33,7 @@ CONTRACT = ToolContract(
             risk="medium",
             requires_approval=True,
             emits_kinds=("vuln",),
-            example_args={"target": "https://127.0.0.1", "severity": "high,critical"},
+            example_args={"severity": "high,critical"},
         ),
     ),
 )

@@ -28,6 +28,40 @@ CONTRACT = ToolContract(
             emits_kinds=("host",),
             example_args={"domain": "example.com"},
         ),
+        ActionContract(
+            action="enumerate",
+            description="Passive subdomain enumeration using the default source set.",
+            args=(ArgSpec("domain", "str", required=True, description="Domain in scope."),),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("host",),
+            example_args={"domain": "example.com"},
+        ),
+        ActionContract(
+            action="enumerate_all_sources",
+            description="Passive enumeration across ALL configured sources (-all). Broader, slower.",
+            args=(ArgSpec("domain", "str", required=True, description="Domain in scope."),),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("host",),
+            example_args={"domain": "example.com"},
+        ),
+        ActionContract(
+            action="enumerate_from_list",
+            description="Enumerate subdomains for every domain listed in a file (-dL).",
+            args=(
+                ArgSpec(
+                    "domain_list",
+                    "str",
+                    required=True,
+                    description="Path to a newline-separated list of in-scope domains.",
+                ),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("host",),
+            example_args={"domain_list": "/tmp/domains.txt"},
+        ),
     ),
 )
 

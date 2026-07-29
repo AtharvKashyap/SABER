@@ -24,14 +24,31 @@ CONTRACT = ToolContract(
             description="Masscan port scan (wrapper's real dispatch name; `top_ports` "
             "is a higher-level convenience method that calls this action).",
             args=(
-                ArgSpec("target", "str", required=True, description="Host/CIDR in scope."),
                 ArgSpec("ports", "str", required=True, example="80,443,445,3389,22"),
                 ArgSpec("rate", "int", required=False, default=1000),
             ),
             risk="medium",
             requires_approval=True,
             emits_kinds=("host", "service"),
-            example_args={"target": "127.0.0.1", "ports": "80,443,445,3389,22", "rate": 1000},
+            example_args={"ports": "80,443,445,3389,22", "rate": 1000},
+        ),
+        ActionContract(
+            action="exclude_file_scan",
+            description="Masscan port scan that skips every address listed in an exclude file.",
+            args=(
+                ArgSpec("ports", "str", required=True, example="80,443,445,3389,22"),
+                ArgSpec(
+                    "exclude_file",
+                    "str",
+                    required=True,
+                    description="Path to a masscan --excludefile of out-of-scope addresses.",
+                ),
+                ArgSpec("rate", "int", required=False, default=1000),
+            ),
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=("host", "service"),
+            example_args={"ports": "80,443", "exclude_file": "/tmp/exclude.txt", "rate": 1000},
         ),
     ),
 )

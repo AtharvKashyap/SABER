@@ -27,7 +27,9 @@ def test_catalog_generates_actions_from_contract(monkeypatch):
     assert "service_scan" in actions
     assert "default" not in actions
     svc = next(a for a in nmap.actions if a.action == "service_scan")
-    assert any(arg.name == "target" and arg.required for arg in svc.args)
+    assert any(arg.name == "ports" for arg in svc.args)
+    # "target" is supplied by the loop, never by the decider's args.
+    assert not any(arg.name == "target" for arg in svc.args)
 
 
 def test_action_spec_has_args_field():
