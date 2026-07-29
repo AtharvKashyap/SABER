@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from saber.parsers.base import ParserSeverity
 from saber.parsers.nuclei import NucleiParser
+
+from tests.conftest import assert_observation, merge_observations
 
 
 class TestNucleiParser:
@@ -50,8 +54,15 @@ class TestNucleiParser:
         assert finding.references == ["https://example.com/advisory"]
 
         observation = result.observations[0]
-        assert observation.kind == "vulnerability"
+        # F1.3: parser now emits the canonical "vuln" kind (was the non-canonical
+        # "vulnerability"), with data shaped for StateMerger._merge_vuln.
+        assert observation.kind == "vuln"
         assert observation.metadata["severity"] == "high"
+        assert observation.data["title"] == "Example CVE"
+        assert observation.data["host"] == "example.com"
+        assert observation.data["severity"] == "high"
+        assert observation.data["identifier"] == "cve-2024-0001"
+        assert observation.data["confirmed"] is True
 
     def test_parse_json_text(self) -> None:
         """JSON text should route to parse_json."""
@@ -123,3 +134,26 @@ bad-json
 
         assert result.success is False
         assert result.errors == ["No Nuclei findings could be parsed."]
+
+
+def test_nuclei_jsonl_emits_vuln_and_grows_state() -> None:
+    """Fixture JSONL yields canonical vuln observations that grow state."""
+
+    text = Path("tests/fixtures/sample_nuclei_output.json").read_text()
+    result = NucleiParser().parse_text(text)
+    obs = [o.to_dict() for o in result.observations]
+    vulns = [o for o in obs if o["kind"] == "vuln"]
+    assert len(vulns) == 2
+    assert_observation(
+        vulns[1],
+        kind="vuln",
+        data_subset={
+            "title": "Apache HTTP Server 2.4.49 - Path Traversal",
+            "host": "10.0.0.5",
+            "severity": "critical",
+            "identifier": "CVE-2021-41773",
+            "confirmed": True,
+        },
+    )
+    state = merge_observations(obs, tool="nuclei", action="template_scan")
+    assert len(state.vulns) == 2

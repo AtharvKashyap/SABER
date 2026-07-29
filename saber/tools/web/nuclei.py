@@ -10,6 +10,34 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="nuclei",
+    category="web",
+    phase="recon",
+    description="Template-based vulnerability scanning.",
+    parser="nuclei",
+    actions=(
+        ActionContract(
+            action="template_scan",
+            description="Run Nuclei templates filtered by severity against a target.",
+            args=(
+                ArgSpec("target", "str", required=True, description="URL/host in scope."),
+                ArgSpec(
+                    "severity",
+                    "str",
+                    required=False,
+                    default="low,medium,high,critical",
+                ),
+            ),
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=("vuln",),
+            example_args={"target": "https://127.0.0.1", "severity": "high,critical"},
+        ),
+    ),
+)
 
 
 class NucleiWrapper(BaseToolWrapper):
@@ -82,7 +110,7 @@ class NucleiWrapper(BaseToolWrapper):
             target = None
         if action is None:
             raise ValueError("action is required")
-        if action != "scan":
+        if action not in ("scan", "template_scan"):
             raise ValueError(f"Unsupported Nuclei action: {action}")
 
         url = self._url_from_target_or_kwargs(target, kwargs)
@@ -107,7 +135,7 @@ class NucleiWrapper(BaseToolWrapper):
 
         return ToolCommand(
             command=command,
-            action="scan",
+            action=action,
             evidence_title=f"Nuclei scan: {url}",
             evidence_relative_dir="web/nuclei/scan",
             timeout_seconds=kwargs.get("timeout_seconds"),

@@ -57,10 +57,10 @@ class NucleiParser(BaseParser):
                 findings.append(finding)
                 observations.append(
                     ParsedObservation(
-                        kind="vulnerability",
+                        kind="vuln",
                         summary=f"{finding.title} matched with {finding.severity.value} severity.",
                         source_tool=self.source_tool,
-                        data=finding.evidence,
+                        data=self._vuln_data(finding),
                         metadata={"finding_title": finding.title, "severity": finding.severity.value},
                     )
                 )
@@ -111,10 +111,10 @@ class NucleiParser(BaseParser):
             findings.append(finding)
             observations.append(
                 ParsedObservation(
-                    kind="vulnerability",
+                    kind="vuln",
                     summary=f"Nuclei matched {template_id} against {matched_at}.",
                     source_tool=self.source_tool,
-                    data=finding.evidence,
+                    data=self._vuln_data(finding),
                     metadata={"severity": severity.value},
                 )
             )
@@ -127,6 +127,20 @@ class NucleiParser(BaseParser):
             errors=[] if findings else (errors or ["No Nuclei stdout findings could be parsed."]),
             metadata={"format": "stdout", "finding_count": len(findings)},
         )
+
+    @staticmethod
+    def _vuln_data(finding: ParsedFinding) -> dict[str, Any]:
+        """Map a Nuclei finding onto the canonical vuln observation shape."""
+
+        evidence = finding.evidence
+        host = evidence.get("host") or evidence.get("ip") or evidence.get("matched_at")
+        return {
+            "title": finding.title,
+            "host": host,
+            "severity": finding.severity.value,
+            "identifier": evidence.get("template_id"),
+            "confirmed": True,
+        }
 
     def _finding_from_record(self, record: dict[str, Any]) -> ParsedFinding | None:
         """Build finding from one Nuclei record."""
