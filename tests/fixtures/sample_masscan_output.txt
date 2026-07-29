@@ -1,0 +1,7 @@
+Starting masscan 1.3.2 (http://bit.ly/14GZzcT) at 2026-07-29 12:00:04 GMT
+Initiating SYN Stealth Scan
+Scanning 2 hosts [5 ports/host]
+Discovered open port 80/tcp on 192.168.56.101
+Discovered open port 22/tcp on 192.168.56.101
+Discovered open port 445/tcp on 192.168.56.102
+Discovered open port 161/udp on 192.168.56.102

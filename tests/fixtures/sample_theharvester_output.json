@@ -1,0 +1,20 @@
+{
+  "asns": [],
+  "emails": [
+    "admin@example.com",
+    "info@example.com",
+    "security@example.com"
+  ],
+  "hosts": [
+    "www.example.com:93.184.216.34",
+    "mail.example.com:93.184.216.35",
+    "dev.example.com"
+  ],
+  "interesting_urls": [],
+  "ips": [
+    "93.184.216.34",
+    "93.184.216.35"
+  ],
+  "linkedin_people": [],
+  "shodan": []
+}

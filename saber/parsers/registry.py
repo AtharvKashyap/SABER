@@ -6,13 +6,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from saber.parsers.amass import AmassParser
 from saber.parsers.base import BaseParser, ParserResult
 from saber.parsers.bloodhound import BloodHoundParser
+from saber.parsers.dnsrecon import DNSReconParser
+from saber.parsers.masscan import MasscanParser
 from saber.parsers.nikto import NiktoParser
 from saber.parsers.nmap import NmapParser
 from saber.parsers.nuclei import NucleiParser
 from saber.parsers.searchsploit import SearchSploitParser
 from saber.parsers.sqlmap import SqlmapParser
+from saber.parsers.subfinder import SubfinderParser
+from saber.parsers.theharvester import TheHarvesterParser
 from saber.parsers.whatweb import WhatWebParser
 
 
@@ -266,6 +271,36 @@ def default_parser_entries() -> list[ParserRegistryEntry]:
             parser=BloodHoundParser(),
             aliases=("bloodhound-python", "sharphound", "ad_graph"),
             file_extensions=("json",),
+        ),
+        ParserRegistryEntry(
+            tool_name="masscan",
+            parser=MasscanParser(),
+            aliases=("masscan_scan", "port_sweep", "scan_ports"),
+            file_extensions=("json", "txt", "list"),
+        ),
+        ParserRegistryEntry(
+            tool_name="subfinder",
+            parser=SubfinderParser(),
+            aliases=("subdomain_enum", "passive_subdomains"),
+            file_extensions=("txt",),
+        ),
+        ParserRegistryEntry(
+            tool_name="amass",
+            parser=AmassParser(),
+            aliases=("amass_enum", "asset_enum"),
+            file_extensions=("txt",),
+        ),
+        ParserRegistryEntry(
+            tool_name="dnsrecon",
+            parser=DNSReconParser(),
+            aliases=("dns_enum", "dns_recon"),
+            file_extensions=("json", "txt"),
+        ),
+        ParserRegistryEntry(
+            tool_name="theharvester",
+            parser=TheHarvesterParser(),
+            aliases=("theHarvester", "osint_harvest", "email_harvest"),
+            file_extensions=("json", "txt"),
         ),
     ]
 

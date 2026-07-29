@@ -25,7 +25,7 @@ CONTRACT = ToolContract(
             args=(ArgSpec("domain", "str", required=True, description="Domain in scope."),),
             risk="low",
             requires_approval=False,
-            emits_kinds=("host",),
+            emits_kinds=("host", "note"),
             example_args={"domain": "example.com"},
         ),
     ),
