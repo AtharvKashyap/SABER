@@ -1,0 +1,38 @@
+[
+  {
+    "target": "http://127.0.0.1",
+    "http_status": 200,
+    "request_config": {
+      "headers": {
+        "User-Agent": "WhatWeb/0.5.5"
+      }
+    },
+    "plugins": {
+      "Apache": {
+        "string": ["Apache"],
+        "version": ["2.4.7"]
+      },
+      "PHP": {
+        "version": ["5.5.9"]
+      },
+      "HTTPServer": {
+        "string": ["Apache/2.4.7 (Ubuntu)"]
+      },
+      "HTTPStatus": {
+        "string": ["200"]
+      },
+      "Title": {
+        "string": ["Welcome to the DVWA"]
+      },
+      "IP": {
+        "string": ["127.0.0.1"]
+      },
+      "Country": {
+        "string": ["RESERVED", "ZZ"]
+      },
+      "X-Frame-Options": {
+        "string": ["SAMEORIGIN"]
+      }
+    }
+  }
+]

@@ -10,6 +10,46 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="whatweb",
+    category="recon",
+    phase="recon",
+    description="Web technology fingerprinting via WhatWeb.",
+    parser="whatweb",
+    actions=(
+        ActionContract(
+            action="fingerprint",
+            description="Passive/light web technology fingerprint (-a 1).",
+            args=(ArgSpec("url", "str", required=True, description="Target URL in scope."),),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("technology", "service"),
+            example_args={"url": "http://127.0.0.1"},
+        ),
+        ActionContract(
+            action="aggressive",
+            description="Aggressive web technology fingerprint (-a 3).",
+            args=(ArgSpec("url", "str", required=True, description="Target URL in scope."),),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("technology", "service"),
+            example_args={"url": "http://127.0.0.1"},
+        ),
+        ActionContract(
+            action="list_scan",
+            description="Fingerprint a list of URLs from an input file.",
+            args=(
+                ArgSpec("input_file", "str", required=True, description="Path to URL list."),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("technology", "service"),
+            example_args={"input_file": "urls.txt"},
+        ),
+    ),
+)
 
 
 class WhatWebWrapper(BaseToolWrapper):
