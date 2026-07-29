@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 from typing import Any
 
@@ -10,6 +11,23 @@ from saber.core.prompt_loader import PromptLoader
 from saber.core.state_summary import StateSummary
 from saber.core.tool_catalog import ToolCatalog
 from saber.models.mission_state import MissionState
+from saber.models.target import Target, TargetType
+
+
+def _infer_target_type(value: str) -> TargetType:
+    """Infer a TargetType from a bare string the model supplied."""
+
+    if "://" in value:
+        return TargetType.URL
+    try:
+        ipaddress.ip_network(value, strict=False)
+    except ValueError:
+        pass
+    else:
+        return TargetType.CIDR if "/" in value else TargetType.IP
+    if "-" in value and value.count(".") >= 3:
+        return TargetType.IP_RANGE
+    return TargetType.DOMAIN if "." in value else TargetType.HOST
 
 
 class LlmDecider(NextActionDecider):
@@ -83,6 +101,7 @@ class LlmDecider(NextActionDecider):
             tool_action=str(tool_action),
             args=args,
             agent_name=raw.get("agent_name"),
+            target=self._parse_target(raw.get("target")),
             objective=str(raw.get("rationale") or f"Run {tool_name}.{tool_action}"),
             risk=RiskLevel.from_str(raw.get("risk")),
             requires_confirmation=bool(raw.get("requires_confirmation", False)),
@@ -90,6 +109,30 @@ class LlmDecider(NextActionDecider):
             expected_evidence=str(raw.get("expected_evidence") or ""),
             metadata={"category": str(raw.get("category") or ""), "llm_raw": raw},
         )
+
+    @staticmethod
+    def _parse_target(value: Any) -> Target | None:
+        """Build the per-action Target the model wants to act on, or None.
+
+        The loop's ``ActionExecutor`` falls back to ``state.target`` when this is
+        None, so a model that says nothing keeps today's behaviour. Naming a
+        host lets the mission pivot onto something recon discovered (a second
+        box, a specific web service) instead of re-hitting the seed target
+        forever. Safety is unchanged: ``RiskGate`` scope-checks
+        ``action.target`` before anything runs, and refuses out-of-scope values.
+
+        Returns None on anything unparseable rather than raising — a malformed
+        target must not crash the loop, and falling back to the seed target is
+        always in scope.
+        """
+
+        if not isinstance(value, str) or not value.strip():
+            return None
+        try:
+            text = value.strip()
+            return Target(type=_infer_target_type(text), value=text)
+        except Exception:  # noqa: BLE001 - unparseable target falls back to state.target
+            return None
 
     def _validate_args(self, tool_name: Any, action: Any, args: dict[str, Any]) -> list[str]:
         """Return a list of validation errors ([] = valid) for the proposed args."""

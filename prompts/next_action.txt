@@ -13,6 +13,13 @@ Hard rules:
 - Rate risk honestly: "high" for destructive, deep-exploit, or impactful steps.
 - Prefer recon/enumeration before exploitation.
 - Provide exactly the required args for the chosen action and no unknown args; types must match the arg schema.
+- NEVER put "target", "session", "action" or "metadata" in args. The target is a
+  separate top-level field (below), not an arg. No action's arg schema contains them.
+- Use the top-level "target" field to act on a specific host you have discovered.
+  Omit it (or null) to act on the mission's original target. This is how you
+  pivot: after recon reveals a second host or a specific service, name it here
+  to direct the next tool at it instead of re-scanning the seed target. It must
+  still be inside scope — out-of-scope targets are refused.
 - When the objective is met or no safe useful action remains, return kind "report".
 
 Return ONE strict JSON object, no Markdown, with this schema:
@@ -21,6 +28,7 @@ Return ONE strict JSON object, no Markdown, with this schema:
   "tool_name": string | null,
   "tool_action": string | null,
   "args": object,   // the exact args for the chosen action, matching the catalog's arg schema for that action
+  "target": string | null,   // specific in-scope host/URL/CIDR to act on; null = the mission's target
   "agent_name": string | null,
   "risk": "low" | "medium" | "high",
   "requires_confirmation": boolean,
