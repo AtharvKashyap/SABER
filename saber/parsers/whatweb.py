@@ -13,7 +13,7 @@ class WhatWebParser(BaseParser):
 
     source_tool = "whatweb"
 
-    def parse_text(self, text: str) -> ParserResult:
+    def parse_text(self, text: str, metadata: dict[str, Any] | None = None) -> ParserResult:
         """Parse WhatWeb JSON or stdout."""
 
         stripped = text.strip()
@@ -26,7 +26,11 @@ class WhatWebParser(BaseParser):
 
         return self._parse_stdout(stripped)
 
-    def parse_json(self, data: dict[str, Any] | list[Any]) -> ParserResult:
+    def parse_json(
+        self,
+        data: dict[str, Any] | list[Any],
+        metadata: dict[str, Any] | None = None,
+    ) -> ParserResult:
         """Parse WhatWeb JSON output."""
 
         records = data if isinstance(data, list) else [data]

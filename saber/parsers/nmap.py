@@ -14,7 +14,7 @@ class NmapParser(BaseParser):
 
     source_tool = "nmap"
 
-    def parse_text(self, text: str) -> ParserResult:
+    def parse_text(self, text: str, metadata: dict[str, Any] | None = None) -> ParserResult:
         """Parse Nmap XML or stdout."""
 
         stripped = text.strip()
@@ -198,7 +198,11 @@ class NmapParser(BaseParser):
                 names.append(name)
         return names
 
-    def parse_json(self, data: dict[str, Any] | list[Any]) -> ParserResult:
+    def parse_json(
+        self,
+        data: dict[str, Any] | list[Any],
+        metadata: dict[str, Any] | None = None,
+    ) -> ParserResult:
         """Nmap JSON is not first-class; accept already-normalized records."""
 
         records = data if isinstance(data, list) else data.get("hosts", [])

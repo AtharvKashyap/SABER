@@ -12,7 +12,7 @@ class NucleiParser(BaseParser):
 
     source_tool = "nuclei"
 
-    def parse_text(self, text: str) -> ParserResult:
+    def parse_text(self, text: str, metadata: dict[str, Any] | None = None) -> ParserResult:
         """Parse Nuclei JSON, JSONL, or simple stdout."""
 
         stripped = text.strip()
@@ -37,7 +37,11 @@ class NucleiParser(BaseParser):
 
         return self._parse_stdout(stripped, errors)
 
-    def parse_json(self, data: dict[str, Any] | list[Any]) -> ParserResult:
+    def parse_json(
+        self,
+        data: dict[str, Any] | list[Any],
+        metadata: dict[str, Any] | None = None,
+    ) -> ParserResult:
         """Parse Nuclei JSON-compatible output."""
 
         records = data if isinstance(data, list) else [data]

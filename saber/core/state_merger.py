@@ -27,7 +27,39 @@ from saber.models.mission_state import (
 
 
 class StateMerger:
-    """Merge normalized parser observations into MissionState."""
+    """Merge normalized parser observations into MissionState.
+
+    Consumes the canonical observation vocabulary (single source of truth,
+    mirrored in ``saber/parsers/base.py``). Each ``kind`` folds into exactly one
+    ``MissionState`` list via one merger; required data fields are marked
+    ``(req)``. ``kind -> MissionState list``:
+
+    - host -> hosts (KnownHost):
+        address (req), hostnames: list[str], os, metadata
+    - service -> services (KnownService):
+        host (req), port (req, int), protocol, service, product, version, state
+    - technology -> technologies (KnownTechnology):
+        host (req), name (req), version, metadata
+    - credential -> credentials (KnownCredential):
+        username (req), secret, kind (password|hash|key|token), host, service,
+        validated: bool
+    - vuln -> vulns (KnownVuln):
+        title (req), host, port, severity, identifier, confirmed: bool
+    - share -> shares (KnownShare):
+        host (req), name (req), type, access (read|write|none), metadata
+    - account -> accounts (KnownAccount):
+        username (req), domain, host, source, enabled: bool, metadata
+    - session -> sessions (KnownSession):
+        host (req), kind (shell|meterpreter|winrm|ssh), user,
+        privilege (user|root|system), ref, metadata
+    - loot -> loot (KnownLoot):
+        host, path, kind (file|hash|key|config), description (req), evidence_ref,
+        metadata
+    - flag -> flags (KnownFlag):
+        value (req), host, location, metadata
+    - note -> notes (list[MissionNote]):
+        title (req), detail, severity, refs: list[str], metadata
+    """
 
     def merge(
         self,
