@@ -38,7 +38,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Recon / web / network tools available from Kali repositories.
 # This image uses kali-last-release instead of kali-rolling so package availability
 # is more stable across builds. If a package name changes, update this list and
-# the host-side scripts/install_kali_deps.sh file together.
+# _PACKAGE_BINARIES in tests/tools_tests/test_sandbox_image_manifest.py together —
+# that test is what catches a contract invoking an executable the image lacks.
+# (An earlier version of this comment pointed at scripts/install_kali_deps.sh,
+# which does not exist in the repo.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nmap \
     masscan \
@@ -66,6 +69,62 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     impacket-scripts \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Reverse-engineering, binary-exploitation and capture tooling.
+# These back the F5/F6 contracts (checksec, radare2, ghidra_headless, strings,
+# file, pwntools/gdb, tshark). Without them the decider can select those actions
+# and they die at runtime with "command not found".
+# enum4linux (the original perl script) is installed ALONGSIDE enum4linux-ng
+# because the wrapper invokes `enum4linux`, not `enum4linux-ng`.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    binutils \
+    file \
+    checksec \
+    radare2 \
+    gdb \
+    python3-pwntools \
+    tshark \
+    wireshark-common \
+    enum4linux \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# chisel: no Kali package, so fetch the release binary for the build platform.
+ARG CHISEL_VERSION=1.10.1
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      amd64) chisel_arch="amd64" ;; \
+      arm64) chisel_arch="arm64" ;; \
+      *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/chisel.gz \
+      "https://github.com/jpillora/chisel/releases/download/v${CHISEL_VERSION}/chisel_${CHISEL_VERSION}_linux_${chisel_arch}.gz"; \
+    gunzip -c /tmp/chisel.gz > /usr/local/bin/chisel; \
+    chmod 0755 /usr/local/bin/chisel; \
+    rm -f /tmp/chisel.gz; \
+    chisel --version
+
+# PEASS-ng enumeration scripts. The linpeas wrapper defaults to
+# /opt/peas/linpeas.sh, so the path must match that contract default.
+RUN set -eux; \
+    mkdir -p /opt/peas; \
+    curl -fsSL -o /opt/peas/linpeas.sh \
+      https://github.com/peass-ng/PEASS-ng/releases/latest/download/linpeas.sh; \
+    curl -fsSL -o /opt/peas/winPEASx64.exe \
+      https://github.com/peass-ng/PEASS-ng/releases/latest/download/winPEASx64.exe; \
+    chmod 0755 /opt/peas/linpeas.sh
+
+# NOTE — deliberately NOT installed:
+#   mimikatz / winPEASx64.exe execution: Windows binaries. winPEASx64.exe is staged
+#     above for transfer to a Windows foothold, but neither RUNS in this Linux
+#     sandbox. Their wrappers keep contracts so the decider can reason about a
+#     Windows foothold; the image is not expected to execute them.
+#   ghidra headless (analyzeHeadless): a ~1GB JDK+Ghidra install. Kept out of the
+#     default image to hold its size down; build a derived image if the mission
+#     needs decompilation.
+#   openvas / gvm (openvas-cli): needs a provisioned scanner service with a feed
+#     sync, which does not belong inside a per-action ephemeral sandbox.
 
 # Python libraries used by SABER wrappers that may run inside the sandbox.
 COPY requirements.txt /tmp/requirements.txt

@@ -27,6 +27,49 @@ class AutonomyLevel(StrEnum):
     AUTONOMOUS = "autonomous"
 
 
+class PtesPhase(StrEnum):
+    """Where the mission is in the PTES methodology.
+
+    The loop advances through these in order. Transitions are decided by the
+    deterministic ``PhaseGoalChecker`` (``saber/orchestration/phase_gate.py``) from
+    what is actually in ``MissionState`` — not by the decider's free choice — so
+    phase progression is unit-testable rather than a matter of model mood.
+    """
+
+    PRE_ENGAGEMENT = "pre_engagement"
+    RECON = "recon"
+    VULN_ASSESSMENT = "vuln_assessment"
+    EXPLOITATION = "exploitation"
+    POST_EXPLOITATION = "post_exploitation"
+    LATERAL_MOVEMENT = "lateral_movement"
+    PROOF_OF_CONCEPT = "proof_of_concept"
+    POST_ENGAGEMENT = "post_engagement"
+
+    @classmethod
+    def ordered(cls) -> tuple[PtesPhase, ...]:
+        """Return the phases in methodology order."""
+
+        return (
+            cls.PRE_ENGAGEMENT,
+            cls.RECON,
+            cls.VULN_ASSESSMENT,
+            cls.EXPLOITATION,
+            cls.POST_EXPLOITATION,
+            cls.LATERAL_MOVEMENT,
+            cls.PROOF_OF_CONCEPT,
+            cls.POST_ENGAGEMENT,
+        )
+
+    def next_phase(self) -> PtesPhase | None:
+        """Return the phase after this one, or None at the end."""
+
+        phases = self.ordered()
+        position = phases.index(self)
+        if position + 1 >= len(phases):
+            return None
+        return phases[position + 1]
+
+
 class KnownHost(BaseModel):
     """A host the loop has learned about."""
 
@@ -205,6 +248,10 @@ class MissionState(BaseModel):
 
     finding_refs: list[str] = Field(default_factory=list)
     evidence_refs: list[str] = Field(default_factory=list)
+
+    # Defaults to RECON (not PRE_ENGAGEMENT) for back-compat: existing snapshots and
+    # callers predate this field, and every current mission starts by looking around.
+    current_phase: PtesPhase = PtesPhase.RECON
 
     objective_met: bool = False
     stop_reason: str | None = None
