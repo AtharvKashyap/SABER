@@ -72,25 +72,13 @@ CONTRACT = ToolContract(
             emits_kinds=("account", "host", "note"),
             example_args={"domain": "lab.local", "username": "jdoe"},
         ),
-        ActionContract(
-            action="ingest_existing_zip",
-            description=(
-                "Parse an already-collected BloodHound zip into MissionState. Touches "
-                "no target, so it is safe to run whenever a collection already exists."
-            ),
-            args=(
-                ArgSpec(
-                    "zip_path",
-                    "str",
-                    required=True,
-                    description="Path to a previously collected BloodHound zip.",
-                ),
-            ),
-            risk="low",
-            requires_approval=False,
-            emits_kinds=("account", "host", "note"),
-            example_args={"zip_path": "/tmp/saber/bloodhound.zip"},
-        ),
+        # ingest_existing_zip is NOT declared. Its command is
+        # ["python", "-m", "saber.parsers.bloodhound", "ingest", <zip>], which cannot
+        # run: Kali has no `python` alias, the saber package is not installed in the
+        # sandbox image, and saber/parsers/bloodhound.py has no __main__. The wrapper
+        # method is kept, but the decider is not offered an action that always fails.
+        # BloodHoundParser itself is real and used — the loop parses collection output
+        # through the parser registry, which needs no subprocess at all.
     ),
 )
 

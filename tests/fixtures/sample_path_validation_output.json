@@ -1,9 +1,0 @@
-{
-  "action": "dry_run_path",
-  "path_id": "path-1",
-  "hops": ["WKSTN01", "SRV-FILE01", "DC01"],
-  "dry_run": true,
-  "reachable_hops": ["WKSTN01", "SRV-FILE01"],
-  "blocked_at": "DC01",
-  "reason": "Firewall rule blocks SMB from SRV-FILE01 to DC01."
-}

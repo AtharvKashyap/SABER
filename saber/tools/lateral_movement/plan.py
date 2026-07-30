@@ -15,76 +15,22 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
-from saber.tools.contract import ActionContract, ArgSpec, ToolContract
 
-CONTRACT = ToolContract(
-    tool_name="plan",
-    category="lateral_movement",
-    phase="lateral_movement",
-    description=(
-        "Build, rank, and export candidate lateral movement paths from known state. "
-        "Local reasoning only; does not touch a remote host."
-    ),
-    parser="plan",
-    aliases=("lateral_movement_planner",),
-    actions=(
-        ActionContract(
-            action="plan_paths",
-            description="Build candidate movement paths from a known source to the target.",
-            args=(
-                ArgSpec(
-                    "source", "str", required=True,
-                    description="Known foothold host/label to plan from.",
-                ),
-                ArgSpec(
-                    "graph_path", "str", required=False, default=None,
-                    description="Optional path to a pre-built reachability graph artifact.",
-                ),
-                ArgSpec(
-                    "max_depth", "int", required=False, default=4,
-                    description="Maximum number of hops to consider.",
-                ),
-            ),
-            risk="low",
-            requires_approval=False,
-            emits_kinds=("note",),
-            example_args={"source": "WKSTN01", "max_depth": 4},
-        ),
-        ActionContract(
-            action="rank_paths",
-            description="Rank previously planned candidate paths by a chosen criterion.",
-            args=(
-                ArgSpec(
-                    "candidate_paths_file", "str", required=True,
-                    description="Evidence-relative path to a plan_paths JSON output.",
-                ),
-                ArgSpec(
-                    "criteria", "str", required=False, default="lowest_risk",
-                    choices=("lowest_risk", "fewest_hops", "highest_privilege"),
-                ),
-            ),
-            risk="low",
-            requires_approval=False,
-            emits_kinds=("note",),
-            example_args={"candidate_paths_file": "lateral_movement/plan/paths/candidates.json"},
-        ),
-        ActionContract(
-            action="export_plan",
-            description="Export a ranked movement plan for reporting or operator review.",
-            args=(
-                ArgSpec("plan_id", "str", required=True),
-                ArgSpec(
-                    "output_format", "str", required=False, default="json",
-                    choices=("json", "md", "html"),
-                ),
-            ),
-            risk="low",
-            requires_approval=False,
-            emits_kinds=("note",),
-            example_args={"plan_id": "plan-001"},
-        ),
-    ),
-)
+# NO CONTRACT — deliberately not exposed to the decider.
+#
+# These actions build ["python", "-m", "saber.tools.lateral_movement.<mod>", ...],
+# which cannot run: Kali has no `python` alias, the saber package is not installed in
+# the sandbox image, and this module has no __main__ (it prints nothing). The parsers
+# that existed for it round-tripped an INVENTED JSON schema that no producer emits.
+#
+# Rather than advertise three tools that always fail — burning mission steps and
+# tripping the repeated-failure guard — the CONTRACT is withheld, so ToolCatalog skips
+# the wrapper (F0.4 behaviour for contractless wrappers). The class and its
+# build_command are retained for whoever wants to finish the job properly: that needs a
+# real __main__ emitting documented JSON, the saber package present in the image, and
+# python3 rather than python. Lateral-movement *reasoning* is now the decider's job
+# (F8), which reads MissionState directly instead of shelling out to a stateless
+# container.
 
 
 class LateralMovementPlannerWrapper(BaseToolWrapper):

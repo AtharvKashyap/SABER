@@ -14,64 +14,22 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
-from saber.tools.contract import ActionContract, ArgSpec, ToolContract
 
-CONTRACT = ToolContract(
-    tool_name="session_checks",
-    category="lateral_movement",
-    phase="lateral_movement",
-    description=(
-        "Validate and summarize known session/access records. Only validate_session may "
-        "confirm a live interactive foothold; reachability alone is never recorded as a "
-        "session."
-    ),
-    parser="session_checks",
-    actions=(
-        ActionContract(
-            action="validate_session",
-            description="Validate that a known session/access record is still usable.",
-            args=(
-                ArgSpec("session_id", "str", required=True),
-                ArgSpec("expected_user", "str", required=False, default=None),
-                ArgSpec("protocol", "str", required=False, default=None),
-            ),
-            risk="low",
-            requires_approval=False,
-            emits_kinds=("session", "note"),
-            example_args={"session_id": "sess-1001", "protocol": "ssh"},
-        ),
-        ActionContract(
-            action="summarize_sessions",
-            description="Summarize known session/access records from a local artifact.",
-            args=(
-                ArgSpec(
-                    "sessions_file", "str", required=True,
-                    description="Evidence-relative path to a sessions record artifact.",
-                ),
-            ),
-            risk="low",
-            requires_approval=False,
-            emits_kinds=("note",),
-            example_args={"sessions_file": "lateral_movement/session_checks/sessions.json"},
-        ),
-        ActionContract(
-            action="authenticated_reachability",
-            description=(
-                "Check whether a source can reach the target using a known credential. "
-                "Touches the remote host; proves reachability only, never a foothold."
-            ),
-            args=(
-                ArgSpec("source", "str", required=True),
-                ArgSpec("protocol", "str", required=True, description="e.g. smb/ssh/winrm."),
-                ArgSpec("credential_ref", "str", required=True),
-            ),
-            risk="medium",
-            requires_approval=True,
-            emits_kinds=("note",),
-            example_args={"source": "WKSTN01", "protocol": "smb", "credential_ref": "cred-42"},
-        ),
-    ),
-)
+# NO CONTRACT — deliberately not exposed to the decider.
+#
+# These actions build ["python", "-m", "saber.tools.lateral_movement.<mod>", ...],
+# which cannot run: Kali has no `python` alias, the saber package is not installed in
+# the sandbox image, and this module has no __main__ (it prints nothing). The parsers
+# that existed for it round-tripped an INVENTED JSON schema that no producer emits.
+#
+# Rather than advertise three tools that always fail — burning mission steps and
+# tripping the repeated-failure guard — the CONTRACT is withheld, so ToolCatalog skips
+# the wrapper (F0.4 behaviour for contractless wrappers). The class and its
+# build_command are retained for whoever wants to finish the job properly: that needs a
+# real __main__ emitting documented JSON, the saber package present in the image, and
+# python3 rather than python. Lateral-movement *reasoning* is now the decider's job
+# (F8), which reads MissionState directly instead of shelling out to a stateless
+# container.
 
 
 class SessionChecksWrapper(BaseToolWrapper):

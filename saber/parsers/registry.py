@@ -29,13 +29,10 @@ from saber.parsers.nikto import NiktoParser
 from saber.parsers.nmap import NmapParser
 from saber.parsers.nuclei import NucleiParser
 from saber.parsers.openvas import OpenVASParser
-from saber.parsers.path_validation import PathValidationParser
-from saber.parsers.plan import PlanParser
 from saber.parsers.pwntools import PwntoolsParser
 from saber.parsers.radare2 import Radare2Parser
 from saber.parsers.responder import ResponderParser
 from saber.parsers.searchsploit import SearchSploitParser
-from saber.parsers.session_checks import SessionChecksParser
 from saber.parsers.snmpwalk import SnmpwalkParser
 from saber.parsers.sqlmap import SqlmapParser
 from saber.parsers.strings import StringsParser
@@ -429,22 +426,6 @@ def default_parser_entries() -> list[ParserRegistryEntry]:
             parser=WinpeasParser(),
             aliases=("windows_privesc_enum",),
             file_extensions=("txt", "out", "log"),
-        ),
-        ParserRegistryEntry(
-            tool_name="plan",
-            parser=PlanParser(),
-            aliases=("lateral_movement_planner",),
-            file_extensions=("json",),
-        ),
-        ParserRegistryEntry(
-            tool_name="path_validation",
-            parser=PathValidationParser(),
-            file_extensions=("json",),
-        ),
-        ParserRegistryEntry(
-            tool_name="session_checks",
-            parser=SessionChecksParser(),
-            file_extensions=("json",),
         ),
         ParserRegistryEntry(
             tool_name="metasploit",

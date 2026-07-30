@@ -215,6 +215,13 @@ class NmapWrapper(BaseToolWrapper):
         output_prefix = kwargs.get("output_prefix")
         if output_prefix:
             command.extend(["-oA", str(output_prefix)])
+        else:
+            # Emit XML on stdout. nmap's human-readable output does NOT carry
+            # product/version/cpe, so the stdout path silently lost everything -sV
+            # was run to obtain: services arrived with product=None, version=None,
+            # starving searchsploit correlation, technology inference and CVE
+            # matching. The parser auto-detects XML, so this needs no parser change.
+            command.extend(["-oX", "-"])
 
         command.append(destination)
 

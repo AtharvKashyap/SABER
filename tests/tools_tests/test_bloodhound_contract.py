@@ -42,19 +42,24 @@ def test_collect_optional_nameserver_and_dc_host_are_appended():
     assert cmd.command[-4:] == ["-ns", "10.0.0.1", "-dc", "dc01.lab.local"]
 
 
-def test_ingest_existing_zip_command():
+def test_ingest_existing_zip_is_not_offered_to_the_decider():
+    """The wrapper still implements it, but it must not be advertised.
+
+    Its command is ["python", "-m", "saber.parsers.bloodhound", ...], which cannot run:
+    Kali has no `python` alias, the saber package is not installed in the sandbox
+    image, and that module has no __main__. Offering it guarantees a failed step.
+    Collection output is parsed by BloodHoundParser through the parser registry, which
+    needs no subprocess at all.
+    """
+
+    assert "ingest_existing_zip" not in {a.action for a in CONTRACT.actions}
+
+    # The method is retained for whoever fixes the producer.
     wrapper = BloodHoundWrapper(sandbox=None)
     cmd = wrapper.build_command(
         _target(), action="ingest_existing_zip", zip_path="/tmp/saber/bloodhound.zip"
     )
-    assert cmd.command == [
-        "python",
-        "-m",
-        "saber.parsers.bloodhound",
-        "ingest",
-        "/tmp/saber/bloodhound.zip",
-    ]
-    assert cmd.requires_explicit_authorization is False
+    assert cmd.command[0] == "python"
 
 
 def test_missing_required_arg_raises_value_error_not_key_error():
@@ -71,9 +76,7 @@ def test_missing_required_arg_raises_value_error_not_key_error():
 def test_contract_risk_matches_what_each_action_actually_does():
     by_action = {a.action: a for a in CONTRACT.actions}
 
-    # Authenticated domain-wide collection.
+    # Authenticated domain-wide collection — the only declared action.
+    assert set(by_action) == {"collect"}
     assert by_action["collect"].risk == "high"
     assert by_action["collect"].requires_approval is True
-    # Parsing a local zip touches no target.
-    assert by_action["ingest_existing_zip"].risk == "low"
-    assert by_action["ingest_existing_zip"].requires_approval is False

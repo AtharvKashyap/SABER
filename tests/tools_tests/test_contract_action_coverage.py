@@ -40,6 +40,21 @@ _ALIAS_ACTIONS: dict[str, set[str]] = {
     "snmpwalk": {"walk"},
 }
 
+# Actions a wrapper implements but which are DELIBERATELY not exposed to the decider,
+# each with a recorded reason. Distinct from _ALIAS_ACTIONS (pure synonyms): these are
+# real, distinct branches that must not be offered because they cannot succeed.
+# Withholding is a conscious decision, so it is recorded here rather than by silently
+# widening the alias set.
+_WITHHELD_ACTIONS: dict[str, dict[str, str]] = {
+    "bloodhound": {
+        "ingest_existing_zip": (
+            "Builds ['python', '-m', 'saber.parsers.bloodhound', ...]: Kali has no "
+            "`python` alias, the saber package is not in the sandbox image, and that "
+            "module has no __main__. Offering it would guarantee a failed step."
+        )
+    },
+}
+
 
 def _dispatch_actions(wrapper_class: type) -> set[str]:
     """Return every action string ``build_command`` dispatches on, via the AST.
@@ -88,13 +103,29 @@ def test_every_wrapper_action_is_declared_in_the_contract(tool_name):
     declared = {action.action for action in contract.actions}
     dispatched = _dispatch_actions(wrapper_class)
     aliases = _ALIAS_ACTIONS.get(tool_name, set())
+    withheld = set(_WITHHELD_ACTIONS.get(tool_name, {}))
 
-    undeclared = dispatched - declared - aliases
+    undeclared = dispatched - declared - aliases - withheld
     assert not undeclared, (
         f"{tool_name} build_command dispatches {sorted(undeclared)} but its CONTRACT "
         f"declares only {sorted(declared)} — the decider can never choose them. "
-        f"Declare them, or add pure synonyms to _ALIAS_ACTIONS."
+        f"Declare them, add pure synonyms to _ALIAS_ACTIONS, or record a deliberate "
+        f"omission in _WITHHELD_ACTIONS with a reason."
     )
+
+
+@pytest.mark.parametrize("tool_name", sorted(_MIGRATED_TOOLS))
+def test_withheld_actions_are_really_absent_from_the_contract(tool_name):
+    """A withheld action must not also be declared — that would defeat the point."""
+
+    contract = build_default_registry().get(tool_name).load_contract()
+    declared = {action.action for action in contract.actions}
+
+    for action, reason in _WITHHELD_ACTIONS.get(tool_name, {}).items():
+        assert action not in declared, (
+            f"{tool_name}.{action} is listed as withheld but IS declared: {reason}"
+        )
+        assert reason.strip(), f"{tool_name}.{action} is withheld without a reason"
 
 
 @pytest.mark.parametrize("tool_name", sorted(_MIGRATED_TOOLS))

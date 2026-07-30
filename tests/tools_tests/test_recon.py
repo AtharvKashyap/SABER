@@ -362,7 +362,9 @@ class TestNmapWrapper:
 
         wrapper.vuln_scan(target=make_host_target(), session=make_session(), ports="445")
 
-        assert sandbox.requests[0].command == ["nmap", "-sV", "--script", "vuln", "-p", "445", "192.0.2.10"]
+        assert sandbox.requests[0].command == [
+            "nmap", "-sV", "--script", "vuln", "-p", "445", "-oX", "-", "192.0.2.10"
+        ]
         assert sandbox.requests[0].tool_request.action == "vuln_scan"
 
     def test_udp_scan_command(self) -> None:
@@ -371,7 +373,9 @@ class TestNmapWrapper:
         wrapper = NmapWrapper(FakeSandbox())
         command = wrapper.build_command(target=make_host_target(), action="udp_scan", ports="53,161")
 
-        assert command.command == ["nmap", "-sU", "-Pn", "-p", "53,161", "192.0.2.10"]
+        assert command.command == [
+            "nmap", "-sU", "-Pn", "-p", "53,161", "-oX", "-", "192.0.2.10"
+        ]
 
     def test_script_scan_command(self) -> None:
         """Script scan should include script name."""
@@ -384,7 +388,9 @@ class TestNmapWrapper:
             ports="80",
         )
 
-        assert command.command == ["nmap", "-sV", "--script", "http-title", "-p", "80", "192.0.2.10"]
+        assert command.command == [
+            "nmap", "-sV", "--script", "http-title", "-p", "80", "-oX", "-", "192.0.2.10"
+        ]
         assert command.metadata["script"] == "http-title"
 
     def test_missing_script_raises(self) -> None:

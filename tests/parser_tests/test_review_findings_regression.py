@@ -212,3 +212,48 @@ def test_no_ansi_residue_leaks_into_note_titles():
         detail = str(observation.data.get("detail") or "")
         assert _ESC not in title and "[0m" not in title, f"ANSI residue in title: {title!r}"
         assert _ESC not in detail and "[0m" not in detail, f"ANSI residue in detail: {detail!r}"
+
+
+# --- C3: nmap ran in stdout mode, where product/version do not exist -------------
+
+
+def test_nmap_service_scan_requests_xml_on_stdout():
+    """Without -oX, nmap's human-readable output carries no product/version, so
+    everything -sV was run to obtain was silently discarded at merge time."""
+
+    from saber.tools.recon.nmap import NmapWrapper
+
+    wrapper = NmapWrapper(sandbox=None)
+    for action in ("service_scan", "vuln_scan", "udp_scan"):
+        cmd = wrapper.build_command(Target(type=TargetType.IP, value="10.0.0.5"), action=action)
+        assert "-oX" in cmd.command, f"{action} does not request XML"
+        assert cmd.command[cmd.command.index("-oX") + 1] == "-"
+
+
+def test_nmap_xml_product_and_version_reach_state():
+    """The forcing assertion: merge the XML and check state, not the observation."""
+
+    from saber.parsers.nmap import NmapParser
+
+    xml = Path("tests/fixtures/sample_nmap_output.xml").read_text()
+    result = NmapParser().parse_text(xml)
+    observations = [o.to_dict() for o in result.observations]
+    state = merge_observations(observations, tool="nmap", action="service_scan")
+
+    with_product = [s for s in state.services if s.product]
+    assert with_product, "no service reached state with a product; -sV data was lost"
+    assert with_product[0].version, "product survived but version did not"
+
+
+def test_nmap_cpes_survive_into_service_metadata():
+    """KnownService has no cpes field, so they were dropped entirely."""
+
+    from saber.parsers.nmap import NmapParser
+
+    xml = Path("tests/fixtures/sample_nmap_output.xml").read_text()
+    result = NmapParser().parse_text(xml)
+    observations = [o.to_dict() for o in result.observations]
+    state = merge_observations(observations, tool="nmap", action="service_scan")
+
+    cpes = [s.metadata.get("cpes") for s in state.services if s.metadata.get("cpes")]
+    assert cpes, "cpes were discarded at merge; CVE correlation has no input"

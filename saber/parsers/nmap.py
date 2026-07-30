@@ -172,6 +172,10 @@ class NmapParser(BaseParser):
                 "version": version,
                 "extrainfo": extrainfo,
                 "cpes": cpes,
+                # KnownService has no cpes/extrainfo field, so these were discarded
+                # at merge. Routed through "metadata", which the service merger now
+                # carries, so CVE correlation can actually reach them.
+                "metadata": {"cpes": cpes, "extrainfo": extrainfo},
             },
             metadata={"format": "xml"},
         )

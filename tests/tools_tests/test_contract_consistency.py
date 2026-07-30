@@ -27,11 +27,11 @@ _MIGRATED_TOOLS: set[str] = {
     "nuclei",
     "nikto",
     "openvas",
-    "path_validation",
-    "plan",
+    # plan / path_validation / session_checks are deliberately ABSENT: their commands
+    # cannot execute in the sandbox (no `python` alias, no saber package installed, no
+    # __main__ in those modules). See the NO CONTRACT note in each wrapper.
     "pwntools",
     "radare2",
-    "session_checks",
     "strings",
     "responder",
     "snmpwalk",

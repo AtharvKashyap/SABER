@@ -29,8 +29,14 @@ from saber.tools.registry import build_default_registry
 
 _DOCKERFILE = Path("docker/Dockerfile.sandbox")
 
-# Always present: shell/coreutils/python from the base image and the python layer.
-_BASE_PROVIDED = {"bash", "find", "python", "python3", "sh"}
+# Always present from the base image / the python layer.
+#
+# "python" is deliberately NOT here. Kali ships python3 with no `python` alias and
+# the Dockerfile never installs python-is-python3, so asserting it exists was a false
+# premise that made this gate green while the real image fails. Keep this set as small
+# as possible: every entry is an unverified assumption, and the Docker-gated
+# tests/e2e_tests/test_image_manifest.py is the only ground truth.
+_BASE_PROVIDED = {"bash", "find", "python3", "sh"}
 
 # Windows-only executables. The Linux sandbox cannot run these; the wrappers still
 # carry contracts so the decider can reason about them for a Windows foothold, but
