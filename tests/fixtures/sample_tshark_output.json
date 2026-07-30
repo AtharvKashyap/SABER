@@ -1,0 +1,59 @@
+[
+  {
+    "_source": {
+      "layers": {
+        "frame": {"frame.number": "1", "frame.protocols": "eth:ethertype:ip:tcp"},
+        "ip": {"ip.src": "10.0.0.5", "ip.dst": "10.0.0.9"},
+        "tcp": {"tcp.srcport": "44210", "tcp.dstport": "21"}
+      }
+    }
+  },
+  {
+    "_source": {
+      "layers": {
+        "frame": {"frame.number": "2", "frame.protocols": "eth:ethertype:ip:tcp:ftp"},
+        "ip": {"ip.src": "10.0.0.5", "ip.dst": "10.0.0.9"},
+        "ftp": {"ftp.request.command": "USER", "ftp.request.arg": "labuser"}
+      }
+    }
+  },
+  {
+    "_source": {
+      "layers": {
+        "frame": {"frame.number": "3", "frame.protocols": "eth:ethertype:ip:tcp:ftp"},
+        "ip": {"ip.src": "10.0.0.5", "ip.dst": "10.0.0.9"},
+        "ftp": {"ftp.request.command": "PASS", "ftp.request.arg": "FakeLabFtpPass"}
+      }
+    }
+  },
+  {
+    "_source": {
+      "layers": {
+        "frame": {"frame.number": "4", "frame.protocols": "eth:ethertype:ip:tcp:http"},
+        "ip": {"ip.src": "10.0.0.7", "ip.dst": "10.0.0.20"},
+        "http": {
+          "http.request.method": "GET",
+          "http.authorization": "Basic YWRtaW46RmFrZUxhYlBhc3N3MHJk"
+        }
+      }
+    }
+  },
+  {
+    "_source": {
+      "layers": {
+        "frame": {"frame.number": "5", "frame.protocols": "eth:ethertype:ip:udp:dns"},
+        "ip": {"ip.src": "10.0.0.7", "ip.dst": "10.0.0.1"},
+        "dns": {"dns.qry.name": "fileserver.lab.local"}
+      }
+    }
+  },
+  {
+    "_source": {
+      "layers": {
+        "frame": {"frame.number": "6", "frame.protocols": "eth:ethertype:ip:udp:dns"},
+        "ip": {"ip.src": "10.0.0.1", "ip.dst": "10.0.0.7"},
+        "dns": {"dns.qry.name": "fileserver.lab.local"}
+      }
+    }
+  }
+]

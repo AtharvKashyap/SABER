@@ -40,6 +40,7 @@ _MIGRATED_TOOLS: set[str] = {
     "sqlmap",
     "subfinder",
     "theharvester",
+    "tshark",
     "winpeas",
     "zap_api",
 }

@@ -34,13 +34,14 @@ from saber.parsers.plan import PlanParser
 from saber.parsers.pwntools import PwntoolsParser
 from saber.parsers.radare2 import Radare2Parser
 from saber.parsers.responder import ResponderParser
-from saber.parsers.session_checks import SessionChecksParser
 from saber.parsers.searchsploit import SearchSploitParser
+from saber.parsers.session_checks import SessionChecksParser
 from saber.parsers.snmpwalk import SnmpwalkParser
 from saber.parsers.sqlmap import SqlmapParser
 from saber.parsers.strings import StringsParser
 from saber.parsers.subfinder import SubfinderParser
 from saber.parsers.theharvester import TheHarvesterParser
+from saber.parsers.tshark import TsharkParser
 from saber.parsers.whatweb import WhatWebParser
 from saber.parsers.winpeas import WinpeasParser
 from saber.parsers.zap import ZapParser
@@ -392,6 +393,12 @@ def default_parser_entries() -> list[ParserRegistryEntry]:
             parser=StringsParser(),
             aliases=("string_extract",),
             file_extensions=("txt",),
+        ),
+        ParserRegistryEntry(
+            tool_name="tshark",
+            parser=TsharkParser(),
+            aliases=("wireshark", "passive_capture"),
+            file_extensions=("json", "txt"),
         ),
         ParserRegistryEntry(
             tool_name="pwntools",

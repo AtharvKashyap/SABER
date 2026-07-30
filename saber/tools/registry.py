@@ -193,6 +193,15 @@ def default_tool_entries() -> list[ToolRegistryEntry]:
             aliases=("nxc",),
         ),
         ToolRegistryEntry(
+            name="tshark",
+            import_path="saber.tools.network.tshark",
+            class_name="TsharkWrapper",
+            category=RequestedActionCategory.NETWORK,
+            phase=AssessmentPhase.RECON,
+            description="Passive traffic capture and pcap analysis.",
+            aliases=("wireshark",),
+        ),
+        ToolRegistryEntry(
             name="impacket",
             import_path="saber.tools.active_directory.impacket_tools",
             class_name="ImpacketToolsWrapper",
