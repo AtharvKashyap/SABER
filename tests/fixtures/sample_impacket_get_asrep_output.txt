@@ -1,0 +1,4 @@
+Impacket v0.11.0 - Copyright 2023 Fortra
+
+[-] User bob doesn't have UF_DONT_REQUIRE_PREAUTH set. Skipping.
+$krb5asrep$23$alice@CORP.LOCAL:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4$deadbeefcafebabefeedfacefeedfacefeedfacefeedface

@@ -11,8 +11,11 @@ from saber.parsers.base import BaseParser, ParserResult
 from saber.parsers.bettercap import BettercapParser
 from saber.parsers.bloodhound import BloodHoundParser
 from saber.parsers.dnsrecon import DNSReconParser
+from saber.parsers.enum4linux import Enum4LinuxParser
 from saber.parsers.feroxbuster import FeroxbusterParser
+from saber.parsers.impacket import ImpacketParser
 from saber.parsers.masscan import MasscanParser
+from saber.parsers.netexec import NetExecParser
 from saber.parsers.nikto import NiktoParser
 from saber.parsers.nmap import NmapParser
 from saber.parsers.nuclei import NucleiParser
@@ -343,6 +346,29 @@ def default_parser_entries() -> list[ParserRegistryEntry]:
             parser=BettercapParser(),
             aliases=("net_probe", "net_recon", "net_show"),
             file_extensions=("txt", "log"),
+        ),
+        ParserRegistryEntry(
+            tool_name="netexec",
+            parser=NetExecParser(),
+            aliases=("nxc", "netexec_smb", "netexec_ldap"),
+            file_extensions=("txt", "log"),
+        ),
+        ParserRegistryEntry(
+            tool_name="enum4linux",
+            parser=Enum4LinuxParser(),
+            aliases=("enum4linux-ng", "smb_enum", "smb_enumeration"),
+            file_extensions=("txt",),
+        ),
+        ParserRegistryEntry(
+            tool_name="impacket",
+            parser=ImpacketParser(),
+            aliases=(
+                "impacket_get_ad_users",
+                "impacket_get_spns",
+                "impacket_get_asrep_candidates",
+                "impacket_smb_exec_check",
+            ),
+            file_extensions=("txt",),
         ),
     ]
 

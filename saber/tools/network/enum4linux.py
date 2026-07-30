@@ -10,6 +10,63 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+_CREDENTIAL_ARGS = (
+    ArgSpec(
+        "username",
+        "str",
+        required=False,
+        default=None,
+        description="Optional SMB username. Omit for a null/anonymous session.",
+    ),
+    ArgSpec(
+        "password",
+        "str",
+        required=False,
+        default=None,
+        description="Optional SMB password for the given username.",
+    ),
+)
+
+CONTRACT = ToolContract(
+    tool_name="enum4linux",
+    category="network",
+    phase="network",
+    description="Unauthenticated/credentialed SMB enumeration (shares, users, host/domain info).",
+    parser="enum4linux",
+    actions=(
+        ActionContract(
+            action="full_enum",
+            description=(
+                "Full SMB enumeration (-a): shares, users, groups, policy, and OS/domain info."
+            ),
+            args=_CREDENTIAL_ARGS,
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=("share", "account", "note"),
+            example_args={"username": None, "password": None},
+        ),
+        ActionContract(
+            action="users",
+            description="Enumerate SMB/RID users on the target (-U).",
+            args=_CREDENTIAL_ARGS,
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=("account",),
+            example_args={"username": None, "password": None},
+        ),
+        ActionContract(
+            action="shares",
+            description="Enumerate SMB shares and access levels on the target (-S).",
+            args=_CREDENTIAL_ARGS,
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=("share",),
+            example_args={"username": None, "password": None},
+        ),
+    ),
+)
 
 
 class Enum4LinuxWrapper(BaseToolWrapper):

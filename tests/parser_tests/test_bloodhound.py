@@ -42,10 +42,13 @@ class TestBloodHoundParser:
 
         assert result.success is True
         assert len(result.observations) == 1
-        assert result.observations[0].kind == "ad_relationship"
-        assert result.observations[0].data["source"] == "alice"
-        assert result.observations[0].data["relationship"] == "MemberOf"
-        assert result.observations[0].data["target"] == "Helpdesk"
+        # F3: relationships are canonical "note" observations so StateMerger folds
+        # them in; the graph detail moved into data["metadata"].
+        assert result.observations[0].kind == "note"
+        assert result.observations[0].data["title"] == "AD relationship: alice -MemberOf-> Helpdesk"
+        assert result.observations[0].data["metadata"]["source"] == "alice"
+        assert result.observations[0].data["metadata"]["relationship"] == "MemberOf"
+        assert result.observations[0].data["metadata"]["target"] == "Helpdesk"
         assert result.findings == []
 
     def test_high_risk_relationship_creates_finding(self) -> None:
@@ -118,10 +121,10 @@ class TestBloodHoundParser:
 
         assert result.success is True
         assert len(result.observations) == 1
-        assert result.observations[0].kind == "ad_path"
-        assert result.observations[0].data["source"] == "alice"
-        assert result.observations[0].data["target"] == "Domain Admins"
-        assert result.observations[0].data["path_length"] == 2
+        assert result.observations[0].kind == "note"
+        assert result.observations[0].data["metadata"]["source"] == "alice"
+        assert result.observations[0].data["metadata"]["target"] == "Domain Admins"
+        assert result.observations[0].data["metadata"]["path_length"] == 2
         assert len(result.findings) == 1
         assert result.findings[0].severity == ParserSeverity.HIGH
         assert result.findings[0].metadata["finding_type"] == "ad_attack_path"
@@ -143,11 +146,11 @@ class TestBloodHoundParser:
         result = BloodHoundParser().parse_json(data)
 
         assert result.success is True
-        assert result.observations[0].data["source"] == "alice"
-        assert result.observations[0].data["target"] == "Domain Admins"
+        assert result.observations[0].data["metadata"]["source"] == "alice"
+        assert result.observations[0].data["metadata"]["target"] == "Domain Admins"
 
     def test_parse_entities(self) -> None:
-        """Entities should produce ad_entity observations."""
+        """Entities map onto canonical kinds: users->account, computers->host."""
 
         data = {
             "users": [{"name": "alice"}],
@@ -159,7 +162,15 @@ class TestBloodHoundParser:
 
         assert result.success is True
         assert len(result.observations) == 3
-        assert {obs.data["entity_type"] for obs in result.observations} == {"user", "group", "computer"}
+        assert {obs.kind for obs in result.observations} == {"account", "host", "note"}
+
+        account = next(obs for obs in result.observations if obs.kind == "account")
+        host = next(obs for obs in result.observations if obs.kind == "host")
+        group_note = next(obs for obs in result.observations if obs.kind == "note")
+
+        assert account.data["username"] == "alice"
+        assert host.data["address"] == "host01"
+        assert group_note.data["title"] == "AD group: Helpdesk"
 
     def test_parse_list_records(self) -> None:
         """List records should parse."""
@@ -183,7 +194,7 @@ class TestBloodHoundParser:
         result = BloodHoundParser().parse_text(text)
 
         assert result.success is True
-        assert result.observations[0].data["source"] == "alice"
+        assert result.observations[0].data["metadata"]["source"] == "alice"
 
     def test_no_data_fails(self) -> None:
         """No parseable data should fail."""

@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import ast
 import inspect
-from pathlib import Path
 
 import pytest
 from saber.agents.base_agent import BaseAgent
@@ -176,16 +175,19 @@ def test_migrated_tools_set_matches_contract_bearing_wrappers():
 
 
 def _all_registry_names(reg) -> list[str]:
-    """Return every registered tool name, however the registry exposes them."""
+    """Return the canonical name of every registered tool.
 
-    for attribute in ("names", "tool_names"):
-        getter = getattr(reg, attribute, None)
-        if callable(getter):
-            return sorted(getter())
-    entries = getattr(reg, "entries", None)
-    if entries:
-        return sorted(entry.tool_name for entry in entries)
-    # Last resort: the wrapper modules on disk.
-    return sorted(
-        path.stem for path in Path("saber/tools").rglob("*.py") if not path.stem.startswith("_")
-    )
+    ``ToolRegistry`` keys ``_entries`` by name AND by every alias, so this
+    de-duplicates on ``entry.name``. Reading the real registry matters: an
+    earlier version of this helper fell back to globbing wrapper module stems,
+    which discovers ``impacket_tools`` rather than the registry name
+    ``impacket`` — so a genuinely unmigrated tool could slip past the gate while
+    the test still passed.
+    """
+
+    entries = getattr(reg, "_entries", None)
+    if not entries:
+        raise AssertionError(
+            "ToolRegistry exposed no _entries; the coverage gate cannot enumerate tools."
+        )
+    return sorted({entry.name for entry in entries.values()})

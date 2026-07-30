@@ -23,6 +23,76 @@ from saber.models.scope import AssessmentPhase
 from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="bloodhound",
+    category="active_directory",
+    phase="active_directory",
+    description=(
+        "BloodHound/bloodhound-python Active Directory graph collection: users, "
+        "computers, group memberships, sessions, and the attack paths between them."
+    ),
+    parser="bloodhound",
+    actions=(
+        ActionContract(
+            action="collect",
+            description=(
+                "Authenticate to the domain and collect the AD graph with "
+                "bloodhound-python, writing a zip. Needs valid domain credentials."
+            ),
+            args=(
+                ArgSpec("domain", "str", required=True, description="AD domain, e.g. lab.local."),
+                ArgSpec("username", "str", required=True, description="Domain user to bind as."),
+                ArgSpec(
+                    "password_env_var",
+                    "str",
+                    required=False,
+                    default="AD_PASSWORD",
+                    description="Env var holding the password; never pass the secret itself.",
+                ),
+                ArgSpec(
+                    "collection_methods",
+                    "list[str]",
+                    required=False,
+                    description="SharpHound collection methods, e.g. DCOnly, Group, Session.",
+                ),
+                ArgSpec("nameserver", "str", required=False, description="DNS server to use."),
+                ArgSpec("dc_host", "str", required=False, description="Domain controller host."),
+                ArgSpec(
+                    "output_prefix",
+                    "str",
+                    required=False,
+                    default="bloodhound",
+                    description="Output filename prefix for the collected zip.",
+                ),
+            ),
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("account", "host", "note"),
+            example_args={"domain": "lab.local", "username": "jdoe"},
+        ),
+        ActionContract(
+            action="ingest_existing_zip",
+            description=(
+                "Parse an already-collected BloodHound zip into MissionState. Touches "
+                "no target, so it is safe to run whenever a collection already exists."
+            ),
+            args=(
+                ArgSpec(
+                    "zip_path",
+                    "str",
+                    required=True,
+                    description="Path to a previously collected BloodHound zip.",
+                ),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("account", "host", "note"),
+            example_args={"zip_path": "/tmp/saber/bloodhound.zip"},
+        ),
+    ),
+)
 
 
 DEFAULT_BLOODHOUND_COLLECTION_METHODS = [
@@ -181,7 +251,7 @@ class BloodHoundWrapper(BaseToolWrapper):
         action = str(kwargs.get("action", "collect"))
 
         if action == "ingest_existing_zip":
-            zip_path = str(kwargs["zip_path"])
+            zip_path = self._required_kwarg(kwargs, "zip_path")
             return ToolCommand(
                 command=["python", "-m", "saber.parsers.bloodhound", "ingest", zip_path],
                 action="bloodhound_ingest_existing_zip",
@@ -191,8 +261,8 @@ class BloodHoundWrapper(BaseToolWrapper):
                 metadata={"bloodhound_action": action, "zip_path": zip_path},
             )
 
-        domain = str(kwargs["domain"])
-        username = str(kwargs["username"])
+        domain = self._required_kwarg(kwargs, "domain")
+        username = self._required_kwarg(kwargs, "username")
         password_env_var = str(kwargs.get("password_env_var", "AD_PASSWORD"))
         collection_methods = kwargs.get("collection_methods") or DEFAULT_BLOODHOUND_COLLECTION_METHODS
         nameserver = kwargs.get("nameserver")
@@ -237,3 +307,17 @@ class BloodHoundWrapper(BaseToolWrapper):
                 "output_prefix": output_prefix,
             },
         )
+
+    @staticmethod
+    def _required_kwarg(kwargs: dict[str, Any], key: str) -> str:
+        """Read a required kwarg, raising ValueError like every other wrapper.
+
+        The original code indexed kwargs directly, so a missing value surfaced as
+        a bare KeyError rather than an actionable "x is required".
+        """
+
+        value = kwargs.get(key)
+        text = str(value).strip() if value is not None else ""
+        if not text:
+            raise ValueError(f"{key} is required")
+        return text

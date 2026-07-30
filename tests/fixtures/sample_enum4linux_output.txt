@@ -1,0 +1,75 @@
+Starting enum4linux v0.9.1 ( http://labs.portcullis.co.uk/application/enum4linux/ ) on Wed Jul 29 12:00:00 2026
+
+ ==========================
+|    Target Information    |
+ ==========================
+Target ........... 192.168.56.10
+RID Range ........ 500-550,1000-1050
+Username ......... ''
+Password ......... ''
+
+ ====================================================
+|    Enumerating Workgroup/Domain on 192.168.56.10    |
+ ====================================================
+[+] Got domain/workgroup name: CORP
+
+ =========================================================
+|    Nbtstat Information for 192.168.56.10                |
+ =========================================================
+Looking up status of 192.168.56.10
+        FILESRV01       <00> -         B <ACTIVE>  Workstation Service
+        FILESRV01       <20> -         B <ACTIVE>  File Server Service
+
+ ===========================================================
+|    Session Check on 192.168.56.10                        |
+ ===========================================================
+[+] Server 192.168.56.10 allows sessions using username '', password ''
+
+ ===========================================================
+|    Getting domain SID for 192.168.56.10                  |
+ ===========================================================
+Domain Name: CORP
+Domain Sid: S-1-5-21-1111111111-2222222222-3333333333
+[+] Host is part of a domain (not a workgroup)
+
+ ===========================================================
+|    OS information on 192.168.56.10                       |
+ ===========================================================
+[+] Got OS info for 192.168.56.10 from smbclient:
+[+] Got OS info for 192.168.56.10 from srvinfo:
+        192.168.56.10   Wk Sv PDC Tim NT
+        platform_id     :       500
+        os version      :       6.1
+        server type     :       0x807ffb3
+
+ =======================================================
+|    Share Enumeration on 192.168.56.10                |
+ =======================================================
+
+        Sharename       Type      Comment
+        ---------       ----      -------
+        ADMIN$          Disk      Remote Admin
+        C$              Disk      Default share
+        NETLOGON        Disk      Logon server share
+        SYSVOL          Disk      Logon server share
+        Users           Disk
+        IPC$            IPC       Remote IPC
+[+] Attempting to map shares on 192.168.56.10
+//192.168.56.10/ADMIN$	Mapping: DENIED, Listing: N/A
+//192.168.56.10/C$	Mapping: DENIED, Listing: N/A
+//192.168.56.10/NETLOGON	Mapping: OK, Listing: OK
+//192.168.56.10/SYSVOL	Mapping: OK, Listing: OK
+//192.168.56.10/Users	Mapping: OK, Listing: DENIED
+//192.168.56.10/IPC$	Mapping: OK, Listing: OK
+
+ ===========================================================================
+|    Users on 192.168.56.10 via RID cycling (RIDS: 500-550,1000-1050)      |
+ ===========================================================================
+[I] Found new SID: S-1-5-21-1111111111-2222222222-3333333333
+[+] Enumerating users using SID S-1-5-21-1111111111-2222222222-3333333333 and logon username '', password ''
+S-1-5-21-1111111111-2222222222-3333333333-500 CORP\Administrator (Local User)
+S-1-5-21-1111111111-2222222222-3333333333-501 CORP\Guest (Local User)
+index: 0x1 RID: 0x3e9 acb: 0x00000010 Account: jdoe	Name: John Doe	Desc: (null)
+index: 0x2 RID: 0x3ea acb: 0x00000210 Account: asmith	Name: Alice Smith	Desc: Marketing
+
+enum4linux complete on Wed Jul 29 12:00:05 2026

@@ -1,0 +1,8 @@
+Impacket v0.11.0 - Copyright 2023 Fortra
+
+[*] Querying corp.local for information about domain.
+Name                  email                          PasswordLastSet             LastLogon
+--------------------  -----------------------------  --------------------------  --------------------------
+alice                                                 2024-01-10 09:15:22.123456  2024-06-01 08:00:00.123456
+bob                                                   2024-01-11 09:15:22.123456  <never>
+krbtgt                                                2023-01-01 00:00:00.000000  <never>

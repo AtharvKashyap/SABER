@@ -1,0 +1,75 @@
+{
+  "meta": {
+    "type": "users",
+    "count": 3,
+    "version": 5
+  },
+  "data": [
+    {
+      "Properties": {
+        "name": "JDOE@LAB.LOCAL",
+        "objectid": "S-1-5-21-1111111111-2222222222-3333333333-1104",
+        "enabled": true,
+        "domain": "LAB.LOCAL"
+      }
+    },
+    {
+      "Properties": {
+        "name": "SVC_BACKUP@LAB.LOCAL",
+        "objectid": "S-1-5-21-1111111111-2222222222-3333333333-1105",
+        "enabled": true,
+        "domain": "LAB.LOCAL"
+      }
+    },
+    {
+      "Properties": {
+        "name": "OLDSVC@LAB.LOCAL",
+        "objectid": "S-1-5-21-1111111111-2222222222-3333333333-1106",
+        "enabled": false,
+        "domain": "LAB.LOCAL"
+      }
+    }
+  ],
+  "computers": [
+    {
+      "name": "DC01.LAB.LOCAL",
+      "objectid": "S-1-5-21-1111111111-2222222222-3333333333-1000",
+      "operatingsystem": "Windows Server 2019 Standard"
+    },
+    {
+      "name": "WS01.LAB.LOCAL",
+      "objectid": "S-1-5-21-1111111111-2222222222-3333333333-1103",
+      "operatingsystem": "Windows 10 Pro"
+    }
+  ],
+  "groups": [
+    {
+      "name": "DOMAIN ADMINS@LAB.LOCAL",
+      "objectid": "S-1-5-21-1111111111-2222222222-3333333333-512"
+    }
+  ],
+  "relationships": [
+    {
+      "source": "SVC_BACKUP@LAB.LOCAL",
+      "relationship": "GenericAll",
+      "target": "DOMAIN ADMINS@LAB.LOCAL"
+    },
+    {
+      "source": "JDOE@LAB.LOCAL",
+      "relationship": "CanRDP",
+      "target": "WS01.LAB.LOCAL"
+    }
+  ],
+  "attack_paths": [
+    {
+      "source": "JDOE@LAB.LOCAL",
+      "target": "DOMAIN ADMINS@LAB.LOCAL",
+      "path_length": 3,
+      "edges": [
+        {"source": "JDOE@LAB.LOCAL", "target": "WS01.LAB.LOCAL", "relationship": "CanRDP"},
+        {"source": "WS01.LAB.LOCAL", "target": "SVC_BACKUP@LAB.LOCAL", "relationship": "HasSession"},
+        {"source": "SVC_BACKUP@LAB.LOCAL", "target": "DOMAIN ADMINS@LAB.LOCAL", "relationship": "GenericAll"}
+      ]
+    }
+  ]
+}

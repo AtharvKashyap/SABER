@@ -10,11 +10,93 @@ from __future__ import annotations
 from typing import Any
 
 from saber.core.sandbox import Sandbox, SandboxExecutionResult
-from saber.tools.capability import RequestedActionCategory
 from saber.models.scope import AssessmentPhase
 from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
+from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+_ARGS = (
+    ArgSpec("domain", "str", required=True, description="AD domain (NetBIOS or FQDN)."),
+    ArgSpec("username", "str", required=True, description="Account to authenticate with."),
+    ArgSpec(
+        "password_env_var",
+        "str",
+        required=False,
+        default="AD_PASSWORD",
+        description="Sandbox env var holding the account's password.",
+    ),
+)
+
+CONTRACT = ToolContract(
+    tool_name="netexec",
+    category="active_directory",
+    phase="active_directory",
+    description=(
+        "Authenticated SMB/LDAP enumeration and credential validation against Active "
+        "Directory hosts (nxc). Every action authenticates against a live host and can "
+        "lock accounts on lockout-policy-enforced domains."
+    ),
+    parser="netexec",
+    actions=(
+        ActionContract(
+            action="smb_auth_check",
+            description="Validate a credential against SMB with no further enumeration.",
+            args=_ARGS,
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("credential", "session"),
+            example_args={
+                "domain": "LAB",
+                "username": "jdoe",
+                "password_env_var": "AD_PASSWORD",
+            },
+        ),
+        ActionContract(
+            action="smb_shares",
+            description="Authenticate then enumerate SMB shares (--shares).",
+            args=_ARGS,
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("credential", "share"),
+            example_args={
+                "domain": "LAB",
+                "username": "jdoe",
+                "password_env_var": "AD_PASSWORD",
+            },
+        ),
+        ActionContract(
+            action="ldap_users",
+            description="Authenticate then enumerate domain users over LDAP (--users).",
+            args=_ARGS,
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("credential", "account"),
+            example_args={
+                "domain": "LAB",
+                "username": "jdoe",
+                "password_env_var": "AD_PASSWORD",
+            },
+        ),
+        ActionContract(
+            action="local_admin_check",
+            description=(
+                "Check whether the credential has local-admin access (--local-auth). "
+                "Explicit-authorization gated."
+            ),
+            args=_ARGS,
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("credential", "session"),
+            example_args={
+                "domain": "LAB",
+                "username": "jdoe",
+                "password_env_var": "AD_PASSWORD",
+            },
+        ),
+    ),
+)
 
 
 class NetExecWrapper(BaseToolWrapper):
