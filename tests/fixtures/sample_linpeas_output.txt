@@ -1,0 +1,31 @@
+
+              ╔═══════════════════╗
+══════════════╣ LinPEAS Base ╠══════════════
+              ╚═══════════════════╝
+
+[1;36m╔══════════╣ Operating System[0m
+Linux lab-web01 5.15.0-generic #1 SMP x86_64 GNU/Linux
+
+[1;36m╔══════════╣ Sudo version[0m
+Sudo version 1.8.31
+
+[1;33m╔══════════╣ Checking sudo -l[0m
+(ALL : ALL) NOPASSWD: /usr/bin/find
+
+[1;31m99% PE - CVE-2021-4034 (pwnkit) - polkit local privilege escalation[0m
+[1;33m80% PE - CVE-2021-3560 - polkit dbus authentication bypass[0m
+
+[1;36m╔══════════╣ SUID - Check easy privesc, exploits and write perms[0m
+/usr/bin/pkexec --> Could be used for privesc (SUID)
+
+[1;36m╔══════════╣ Analyzing systemd files[0m
+/etc/systemd/system/backup.service is writable by current user
+
+[1;36m╔══════════╣ Searching passwords and keys[0m
+/home/svcuser/.ssh/id_rsa
+/opt/app/config/credentials.yml
+/etc/shadow
+
+[1;36m╔══════════╣ Interesting files[0m
+/var/log/syslog
+Regular boring line with nothing interesting in it

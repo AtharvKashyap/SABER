@@ -10,6 +10,76 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="john",
+    category="password_cracking",
+    phase="exploitation",
+    description=(
+        "John the Ripper offline password cracking. Cracking runs against an "
+        "already-captured hash file inside the sandbox, not against a live target."
+    ),
+    parser="john",
+    actions=(
+        ActionContract(
+            action="dictionary_attack",
+            description="Crack a hash file using a wordlist (--wordlist).",
+            args=(
+                ArgSpec("hash_file", "str", required=True, description="Path to hash file."),
+                ArgSpec("wordlist", "str", required=True, description="Path to wordlist file."),
+                ArgSpec(
+                    "format_name", "str", required=False, default=None, example="raw-md5"
+                ),
+                ArgSpec("rules", "str", required=False, default=None, example="Jumbo"),
+            ),
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=(),
+            example_args={
+                "hash_file": "/data/hashes.txt",
+                "wordlist": "/usr/share/wordlists/rockyou.txt",
+            },
+        ),
+        ActionContract(
+            action="single_crack",
+            description="Run John single-crack mode (--single) against a hash file.",
+            args=(
+                ArgSpec("hash_file", "str", required=True, description="Path to hash file."),
+                ArgSpec(
+                    "format_name", "str", required=False, default=None, example="raw-md5"
+                ),
+            ),
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=(),
+            example_args={"hash_file": "/data/hashes.txt"},
+        ),
+        ActionContract(
+            action="show_cracked",
+            description="Show already-cracked plaintexts for a hash file (--show).",
+            args=(
+                ArgSpec("hash_file", "str", required=True, description="Path to hash file."),
+                ArgSpec(
+                    "format_name", "str", required=False, default=None, example="raw-md5"
+                ),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("credential",),
+            example_args={"hash_file": "/data/hashes.txt"},
+        ),
+        ActionContract(
+            action="list_formats",
+            description="List supported John hash formats (--list=formats). No target state.",
+            args=(),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("note",),
+            example_args={},
+        ),
+    ),
+)
 
 
 class JohnWrapper(BaseToolWrapper):

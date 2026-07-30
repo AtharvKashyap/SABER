@@ -1,0 +1,9 @@
+{
+  "action": "validate_session",
+  "session_id": "sess-1001",
+  "host": "10.0.0.5",
+  "protocol": "ssh",
+  "user": "svc-backup",
+  "privilege": "user",
+  "valid": true
+}
