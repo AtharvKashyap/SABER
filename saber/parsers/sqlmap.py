@@ -22,6 +22,9 @@ class SqlmapParser(BaseParser):
     source_tool = "sqlmap"
 
     _CONFIRMED_RE = re.compile(r"identified the following injection point", re.IGNORECASE)
+    # sqlmap could not test the target at all (unreachable host, bad request file,
+    # connection refused). This is a tool failure, NOT a clean result.
+    _CRITICAL_RE = re.compile(r"\[CRITICAL\]\s*(?P<reason>.+)", re.IGNORECASE)
     _PARAM_RE = re.compile(r"^Parameter:\s*(?P<param>\S+)\s*\((?P<method>[^)]+)\)", re.MULTILINE)
     _TITLE_RE = re.compile(r"^\s*Title:\s*(?P<title>.+)$", re.MULTILINE)
     _DBMS_RE = re.compile(r"back-end DBMS:\s*(?P<dbms>.+)", re.IGNORECASE)
@@ -52,6 +55,21 @@ class SqlmapParser(BaseParser):
                     "sqlmap reported an injection point but no parameter details could be parsed."
                 ],
                 metadata={"confirmed": True, "vuln_count": len(observations)},
+            )
+
+        # A tool that could not run has NOT cleared the target. Reporting
+        # "[CRITICAL] unable to connect to the target URL" as a successful clean scan
+        # told the loop the parameter was tested when it never was, and the decider
+        # moved on believing it was clean.
+        critical = self._CRITICAL_RE.search(stripped)
+        if critical is not None:
+            reason = critical.group("reason").strip()
+            return ParserResult(
+                source_tool=self.source_tool,
+                success=False,
+                observations=[],
+                errors=[f"sqlmap failed to test the target: {reason}"],
+                metadata={"confirmed": False, "vuln_count": 0, "tool_error": reason},
             )
 
         note = self._not_confirmed_note(stripped, host)

@@ -86,15 +86,19 @@ class BloodHoundParser(BaseParser):
     ) -> None:
         """Consume BloodHound-like collection object."""
 
+        consumed_any = False
+
         for key in ("relationships", "edges", "links"):
             records = data.get(key)
             if isinstance(records, list):
+                consumed_any = True
                 for record in records:
                     self._consume_relationship(record, observations, findings)
 
         for key in ("paths", "attack_paths", "attackPaths"):
             paths = data.get(key)
             if isinstance(paths, list):
+                consumed_any = True
                 for path in paths:
                     self._consume_path(path, observations, findings)
 
@@ -119,7 +123,18 @@ class BloodHoundParser(BaseParser):
                 else:
                     self._consume_entity(entity_type, record, observations)
 
-        if any(name in data for name in ("source", "target", "relationship", "edges")):
+        for key in ("users", "groups", "computers", "domains"):
+            if isinstance(data.get(key), list):
+                consumed_any = True
+
+        # Fall through to single-record handling ONLY if nothing above matched.
+        # Without this guard a collection like {"edges": [...]} was consumed twice:
+        # once as relationships, then again as a PATH (because "edges" in data),
+        # inventing an attack path from a single edge. Fabricating a finding is the
+        # worst failure mode for an evidence-first tool — it would reach the report.
+        if not consumed_any and any(
+            name in data for name in ("source", "target", "relationship", "edges")
+        ):
             self._consume_record(data, observations, findings)
 
     def _consume_record(

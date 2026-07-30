@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from saber.agents.deciders.base import ActionKind
 from saber.core.flag_detector import detect_flag
@@ -196,6 +196,13 @@ class MissionLoop:
                     tool_result=record.sandbox_result,
                     tool_name=action.tool_name,
                     action=action.tool_action,
+                    # Ten parsers (nikto, sqlmap, linpeas, winpeas, mimikatz, strings,
+                    # tshark, radare2, ghidra_headless, checksec) derive host/path/
+                    # binary_path from this dict. Production never supplied it, so
+                    # sqlmap vulns and mimikatz credentials landed with host=None and
+                    # radare2 notes were all titled "unknown binary" — which then
+                    # collapsed into ONE note, since the note merger dedupes on title.
+                    metadata=self._parser_context(state, action),
                 )
                 parsed_observations = list(getattr(processed, "parsed_observations", []) or [])
                 evidence_refs = list(getattr(processed, "evidence_ids", []) or [])
@@ -226,6 +233,26 @@ class MissionLoop:
         state = state.model_copy(update={"stop_reason": "max_steps exhausted"})
         self.state_store.snapshot(state)
         return self._terminal(state, session, MissionRunStatus.STOPPED, "max_steps exhausted")
+
+    @staticmethod
+    def _parser_context(state: MissionState, action) -> dict[str, Any]:
+        """Return the target/arg context parsers need to attribute their findings.
+
+        Parsers cannot invent the host: tool output frequently omits it (nikto prints
+        the target only in a header, mimikatz not at all), so they read it from here.
+        The action's own args win over the mission target, because an action may have
+        been aimed at a specific discovered host.
+        """
+
+        args = action.args or {}
+        target = action.target or state.target
+        context: dict[str, Any] = {"target": target.tool_value()}
+        # Pass through the arg names parsers look for, when the action supplied them.
+        for key in ("url", "binary_path", "file_path", "pcap_path", "directory_path"):
+            value = args.get(key)
+            if isinstance(value, str) and value.strip():
+                context[key] = value.strip()
+        return context
 
     def _advance_phase(self, state: MissionState) -> MissionState:
         """Advance the PTES phase when the current phase's goal is met.

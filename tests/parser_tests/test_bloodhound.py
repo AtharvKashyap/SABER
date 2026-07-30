@@ -67,20 +67,23 @@ class TestBloodHoundParser:
         result = BloodHoundParser().parse_json(data)
 
         assert result.success is True
-        assert len(result.observations) == 2
-        assert len(result.findings) == 2
+        # ONE edge is ONE relationship. This used to assert 2/2, because the
+        # collection was consumed twice — once as relationships and again as a path —
+        # inventing an attack path from a single edge and codifying it as correct.
+        # Fabricating a finding is the worst failure mode for an evidence-first tool.
+        assert len(result.observations) == 1
+        assert len(result.findings) == 1
 
-        relationship = next(finding for finding in result.findings if finding.metadata["finding_type"] == "ad_relationship")
-        path = next(finding for finding in result.findings if finding.metadata["finding_type"] == "ad_attack_path")
-
+        relationship = result.findings[0]
+        assert relationship.metadata["finding_type"] == "ad_relationship"
         assert relationship.severity == ParserSeverity.HIGH
         assert relationship.evidence["source"] == "alice"
         assert relationship.evidence["relationship"] == "GenericAll"
         assert relationship.evidence["target"] == "Domain Admins"
 
-        assert path.severity == ParserSeverity.HIGH
-        assert path.evidence["source"] == "alice"
-        assert path.evidence["target"] == "Domain Admins"
+        assert not any(
+            finding.metadata["finding_type"] == "ad_attack_path" for finding in result.findings
+        ), "a single edge must not become an attack path"
 
     def test_medium_risk_relationship_creates_finding(self) -> None:
         """High-risk relationship to non-high-value target should be medium."""
