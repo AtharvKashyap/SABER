@@ -249,6 +249,13 @@ class BloodHoundWrapper(BaseToolWrapper):
         """
 
         action = str(kwargs.get("action", "collect"))
+        # Reject unknown actions instead of falling through to collect(). Any
+        # unrecognised string used to run an authenticated domain-wide collection
+        # with the evidence labelled "bloodhound_collect" — so a contract declaring
+        # a narrower-sounding action could pass every risk gate and still collect
+        # the whole domain. This was the only wrapper of 39 that did this.
+        if action not in {"collect", "ingest_existing_zip"}:
+            raise ValueError(f"Unsupported BloodHound action: {action}")
 
         if action == "ingest_existing_zip":
             zip_path = self._required_kwarg(kwargs, "zip_path")

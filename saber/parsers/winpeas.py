@@ -20,7 +20,9 @@ from typing import Any
 
 from saber.parsers.base import BaseParser, ParsedObservation, ParserResult
 
-_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+# Strips BOTH real escape sequences and the bare bracket form that survives when
+# something upstream ate the ESC byte. See the note in saber/parsers/linpeas.py.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|\[[0-9]{1,2}(?:;[0-9]{1,2})*m")
 _UNQUOTED_RE = re.compile(
     r"(?:unquoted\s+service\s+path|no\s+quotes\s+and\s+space\s+detected).*?"
     r"(?P<path>[A-Za-z]:\\[^\r\n\"]+)",

@@ -154,6 +154,10 @@ class StateMerger:
             product=data.get("product"),
             version=data.get("version"),
             state=str(data.get("state") or "open"),
+            # Parsers attach real context here (banners, cpes, packet counts). It was
+            # being dropped on the floor, so a parser writing metadata was a silent
+            # no-op that still read as covered by its own observation-level test.
+            metadata=dict(data.get("metadata") or {}),
         )
         existing = services.get(candidate.key)
         if existing is None:
@@ -165,6 +169,7 @@ class StateMerger:
                     "product": candidate.product or existing.product,
                     "version": candidate.version or existing.version,
                     "state": candidate.state if "state" in data else existing.state,
+                    "metadata": {**existing.metadata, **candidate.metadata},
                 }
             )
         hosts.setdefault(host, KnownHost(address=host))
@@ -182,6 +187,7 @@ class StateMerger:
             host=host,
             name=name,
             version=data.get("version") or (existing.version if existing else None),
+            metadata={**(existing.metadata if existing else {}), **(data.get("metadata") or {})},
         )
 
     def _merge_credential(
@@ -200,6 +206,9 @@ class StateMerger:
             host=data.get("host") or (existing.host if existing else None),
             service=data.get("service") or (existing.service if existing else None),
             validated=bool(data.get("validated", existing.validated if existing else False)),
+            # netexec/mimikatz/impacket put the AD domain and Kerberos realm here.
+            # Dropping it turned CORP\jdoe into jdoe, which cannot be replayed.
+            metadata={**(existing.metadata if existing else {}), **(data.get("metadata") or {})},
         )
 
     def _merge_vuln(
@@ -221,6 +230,7 @@ class StateMerger:
             evidence_refs=self._extend_unique(
                 existing.evidence_refs if existing else [], evidence_refs
             ),
+            metadata={**(existing.metadata if existing else {}), **(data.get("metadata") or {})},
         )
 
     def _merge_share(

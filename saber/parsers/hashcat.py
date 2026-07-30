@@ -31,7 +31,23 @@ from saber.parsers.base import BaseParser, ParsedObservation, ParserResult
 
 # Split "<hash>:<plaintext>" on the LAST colon: the hash side may itself
 # contain colons (NetNTLMv2), the plaintext side is assumed colon-free.
-_POTFILE_LINE_RE = re.compile(r"^(?P<hash>\S.*\S|\S):(?P<plaintext>[^:]+)$")
+#
+# The hash side must look like a HASH, not like prose. The original pattern was
+# `^(\S.*\S|\S):([^:]+)$`, which matched any single-colon line — so hashcat's own
+# status banner ("Status...........: Exhausted") became a credential. That poisoned
+# state.credentials on every failed crack AND advanced the vuln_assessment phase
+# goal, which fires on state.credentials being non-empty: a failed crack promoted
+# the mission to EXPLOITATION.
+# The hash side is 8+ characters from a hash-ish charset that excludes SPACES (so
+# "0/1 (0.00%) Digests" cannot match) and may itself contain colons (NetNTLMv2's
+# "jdoe::LAB:challenge:response:blob"). The length floor applies to the whole hash
+# side, not the first segment — requiring 8+ per-segment rejected short usernames.
+_POTFILE_LINE_RE = re.compile(
+    r"^(?P<hash>[A-Za-z0-9+/=$*._:-]{8,}):(?P<plaintext>[^:]+)$"
+)
+# Status/progress lines hashcat prints around the cracked results. Dotted-label
+# lines are the giveaway ("Recovered........: 0/1").
+_STATUS_LINE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9 .#()/-]*\.{2,}\s*:", re.IGNORECASE)
 
 # NetNTLMv2/NetNTLM-style hash carrying an embedded account:
 # "jdoe::LAB:1122334455667788:<32 hex>:<hex blob>"
@@ -63,6 +79,10 @@ class HashcatParser(BaseParser):
         for raw_line in stripped.splitlines():
             line = raw_line.strip()
             if not line:
+                continue
+            # Skip hashcat's own status/progress output before it can be mistaken
+            # for a "hash:plaintext" pair.
+            if _STATUS_LINE_RE.match(line):
                 continue
 
             observation = self._cracked_line(line, seen)

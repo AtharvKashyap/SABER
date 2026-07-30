@@ -94,7 +94,10 @@ class ChecksecParser(BaseParser):
                 "nx": self._is_yes(entry.get("nx")),
                 "pie": self._is_yes(entry.get("pie")),
                 "fortify": self._is_yes(entry.get("fortify_source") or entry.get("fortify")),
-                "stripped": self._optional_yes(entry.get("symbols")),
+                # checksec reports symbols:"yes" when symbols are PRESENT, which
+                # means the binary is NOT stripped. Passing it through unchanged
+                # inverted the flag the exploit loop reads.
+                "stripped": self._optional_no(entry.get("symbols")),
             }
 
         return self._result(binaries, output_format="json")
@@ -171,3 +174,14 @@ class ChecksecParser(BaseParser):
         if value is None:
             return None
         return str(value).strip().lower() in _YES
+
+    @staticmethod
+    def _optional_no(value: Any) -> bool | None:
+        """Inverse of ``_optional_yes``, for fields whose "yes" means "not X".
+
+        ``symbols: "yes"`` means symbols exist, i.e. the binary is not stripped.
+        """
+
+        if value is None:
+            return None
+        return str(value).strip().lower() not in _YES

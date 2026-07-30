@@ -21,7 +21,12 @@ from typing import Any
 
 from saber.parsers.base import BaseParser, ParsedObservation, ParserResult
 
-_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+# Strips BOTH real escape sequences ("\x1b[1;31m") and the bare bracket form
+# ("[1;31m") that survives when something upstream ate the ESC byte — evidence
+# capture, a log pipeline, or a fixture. Matching only the ESC form let residue
+# like "...privilege escalation[0m" into note titles, which were then persisted to
+# MissionState and rendered into the report.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|\[[0-9]{1,2}(?:;[0-9]{1,2})*m")
 # "╔══════════╣ ..." / "═╣" section banners are noise, but the PE probability
 # highlights look like: "99% PE - CVE-2021-4034 (pwnkit)"
 _PROBABILITY_RE = re.compile(r"(?P<pct>\d{2,3})%\s*PE\s*[-:]?\s*(?P<detail>.+)", re.IGNORECASE)
