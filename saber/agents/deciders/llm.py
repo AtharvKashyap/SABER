@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import ipaddress
 import json
+from dataclasses import replace
 from typing import Any
 
 from saber.agents.deciders.base import ActionKind, NextActionDecider, ProposedAction, RiskLevel
 from saber.core.prompt_loader import PromptLoader
 from saber.core.state_summary import StateSummary
 from saber.core.tool_catalog import ToolCatalog
-from saber.models.mission_state import MissionState
+from saber.models.mission_state import AttemptedAction, MissionState
 from saber.models.target import Target, TargetType
 
 
@@ -48,18 +49,59 @@ class LlmDecider(NextActionDecider):
         self.prompt_name = prompt_name
 
     def decide(self, state: MissionState, summary: StateSummary) -> ProposedAction:
-        """Return the next action chosen by the LLM."""
+        """Return the next action chosen by the LLM.
+
+        Re-proposing an action that already failed wastes a step and, after
+        ``StopEvaluator.max_repeat_failures``, ends the mission. So a repeat is
+        rejected once and the model is re-asked with the failed signature called
+        out explicitly. If it insists, the action is returned anyway (flagged in
+        metadata) rather than stopping the mission on the decider's behalf — the
+        repeat guard is the loop's job, not the decider's.
+        """
 
         if not getattr(self.llm_client, "enabled", False):
             return self._error("LLM client disabled")
 
+        failed = state.failed_signatures
+
+        action = self._ask(state, summary)
+        if not self._repeats_failure(action, failed):
+            return action
+
+        retry = self._ask(state, summary, avoid=action)
+        if self._repeats_failure(retry, failed):
+            return replace(
+                retry,
+                metadata={**retry.metadata, "repeated_failed_signature": True},
+            )
+        return retry
+
+    def _ask(
+        self,
+        state: MissionState,
+        summary: StateSummary,
+        avoid: ProposedAction | None = None,
+    ) -> ProposedAction:
+        """Ask the model once, optionally forbidding a specific repeat."""
+
         system_prompt = self._load_prompt()
-        payload = {
+        payload: dict[str, Any] = {
             "summary": summary.to_dict(),
             "tool_catalog": self.tool_catalog.to_dict(),
             "autonomy_level": state.autonomy_level.value,
             "scope": state.scope.to_agent_context() if state.scope else None,
         }
+        if avoid is not None:
+            payload["rejected_action"] = {
+                "tool_name": avoid.tool_name,
+                "tool_action": avoid.tool_action,
+                "args": avoid.args,
+                "why_rejected": (
+                    "This exact action already failed earlier in the mission and state "
+                    "has not changed since. Choose a DIFFERENT tool, a different action, "
+                    "or materially different args."
+                ),
+            }
         user_prompt = json.dumps(payload, indent=2, sort_keys=True, default=str)
 
         try:
@@ -72,6 +114,19 @@ class LlmDecider(NextActionDecider):
             return self._error(f"LLM error: {exc}")
 
         return self._parse(raw)
+
+    @staticmethod
+    def _repeats_failure(action: ProposedAction, failed_signatures: set[str]) -> bool:
+        """Return whether this action is a known-failed action proposed again."""
+
+        if action.kind != ActionKind.TOOL or not failed_signatures:
+            return False
+        signature = AttemptedAction(
+            tool_name=action.tool_name or "",
+            action=action.tool_action or "",
+            args=action.args,
+        ).signature
+        return signature in failed_signatures
 
     def _parse(self, raw: dict[str, Any]) -> ProposedAction:
         if not isinstance(raw, dict):

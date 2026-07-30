@@ -17,10 +17,11 @@ from saber.core.flag_detector import detect_flag
 from saber.core.result_processor import ResultProcessor
 from saber.core.state_merger import StateMerger
 from saber.core.state_summary import StateSummarizer
-from saber.models.mission_state import AttemptedAction, MissionState
+from saber.models.mission_state import AttemptedAction, MissionNote, MissionState
 from saber.models.session import ApprovalRequest, MissionSession
 from saber.orchestration.action_executor import ActionExecutionRecord, ActionExecutor
 from saber.orchestration.mission_orchestrator import MissionRunStatus
+from saber.orchestration.phase_gate import PhaseGoalChecker
 from saber.orchestration.risk_gate import GateDecision, RiskGate
 from saber.orchestration.stop_conditions import StopEvaluator
 from saber.storage.mission_state_store import MissionStateStore
@@ -60,6 +61,7 @@ class MissionLoop:
         max_steps: int = 50,
         strategy: TargetStrategy | None = None,
         report_finalizer: ReportFinalizer | None = None,
+        phase_checker: PhaseGoalChecker | None = None,
     ) -> None:
         """Initialize the loop.
 
@@ -74,6 +76,11 @@ class MissionLoop:
         COMPLETED/STOPPED return and surfaces the produced artifacts on the
         result. When ``None``, no report is generated and the result carries no
         artifacts.
+
+        ``phase_checker`` advances ``state.current_phase`` through the PTES phases
+        after each merge, from state evidence alone. It defaults to a real
+        ``PhaseGoalChecker`` rather than ``None`` because phase tracking should be
+        on for every mission; pass an explicit instance only to override the goals.
         """
 
         self.decider = decider
@@ -88,6 +95,7 @@ class MissionLoop:
         self.max_steps = max_steps
         self.strategy = strategy
         self.report_finalizer = report_finalizer
+        self.phase_checker = phase_checker if phase_checker is not None else PhaseGoalChecker()
 
     def run(
         self,
@@ -202,6 +210,7 @@ class MissionLoop:
             )
             state = self._detect_and_record_flag(state, record, parsed_observations)
             state = self._apply_strategy_objective(state, active_strategy)
+            state = self._advance_phase(state)
             self.state_store.snapshot(state)
 
             stop = self.stop_evaluator.evaluate(state, action)
@@ -213,6 +222,40 @@ class MissionLoop:
         state = state.model_copy(update={"stop_reason": "max_steps exhausted"})
         self.state_store.snapshot(state)
         return self._terminal(state, session, MissionRunStatus.STOPPED, "max_steps exhausted")
+
+    def _advance_phase(self, state: MissionState) -> MissionState:
+        """Advance the PTES phase when the current phase's goal is met.
+
+        Records the transition as a mission note so the report can narrate how the
+        engagement progressed, not just where it ended up. Never raises: a phase
+        bookkeeping failure must not abort a mission that is otherwise working.
+        """
+
+        try:
+            decision = self.phase_checker.evaluate(state)
+            if not decision.should_advance:
+                return state
+
+            advanced = self.phase_checker.advance(state)
+            note = MissionNote(
+                title=(
+                    f"Phase complete: {decision.current_phase.value} -> "
+                    f"{decision.next_phase.value if decision.next_phase else 'end'}"
+                ),
+                detail=decision.reason,
+                severity="info",
+                metadata={
+                    "from_phase": decision.current_phase.value,
+                    "to_phase": decision.next_phase.value if decision.next_phase else None,
+                    "step": advanced.step_count,
+                },
+            )
+            existing_titles = {existing.title for existing in advanced.notes}
+            if note.title in existing_titles:
+                return advanced
+            return advanced.model_copy(update={"notes": [*advanced.notes, note]})
+        except Exception:  # noqa: BLE001 - phase bookkeeping must never kill the loop
+            return state
 
     def _detect_and_record_flag(
         self,

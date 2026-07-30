@@ -265,6 +265,17 @@ class MissionState(BaseModel):
 
         return [action for action in self.attempted_actions if not action.success]
 
+    @property
+    def failed_signatures(self) -> set[str]:
+        """Return the signatures of every action that has already failed.
+
+        The decider uses this to avoid re-proposing something that did not work:
+        repeating a failed action burns a step and, after ``max_repeat_failures``,
+        ends the mission via ``StopEvaluator``.
+        """
+
+        return {action.signature for action in self.failed_actions}
+
     def record_attempt(self, attempt: AttemptedAction) -> MissionState:
         """Return a copy with one more attempted action and updated timestamp."""
 

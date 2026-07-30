@@ -24,6 +24,7 @@ class StateSummary:
     vulns: list[dict[str, Any]] = field(default_factory=list)
     hypotheses: list[dict[str, Any]] = field(default_factory=list)
     recent_failures: list[dict[str, Any]] = field(default_factory=list)
+    current_phase: str = "recon"
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-compatible payload for the LLM."""
@@ -32,6 +33,7 @@ class StateSummary:
             "objective": self.objective,
             "target": self.target,
             "autonomy_level": self.autonomy_level,
+            "current_phase": self.current_phase,
             "counts": self.counts,
             "services": self.services,
             "technologies": self.technologies,
@@ -72,8 +74,18 @@ class StateSummarizer:
             ],
             vulns=[v.model_dump() for v in vulns_sorted[: self.max_items]],
             hypotheses=[h.model_dump() for h in open_hypotheses[: self.max_items]],
+            current_phase=state.current_phase.value,
             recent_failures=[
-                {"tool_name": a.tool_name, "action": a.action, "reason": a.reason}
+                # The args matter: "nmap service_scan failed" is not actionable, but
+                # "nmap service_scan with these exact args failed" tells the decider
+                # what to vary. The signature is what the repeat guard compares on.
+                {
+                    "tool_name": a.tool_name,
+                    "action": a.action,
+                    "args": a.args,
+                    "reason": a.reason,
+                    "signature": a.signature,
+                }
                 for a in state.failed_actions[-self.max_items :]
             ],
         )
