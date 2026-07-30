@@ -70,11 +70,22 @@ def test_http_basic_auth_is_decoded_into_a_credential():
     )
 
 
-def test_ftp_login_is_captured():
+def test_ftp_login_pairs_the_username_with_its_password():
+    """USER and PASS arrive in separate packets and must be joined into ONE credential.
+
+    Emitting the PASS under a placeholder name relied on the merger folding them
+    together, which it cannot — it keys on (username, host, service). State ended up
+    with the real username holding secret=None plus a junk "(ftp user)" entry holding
+    the real password.
+    """
+
     _, obs = _observations()
     ftp = [o for o in obs if o["kind"] == "credential" and o["data"]["service"] == "ftp"]
-    usernames = {o["data"]["username"] for o in ftp}
-    assert "labuser" in usernames
+
+    assert len(ftp) == 1, f"expected one paired FTP credential, got {ftp}"
+    assert ftp[0]["data"]["username"] == "labuser"
+    assert ftp[0]["data"]["secret"] == "FakeLabFtpPass"
+    assert not any("(ftp user)" in o["data"].get("username", "") for o in obs)
 
 
 def test_sniffed_credentials_are_never_marked_validated():

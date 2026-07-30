@@ -156,6 +156,41 @@ def test_every_declared_action_is_buildable(tool_name):
 
 
 @pytest.mark.parametrize("tool_name", sorted(_MIGRATED_TOOLS))
+def test_example_args_only_use_declared_arg_names(tool_name):
+    """example_args teaches the model what to send, so it must match the schema.
+
+    A key in example_args that is not a declared ArgSpec trains the model to send an
+    arg `LlmDecider._validate_args` then rejects as unknown — and per llm.py that
+    returns STOP, killing the whole mission rather than one step.
+    """
+
+    contract = build_default_registry().get(tool_name).load_contract()
+
+    for action in contract.actions:
+        declared = {spec.name for spec in action.args}
+        undeclared = set(action.example_args) - declared
+        assert not undeclared, (
+            f"{tool_name}.{action.action} example_args has undeclared key(s) "
+            f"{sorted(undeclared)}; declared args are {sorted(declared)}"
+        )
+
+
+@pytest.mark.parametrize("tool_name", sorted(_MIGRATED_TOOLS))
+def test_every_required_arg_appears_in_example_args(tool_name):
+    """Otherwise the advertised example cannot actually be run."""
+
+    contract = build_default_registry().get(tool_name).load_contract()
+
+    for action in contract.actions:
+        required = {spec.name for spec in action.args if spec.required}
+        missing = required - set(action.example_args)
+        assert not missing, (
+            f"{tool_name}.{action.action} requires {sorted(missing)} but its "
+            f"example_args omits them, so the example is not runnable"
+        )
+
+
+@pytest.mark.parametrize("tool_name", sorted(_MIGRATED_TOOLS))
 def test_no_contract_declares_an_executor_reserved_arg(tool_name):
     """A reserved-name arg is stripped before run(), so declaring one is a trap."""
 

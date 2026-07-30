@@ -36,10 +36,15 @@ _SHARE_RE = re.compile(
 # "LDAP  10.0.0.5   389   DC01   jdoe                          Domain user"
 # The username charset excludes "[" and "*" so banner lines like
 # "[*] Enumerated users" simply fail to match rather than needing a denylist.
+# The username charset deliberately does NOT include "-" at the START: nxc prints a
+# header row "-Username-  -Last PW Set-  ..." which otherwise parsed as an account
+# literally named "-Username-".
 _USER_RE = re.compile(
     r"^LDAP\s+(?P<host>\S+)\s+(?P<port>\d+)\s+(?P<hostname>\S+)\s+"
-    r"(?P<username>[A-Za-z0-9_.$-]+)(?:\s{2,}(?P<description>.+?))?\s*$"
+    r"(?P<username>[A-Za-z0-9_.$][A-Za-z0-9_.$-]*)(?:\s{2,}(?P<description>.+?))?\s*$"
 )
+# Explicit guard for the header row, in case the charset is ever loosened again.
+_USER_HEADER_RE = re.compile(r"-Username-|-Last\s*PW\s*Set-|-BadPW-|-Description-", re.IGNORECASE)
 
 
 class NetExecParser(BaseParser):

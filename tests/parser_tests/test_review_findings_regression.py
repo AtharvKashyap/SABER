@@ -257,3 +257,156 @@ def test_nmap_cpes_survive_into_service_metadata():
 
     cpes = [s.metadata.get("cpes") for s in state.services if s.metadata.get("cpes")]
     assert cpes, "cpes were discarded at merge; CVE correlation has no input"
+
+
+# --- M3: parsers keyed on formats real tools do not emit --------------------------
+
+
+def test_john_live_crack_output_is_parsed():
+    """A successful dictionary_attack prints "secret  (user)", NOT --show format.
+
+    The spec routes dictionary_attack/single_crack to this parser, so keying only on
+    --show meant a SUCCESSFUL crack produced zero observations.
+    """
+
+    from saber.parsers.john import JohnParser
+
+    text = (
+        "Using default input encoding: UTF-8\n"
+        "Loaded 2 password hashes with 2 different salts (sha512crypt)\n"
+        "Press 'q' or Ctrl-C to abort, almost any other key for status\n"
+        "Summer2023!      (jdoe)\n"
+        "toor             (root)\n"
+        "2g 0:00:00:03 DONE (2026-07-30 04:00) 0.6g/s\n"
+        "Session completed.\n"
+    )
+    result = JohnParser().parse_text(text)
+    credentials = {o.data["username"]: o.data["secret"] for o in result.observations}
+
+    assert credentials == {"jdoe": "Summer2023!", "root": "toor"}
+    assert all(o.data["validated"] is False for o in result.observations)
+
+
+def test_john_progress_noise_is_not_a_credential():
+    from saber.parsers.john import JohnParser
+
+    text = "Loaded 1 password hash (bcrypt)\nSession completed.\n"
+    result = JohnParser().parse_text(text)
+    assert result.observations == []
+
+
+def test_nikto_modern_finding_without_osvdb_is_reported():
+    """Nikto 2.5 dropped OSVDB (retired 2016). Requiring it made real scans look clean."""
+
+    from saber.parsers.nikto import NiktoParser
+
+    text = (
+        "+ Target IP:          10.0.0.5\n"
+        "+ /: The X-Content-Type-Options header is not set.\n"
+        "+ /login: Cookie without HttpOnly flag detected. See: CVE-2022-1234\n"
+        "+ 7915 requests: 0 error(s) and 2 item(s) reported on remote host\n"
+    )
+    result = NiktoParser().parse_text(text, metadata={"target": "10.0.0.5"})
+    titles = [o.data["title"] for o in result.observations]
+
+    assert len(result.observations) == 2, titles
+    identifiers = {o.data["identifier"] for o in result.observations}
+    assert "CVE-2022-1234" in identifiers
+    assert None in identifiers
+
+
+def test_nikto_scan_summary_is_not_a_finding():
+    from saber.parsers.nikto import NiktoParser
+
+    text = "+ Target IP: 10.0.0.5\n+ 7915 requests: 0 error(s) and 0 item(s) reported\n"
+    result = NiktoParser().parse_text(text)
+    assert result.observations == []
+
+
+def test_nikto_severity_matches_whole_words_only():
+    """Substring matching made "low" fire on "Allowed" and "info" on "information"."""
+
+    from saber.parsers.nikto import NiktoParser
+
+    result = NiktoParser().parse_text(
+        "+ Target IP: 10.0.0.5\n+ OSVDB-1: OPTIONS: Allowed HTTP methods are POST.\n"
+    )
+    assert result.observations[0].data["severity"] == "info", "'Allowed' matched 'low'"
+
+
+def test_linpeas_real_ls_style_suid_row_is_parsed():
+    """Real linpeas SUID rows are ls-style and never contain the word "suid".
+
+    The old pattern required BOTH the substring "suid" AND an arrow, so neither real
+    form matched and the headline SUID signal never fired in production.
+    """
+
+    text = (
+        "-rwsr-xr-x 1 root root 31K Feb 21  2022 /usr/bin/pkexec  --->  CVE-2021-4034\n"
+        "-rwsr-xr-x 1 root root 55K Jan  1  2024 /usr/bin/passwd\n"
+    )
+    result = LinpeasParser().parse_text(text)
+    notes = {o.data["title"]: o.data for o in result.observations if o.kind == "note"}
+
+    assert "Notable SUID binary: /usr/bin/pkexec" in notes
+    assert "Notable SUID binary: /usr/bin/passwd" in notes
+    # An attached CVE means linpeas knows an exploit — that outranks a plain SUID.
+    assert notes["Notable SUID binary: /usr/bin/pkexec"]["severity"] == "high"
+    assert notes["Notable SUID binary: /usr/bin/passwd"]["severity"] == "medium"
+
+
+def test_winpeas_real_privilege_state_is_parsed():
+    """Real winPEAS prints "SE_PRIVILEGE_ENABLED_BY_DEFAULT, SE_PRIVILEGE_ENABLED".
+
+    Requiring "ENABLED" immediately after the colon meant the real form never matched,
+    so the primary Windows privesc signal never fired.
+    """
+
+    from saber.parsers.winpeas import WinpeasParser
+
+    text = "    SeImpersonatePrivilege: SE_PRIVILEGE_ENABLED_BY_DEFAULT, SE_PRIVILEGE_ENABLED\n"
+    result = WinpeasParser().parse_text(text)
+    note = result.observations[0].to_dict()
+
+    assert note["data"]["title"] == "Token privilege enabled: SeImpersonatePrivilege"
+    assert note["data"]["severity"] == "critical"
+
+
+def test_winpeas_disabled_privilege_is_not_reported_as_enabled():
+    from saber.parsers.winpeas import WinpeasParser
+
+    result = WinpeasParser().parse_text("    SeShutdownPrivilege: SE_PRIVILEGE_DISABLED\n")
+    titles = [o.data.get("title", "") for o in result.observations]
+    assert not any("Token privilege enabled" in t for t in titles)
+
+
+def test_impacket_system_whoami_is_parsed():
+    """A psexec foothold lands as SYSTEM: whoami prints "nt authority\\system".
+
+    The domain charset had no space, so the normal and most important case never
+    matched — a successful psexec produced no session and privilege="system" was dead.
+    """
+
+    from saber.parsers.impacket import ImpacketParser
+
+    text = "[*] Starting service abcd\nnt authority\\system\n"
+    result = ImpacketParser().parse_text(text, metadata={"target": "10.0.0.5"})
+    sessions = [o for o in result.observations if o.kind == "session"]
+
+    assert sessions, "no session recorded for a SYSTEM psexec foothold"
+    assert sessions[0].data["privilege"] == "system"
+
+
+def test_netexec_user_header_row_is_not_an_account():
+    """nxc --users prints a "-Username-  -Last PW Set-" header row."""
+
+    from saber.parsers.netexec import NetExecParser
+
+    text = (
+        "LDAP        10.0.0.5  389  DC01  -Username-  -Last PW Set-  -BadPW-  -Description-\n"
+        "LDAP        10.0.0.5  389  DC01  jdoe        2026-01-01     0        John Doe\n"
+    )
+    result = NetExecParser().parse_text(text)
+    usernames = {o.data["username"] for o in result.observations if o.kind == "account"}
+
+    assert usernames == {"jdoe"}, f"header row parsed as an account: {usernames}"

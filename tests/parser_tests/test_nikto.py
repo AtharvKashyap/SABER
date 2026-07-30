@@ -65,9 +65,16 @@ def test_nikto_fixture_emits_vuln_and_grows_state() -> None:
     result = NiktoParser().parse_text(text, metadata={"target": "10.0.0.5"})
     obs = [o.to_dict() for o in result.observations]
     vulns = [o for o in obs if o["kind"] == "vuln"]
-    assert len(vulns) == 3
+    # 4, not 3: three OSVDB findings PLUS the X-Content-Type-Options finding, which
+    # has no identifier. Requiring OSVDB discarded identifier-less findings — and
+    # since Nikto 2.5 dropped OSVDB entirely (retired 2016), a real modern scan
+    # produced zero observations and read as a clean target.
+    assert len(vulns) == 4
+    header_finding = next(v for v in vulns if "X-Content-Type-Options" in v["data"]["title"])
+    assert header_finding["data"]["identifier"] is None
+    admin_finding = next(v for v in vulns if v["data"]["identifier"] == "OSVDB-3092")
     assert_observation(
-        vulns[0],
+        admin_finding,
         kind="vuln",
         data_subset={
             "host": "10.0.0.5",
@@ -77,4 +84,4 @@ def test_nikto_fixture_emits_vuln_and_grows_state() -> None:
         },
     )
     state = merge_observations(obs, tool="nikto", action="web_scan")
-    assert len(state.vulns) == 3
+    assert len(state.vulns) == 4

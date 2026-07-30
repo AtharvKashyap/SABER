@@ -25,8 +25,12 @@ kind). Required fields are marked ``(req)``. ``kind -> MissionState list``:
 - account -> accounts (KnownAccount):
     username (req), domain, host, source, enabled: bool, metadata
 - session -> sessions (KnownSession):
-    host (req), kind (shell|meterpreter|winrm|ssh), user,
-    privilege (user|root|system), ref, metadata
+    host (req), kind (shell|meterpreter|winrm|ssh|smb), user,
+    privilege (user|root|system|admin), ref, metadata
+    ``smb``/``admin`` cover proven administrative access over a protocol that is not
+    itself an interactive shell (netexec "Pwn3d!"), which is a real foothold and can
+    be turned into a shell. Do NOT record mere reachability as a session — see
+    saber/parsers/chisel.py for the counter-example.
 - loot -> loot (KnownLoot):
     host, path, kind (file|hash|key|config), description (req), evidence_ref,
     metadata

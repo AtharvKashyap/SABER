@@ -50,8 +50,8 @@ class StateMerger:
     - account -> accounts (KnownAccount):
         username (req), domain, host, source, enabled: bool, metadata
     - session -> sessions (KnownSession):
-        host (req), kind (shell|meterpreter|winrm|ssh), user,
-        privilege (user|root|system), ref, metadata
+        host (req), kind (shell|meterpreter|winrm|ssh|smb), user,
+        privilege (user|root|system|admin), ref, metadata
     - loot -> loot (KnownLoot):
         host, path, kind (file|hash|key|config), description (req), evidence_ref,
         metadata

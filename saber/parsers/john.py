@@ -28,6 +28,23 @@ _SHOW_RE = re.compile(r"^(?P<username>[^:\s]+):(?P<secret>[^:]*)(?::.*)?$")
 # "3 password hashes cracked, 1 left" — John's --show summary line.
 _SUMMARY_RE = re.compile(r"^\d+\s+password\s+hashes?\s+cracked", re.IGNORECASE)
 
+# A LIVE crack (dictionary_attack / single_crack) does not print --show format. It
+# prints the recovered plaintext followed by the account in parentheses:
+#   "Summer2023!      (jdoe)"
+#   "                 (root)"      <- plaintext hidden, still a hit
+# The spec routes those actions to this parser, so keying only on --show meant a
+# SUCCESSFUL crack produced zero observations.
+_CRACKED_RE = re.compile(r"^(?P<secret>.*?)\s*\((?P<username>[^()\s]+)\)\s*$")
+
+# Progress/status noise a live run interleaves with results.
+_NOISE_RE = re.compile(
+    r"^(?:Using default input encoding|Loaded \d+ password hash|"
+    r"Will run \d+ OpenMP|Press '?q'?|Almost done|Warning:|Proceeding with|"
+    r"Session completed|Note: |Remaining \d+ password hash|"
+    r"\d+g \d+:\d+:\d+:\d+)",
+    re.IGNORECASE,
+)
+
 
 class JohnParser(BaseParser):
     """Parse John the Ripper ``--show`` stdout into canonical credential observations."""
@@ -53,6 +70,21 @@ class JohnParser(BaseParser):
             if not line or _SUMMARY_RE.match(line):
                 continue
 
+            if _NOISE_RE.match(line):
+                continue
+
+            # Live-crack form first: "Summer2023!      (jdoe)". Checked before the
+            # --show form because a passwd-style line has no trailing "(user)".
+            cracked = _CRACKED_RE.match(line)
+            if cracked is not None:
+                username = cracked.group("username")
+                secret = cracked.group("secret").strip()
+                if username in seen:
+                    continue
+                seen.add(username)
+                observations.append(self._credential(username, secret or None))
+                continue
+
             match = _SHOW_RE.match(line)
             if match is None:
                 continue
@@ -66,19 +98,7 @@ class JohnParser(BaseParser):
                 continue
             seen.add(username)
 
-            observations.append(
-                ParsedObservation(
-                    kind="credential",
-                    summary=f"John cracked a password for {username}",
-                    source_tool=self.source_tool,
-                    data={
-                        "username": username,
-                        "secret": secret,
-                        "kind": "password",
-                        "validated": False,
-                    },
-                )
-            )
+            observations.append(self._credential(username, secret))
 
         return ParserResult(
             source_tool=self.source_tool,
@@ -86,4 +106,23 @@ class JohnParser(BaseParser):
             observations=observations,
             errors=[] if observations else ["No John cracked credentials could be parsed."],
             metadata={"credential_count": len(seen)},
+        )
+
+    def _credential(self, username: str, secret: str | None) -> ParsedObservation:
+        """Build one credential observation for a cracked account.
+
+        ``validated=False`` always: cracking proves the hash, not that the account
+        still authenticates.
+        """
+
+        return ParsedObservation(
+            kind="credential",
+            summary=f"John cracked a password for {username}",
+            source_tool=self.source_tool,
+            data={
+                "username": username,
+                "secret": secret,
+                "kind": "password",
+                "validated": False,
+            },
         )

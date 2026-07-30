@@ -33,7 +33,19 @@ _MODIFIABLE_RE = re.compile(
     r"(?:you\s+can\s+modify|modifiable|writable).*?(?P<path>[A-Za-z]:\\[^\r\n\"]+)",
     re.IGNORECASE,
 )
-_PRIVILEGE_RE = re.compile(r"(?P<priv>Se\w+Privilege)\s*:?\s*(?P<state>ENABLED|Enabled)")
+# Real winPEAS prints the full Windows privilege state, e.g.
+#   "SeImpersonatePrivilege: SE_PRIVILEGE_ENABLED_BY_DEFAULT, SE_PRIVILEGE_ENABLED"
+# The old pattern required "ENABLED" IMMEDIATELY after the colon, so the real form
+# never matched and the token-privilege signal — the primary Windows privesc route —
+# never fired. Now the enabled state may appear anywhere after the name, and
+# SE_PRIVILEGE_DISABLED alone must NOT count as enabled.
+# No \b around ENABLED: it appears as SE_PRIVILEGE_ENABLED, and "_" is a word
+# character, so word boundaries could never match. "DISABLED" does not contain the
+# substring "ENABLED", so a disabled privilege is still correctly excluded.
+_PRIVILEGE_RE = re.compile(
+    r"(?P<priv>Se\w+Privilege)\s*:?\s*(?P<state>[^\r\n]*ENABLED[^\r\n]*)",
+    re.IGNORECASE,
+)
 _AUTOLOGON_RE = re.compile(
     r"(?:DefaultUserName|DefaultPassword|AutoAdminLogon)\s*[:=]\s*(?P<value>\S+)",
     re.IGNORECASE,

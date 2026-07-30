@@ -36,8 +36,13 @@ _USER_ROW_RE = re.compile(r"^(?P<username>[A-Za-z0-9_.$-]+)\s{2,}\S")
 _USER_ROW_SKIP = {"name", "email"}
 # psexec.py service start confirms the remote command executed.
 _SERVICE_STARTED_RE = re.compile(r"^\[\*\]\s+Starting service", re.IGNORECASE)
-# psexec's "whoami" output: "DOMAIN\user"
-_WHOAMI_RE = re.compile(r"^(?P<domain>[A-Za-z0-9_.-]+)\\(?P<user>[A-Za-z0-9_.$-]+)$")
+# psexec's "whoami" output: "DOMAIN\user".
+#
+# The domain charset MUST allow spaces: a psexec foothold normally lands as SYSTEM
+# and whoami prints "nt authority\system". Without the space the normal, most
+# important case never matched, so a successful psexec produced no session at all and
+# the privilege="system" branch below was dead code.
+_WHOAMI_RE = re.compile(r"^(?P<domain>[A-Za-z0-9_. -]+)\\(?P<user>[A-Za-z0-9_.$ -]+)$")
 
 
 class ImpacketParser(BaseParser):

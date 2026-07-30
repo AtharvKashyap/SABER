@@ -99,6 +99,8 @@ class TsharkParser(BaseParser):
         protocols: Counter[str] = Counter()
         conversations: Counter[tuple[str, str]] = Counter()
         credentials: list[dict[str, Any]] = []
+        # (src, dst) -> the FTP username seen but not yet paired with a password.
+        pending_ftp: dict[tuple[str, str], str] = {}
 
         for packet in packets:
             if not isinstance(packet, dict):
@@ -123,7 +125,7 @@ class TsharkParser(BaseParser):
                 # "eth:ethertype:ip:tcp:http" -> the outermost application protocol.
                 protocols[protocol_chain.split(":")[-1].lower()] += 1
 
-            credentials.extend(self._credentials_from_layers(layers, src, dst))
+            credentials.extend(self._credentials_from_layers(layers, src, dst, pending_ftp))
 
         return self._result(
             addresses,
@@ -135,9 +137,17 @@ class TsharkParser(BaseParser):
         )
 
     def _credentials_from_layers(
-        self, layers: dict[str, Any], src: str, dst: str
+        self,
+        layers: dict[str, Any],
+        src: str,
+        dst: str,
+        pending_ftp: dict[tuple[str, str], str],
     ) -> list[dict[str, Any]]:
-        """Extract cleartext credentials from a JSON packet's layers."""
+        """Extract cleartext credentials from a JSON packet's layers.
+
+        ``pending_ftp`` carries FTP usernames between packets so a USER/PASS pair can
+        be joined into one credential.
+        """
 
         found: list[dict[str, Any]] = []
 
@@ -160,29 +170,27 @@ class TsharkParser(BaseParser):
         ftp = layers.get("ftp") if isinstance(layers.get("ftp"), dict) else {}
         request = str(ftp.get("ftp.request.command") or "")
         argument = str(ftp.get("ftp.request.arg") or "")
+        # FTP USER and PASS arrive in SEPARATE packets, so they must be paired across
+        # the packet loop. Emitting the PASS under a placeholder username relied on
+        # the merger folding them together, which it cannot: the credential merger
+        # keys on (username, host, service), so state ended up with the real username
+        # holding secret=None PLUS a junk "(ftp user)" entry holding the real password.
+        conversation = (src, dst)
         if request.upper() == "USER" and argument:
-            found.append(
-                {
-                    "username": argument,
-                    "kind": "password",
-                    "host": dst or None,
-                    "service": "ftp",
-                    "validated": False,
-                }
-            )
+            pending_ftp[conversation] = argument
         elif request.upper() == "PASS" and argument:
-            found.append(
-                {
-                    # The username arrives in a separate packet; the merger will fold
-                    # them together on (username, host, service) if it was seen.
-                    "username": "(ftp user)",
-                    "secret": argument,
-                    "kind": "password",
-                    "host": dst or None,
-                    "service": "ftp",
-                    "validated": False,
-                }
-            )
+            username = pending_ftp.pop(conversation, None)
+            if username:
+                found.append(
+                    {
+                        "username": username,
+                        "secret": argument,
+                        "kind": "password",
+                        "host": dst or None,
+                        "service": "ftp",
+                        "validated": False,
+                    }
+                )
         return found
 
     def _credentials_from_text(self, text: str, host: str | None) -> list[dict[str, Any]]:

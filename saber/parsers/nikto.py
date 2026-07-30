@@ -10,7 +10,24 @@ from saber.parsers.base import BaseParser, ParsedObservation, ParserResult
 _OSVDB_RE = re.compile(r"OSVDB-(\d+)")
 _TARGET_IP_RE = re.compile(r"^\+\s*Target IP:\s*(\S+)", re.IGNORECASE)
 _TARGET_HOST_RE = re.compile(r"^\+\s*Target Hostname:\s*(\S+)", re.IGNORECASE)
-_SEVERITY_KEYWORDS = ("critical", "high", "medium", "low", "info")
+# Nikto 2.5+ cites CVEs and its own references instead of OSVDB, which was retired
+# in 2016. Keying only on OSVDB meant a real modern scan produced ZERO observations.
+_CVE_RE = re.compile(r"\bCVE-\d{4}-\d{4,7}\b", re.IGNORECASE)
+# Header/administrivia lines that start with "+" but are not findings.
+_NON_FINDING_RE = re.compile(
+    r"^\+\s*(?:Target (?:IP|Hostname|Port)|Start Time|End Time|Server:|SSL Info|"
+    r"\d+ host\(s\) tested|"
+    # "+ 7915 requests: 0 error(s) and 3 item(s) reported on remote host"
+    r"\d+ requests:)",
+    re.IGNORECASE,
+)
+# Severity keywords must match as WORDS. Substring matching made "low" fire on
+# "allow"/"follow"/"below" and "info" fire on "information", so
+# "+ OPTIONS: Allowed HTTP methods" was tagged low.
+_SEVERITY_WORD_RES = tuple(
+    (keyword, re.compile(rf"\b{keyword}\b", re.IGNORECASE))
+    for keyword in ("critical", "high", "medium", "low", "info")
+)
 
 
 class NiktoParser(BaseParser):
@@ -52,12 +69,25 @@ class NiktoParser(BaseParser):
                 elif host_match:
                     host = host_match.group(1)
 
-            osvdb_match = _OSVDB_RE.search(line)
-            if not osvdb_match:
+            # Skip header/administrivia lines, which also begin with "+".
+            if _NON_FINDING_RE.match(line):
                 continue
 
-            identifier = f"OSVDB-{osvdb_match.group(1)}"
+            osvdb_match = _OSVDB_RE.search(line)
+            cve_match = _CVE_RE.search(line)
+            if osvdb_match:
+                identifier = f"OSVDB-{osvdb_match.group(1)}"
+            elif cve_match:
+                identifier = cve_match.group(0).upper()
+            else:
+                # Nikto 2.5 emits plenty of real findings with no identifier at all
+                # (exposed files, dangerous methods, missing headers). Requiring an
+                # identifier discarded them and made a modern scan look clean.
+                identifier = None
+
             title = line.lstrip("+").strip()
+            if not title:
+                continue
             severity = self._severity_for_line(line)
 
             observations.append(
@@ -92,8 +122,7 @@ class NiktoParser(BaseParser):
         finding defaults to "info".
         """
 
-        lowered = line.lower()
-        for keyword in _SEVERITY_KEYWORDS:
-            if keyword in lowered:
+        for keyword, pattern in _SEVERITY_WORD_RES:
+            if pattern.search(line):
                 return self.severity_from_string(keyword).value
         return "info"

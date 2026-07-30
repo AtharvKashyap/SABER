@@ -31,7 +31,16 @@ _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|\[[0-9]{1,2}(?:;[0-9]{1,2})*m")
 # highlights look like: "99% PE - CVE-2021-4034 (pwnkit)"
 _PROBABILITY_RE = re.compile(r"(?P<pct>\d{2,3})%\s*PE\s*[-:]?\s*(?P<detail>.+)", re.IGNORECASE)
 _SUDO_RE = re.compile(r"^\s*\(.*\)\s+(?P<nopasswd>NOPASSWD:)?\s*(?P<cmd>/\S+)")
-_SUID_RE = re.compile(r"(?P<path>/\S+)\s*(?:-->|=>)\s*(?P<note>.+)")
+# Real linpeas SUID rows look like:
+#   "-rwsr-xr-x 1 root root 55K Jan  1 /usr/bin/pkexec  ---> CVE-2021-4034"
+#   "-rwsr-xr-x 1 root root 27K Feb  2 /usr/bin/passwd"
+# The old pattern required BOTH the literal substring "suid" on the line AND an
+# arrow, so neither real form matched and the headline SUID signal never fired.
+# The "s" in the permission bits is the actual marker.
+_SUID_RE = re.compile(
+    r"^[-lbcdps]rw[sS][rwxsStT-]{6}\s.*?(?P<path>/\S+)"
+    r"(?:\s*(?:-+>|=>)\s*(?P<note>.+))?\s*$"
+)
 _WRITABLE_SERVICE_RE = re.compile(
     r"(?P<path>/\S+\.service)\s+is\s+writable|writable.*?(?P<path2>/\S+\.service)",
     re.IGNORECASE,
@@ -150,17 +159,24 @@ class LinpeasParser(BaseParser):
                 )
                 continue
 
-            if "suid" in line.lower():
-                suid = _SUID_RE.search(line)
-                if suid is not None:
-                    path = suid.group("path")
-                    add_note(
-                        f"Notable SUID binary: {path}",
-                        f"{path} is SUID and flagged by LinPEAS: {suid.group('note').strip()}",
-                        "medium",
-                        {"path": path},
-                    )
-                    continue
+            # Matched on the permission bits, not on the word "suid": real rows are
+            # ls-style and never contain it.
+            suid = _SUID_RE.match(line)
+            if suid is not None:
+                path = suid.group("path")
+                flagged = (suid.group("note") or "").strip()
+                add_note(
+                    f"Notable SUID binary: {path}",
+                    (
+                        f"{path} is SUID and flagged by LinPEAS: {flagged}"
+                        if flagged
+                        else f"{path} is SUID."
+                    ),
+                    # An arrow means LinPEAS attached a known exploit to it.
+                    "high" if flagged else "medium",
+                    {"path": path, "linpeas_note": flagged or None},
+                )
+                continue
 
         if observations:
             title = "LinPEAS enumeration summary"
