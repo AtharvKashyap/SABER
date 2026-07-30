@@ -25,6 +25,13 @@ class CtfStrategy(TargetStrategy):
         return {"strategy": self.kind.value, "lab": True}
 
     def objective_met(self, state: MissionState) -> bool:
-        """Return True once a flag is captured or credentials/loot are collected."""
+        """Return True once a flag is captured or credentials/loot are collected.
 
-        return bool(state.metadata.get("flag")) or bool(state.credentials)
+        Checks BOTH flag paths. ``state.metadata["flag"]`` is what the loop's own
+        text detector writes; ``state.flags`` is what a parser emits as a canonical
+        ``flag`` observation (strings, pwntools). Reading only metadata meant a flag
+        captured by binary exploitation — the entire point of the pwntools path —
+        did not count as meeting the objective, so the mission ran on to max_steps.
+        """
+
+        return bool(state.metadata.get("flag")) or bool(state.flags) or bool(state.credentials)

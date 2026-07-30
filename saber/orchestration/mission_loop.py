@@ -201,6 +201,10 @@ class MissionLoop:
                 evidence_refs = list(getattr(processed, "evidence_ids", []) or [])
                 finding_refs = list(getattr(processed, "finding_ids", []) or [])
 
+            # Inject a canonical flag observation BEFORE merging, so a flag found in
+            # raw tool output reaches state.flags on this step's own attempt.
+            parsed_observations = self._with_flag_observation(state, record, parsed_observations)
+
             state = self.merger.merge(
                 state,
                 parsed_observations,
@@ -273,6 +277,48 @@ class MissionLoop:
         if state.metadata.get("flag"):
             return state
 
+        flag = self._detected_flag(state, record, parsed_observations)
+        if not flag:
+            return state
+        return state.model_copy(update={"metadata": {**state.metadata, "flag": flag}})
+
+    def _with_flag_observation(
+        self,
+        state: MissionState,
+        record: ActionExecutionRecord,
+        parsed_observations: list[dict],
+    ) -> list[dict]:
+        """Append a canonical ``flag`` observation when the detector finds one.
+
+        ``metadata["flag"]`` alone is invisible to everything that reads
+        ``state.flags`` — the ``PhaseGoalChecker`` proof_of_concept goal, the report's
+        flags section, and the "objective proven" finding — so a flag detected in raw
+        tool output would never reach the deliverable.
+
+        This runs BEFORE the merge and only adds an observation, so the flag rides
+        the step's existing ``AttemptedAction``. Merging separately would call
+        ``record_attempt`` a second time and silently make a flag cost two steps
+        against ``max_steps``.
+        """
+
+        flag = self._detected_flag(state, record, parsed_observations)
+        if not flag:
+            return parsed_observations
+        if any(known.value == flag for known in state.flags):
+            return parsed_observations
+        return [
+            *parsed_observations,
+            {"kind": "flag", "data": {"value": flag, "location": "tool output"}},
+        ]
+
+    def _detected_flag(
+        self,
+        state: MissionState,
+        record: ActionExecutionRecord,
+        parsed_observations: list[dict],
+    ) -> str | None:
+        """Return a flag found in this step's output, or None. Never raises."""
+
         texts: list[str] = [record.observation.summary or ""]
         for obs in parsed_observations:
             texts.append(str(obs))
@@ -284,17 +330,14 @@ class MissionLoop:
 
         extra = state.metadata.get("flag_regex")
         try:
-            flag = detect_flag(texts, extra_patterns=[extra] if isinstance(extra, str) else None)
+            return detect_flag(texts, extra_patterns=[extra] if isinstance(extra, str) else None)
         except Exception:
             logger.exception(
                 "Flag detection failed for session %s (likely an invalid "
                 "flag_regex); leaving state unchanged.",
                 state.session_id,
             )
-            return state
-        if not flag:
-            return state
-        return state.model_copy(update={"metadata": {**state.metadata, "flag": flag}})
+            return None
 
     def _apply_strategy_objective(
         self, state: MissionState, strategy: TargetStrategy | None

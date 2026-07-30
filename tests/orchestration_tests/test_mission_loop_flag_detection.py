@@ -116,3 +116,48 @@ def test_malformed_flag_regex_does_not_raise_or_set_flag():
     assert final.metadata.get("flag") is None
     assert final.objective_met is False
     assert result is not None
+
+
+def test_detected_flag_also_lands_in_state_flags_not_only_metadata():
+    """metadata["flag"] alone is invisible to the phase gate and the report.
+
+    The PhaseGoalChecker's proof_of_concept goal, the report's flags section and the
+    "objective proven" finding all read state.flags. A flag found in raw tool output
+    used to be recorded ONLY in metadata, so none of them ever saw it.
+    """
+
+    store = _Store()
+    loop = _build_loop(store)
+    session = MissionSession(session_id="s1", mission_name="ctf")
+    loop.run(_state(), session, strategy=CtfStrategy())
+    final = store.snapshots[-1]
+
+    assert final.metadata.get("flag") == "flag{saber_vulnbin_pwned}"
+    assert [f.value for f in final.flags] == ["flag{saber_vulnbin_pwned}"]
+
+
+def test_flag_does_not_cost_an_extra_step():
+    """Merging the flag separately would call record_attempt twice for one step."""
+
+    store = _Store()
+    loop = _build_loop(store)
+    session = MissionSession(session_id="s1", mission_name="ctf")
+    loop.run(_state(), session, strategy=CtfStrategy())
+    final = store.snapshots[-1]
+
+    assert final.step_count == 1
+    assert len(final.attempted_actions) == 1
+
+
+def test_parser_emitted_flag_meets_the_ctf_objective():
+    """A flag captured via a parser (strings/pwntools) must end a CTF mission.
+
+    CtfStrategy.objective_met used to read only metadata["flag"], so a flag captured
+    by binary exploitation — the entire point of the pwntools path — did not count and
+    the mission ran on to max_steps.
+    """
+
+    from saber.models.mission_state import KnownFlag
+
+    state = _state().model_copy(update={"flags": [KnownFlag(value="flag{from_pwntools}")]})
+    assert CtfStrategy().objective_met(state) is True
