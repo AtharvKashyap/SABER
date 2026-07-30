@@ -31,6 +31,7 @@ from saber.parsers.nuclei import NucleiParser
 from saber.parsers.openvas import OpenVASParser
 from saber.parsers.path_validation import PathValidationParser
 from saber.parsers.plan import PlanParser
+from saber.parsers.pwntools import PwntoolsParser
 from saber.parsers.radare2 import Radare2Parser
 from saber.parsers.responder import ResponderParser
 from saber.parsers.session_checks import SessionChecksParser
@@ -391,6 +392,12 @@ def default_parser_entries() -> list[ParserRegistryEntry]:
             parser=StringsParser(),
             aliases=("string_extract",),
             file_extensions=("txt",),
+        ),
+        ParserRegistryEntry(
+            tool_name="pwntools",
+            parser=PwntoolsParser(),
+            aliases=("pwn", "gdb", "binary_exploit"),
+            file_extensions=("txt", "log"),
         ),
         ParserRegistryEntry(
             tool_name="radare2",

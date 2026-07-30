@@ -1,0 +1,7 @@
+[+] Starting local process '/opt/lab/vulnbin': pid 2001
+vulnbin: enter your name:
+hello, AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+Program received signal SIGSEGV, Segmentation fault.
+0x0000414141414141 in ?? ()
+[*] Got EOF while reading in interactive
+[*] Process '/opt/lab/vulnbin' stopped with exit code -11 (pid 2001)

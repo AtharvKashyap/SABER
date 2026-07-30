@@ -423,6 +423,15 @@ def default_tool_entries() -> list[ToolRegistryEntry]:
             aliases=("r2",),
         ),
         ToolRegistryEntry(
+            name="pwntools",
+            import_path="saber.tools.reverse_engineering.pwntools",
+            class_name="PwntoolsWrapper",
+            category=RequestedActionCategory.REVERSE_ENGINEERING,
+            phase=AssessmentPhase.EXPLOITATION,
+            description="Run decider-authored pwntools exploit scripts and gdb batch sessions.",
+            aliases=("pwn", "gdb"),
+        ),
+        ToolRegistryEntry(
             name="strings",
             import_path="saber.tools.reverse_engineering.strings",
             class_name="StringsWrapper",

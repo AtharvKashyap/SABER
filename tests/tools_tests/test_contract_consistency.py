@@ -29,6 +29,7 @@ _MIGRATED_TOOLS: set[str] = {
     "openvas",
     "path_validation",
     "plan",
+    "pwntools",
     "radare2",
     "session_checks",
     "strings",

