@@ -80,7 +80,15 @@ class StateMerger:
             "share": {(s.host, s.name): s for s in state.shares},
             "account": {(a.domain, a.username): a for a in state.accounts},
             "session": {(s.host, s.kind, s.user): s for s in state.sessions},
-            "loot": {(loot_.host, loot_.path, loot_.kind): loot_ for loot_ in state.loot},
+            # Keyed on description too: one file routinely yields several distinct
+            # secrets (a strings dump giving a connection string AND a cloud key,
+            # a linpeas run finding several credential files). Without the
+            # description in the key they share (host, path, kind) and all but the
+            # last would be silently dropped.
+            "loot": {
+                (loot_.host, loot_.path, loot_.kind, loot_.description): loot_
+                for loot_ in state.loot
+            },
             "flag": {f.value: f for f in state.flags},
             "note": {n.title: n for n in state.notes},
         }
@@ -279,8 +287,9 @@ class StateMerger:
         host = data.get("host")
         path = data.get("path")
         kind = str(data.get("kind") or "file")
-        existing = loot.get((host, path, kind))
-        loot[(host, path, kind)] = KnownLoot(
+        key = (host, path, kind, description)
+        existing = loot.get(key)
+        loot[key] = KnownLoot(
             description=description,
             kind=kind,
             host=host or (existing.host if existing else None),

@@ -1,0 +1,14 @@
+[0x00401136]> pdf @main
+            ; DATA XREF from entry0 @ 0x401125
+┌ 210: int main (int argc, char **argv);
+│           ; var char *s @ rsp+0x10
+│           0x00401136      55             push rbp
+│           0x00401137      4889e5         mov rbp, rsp
+│           0x0040113a      4883ec20       sub rsp, 0x20
+│           0x0040113e      488d3dcb0e00.  lea rdi, str.Enter_your_name
+│           0x00401145      e8e6feffff     call sym.imp.puts
+│           0x0040114a      488d45f0       lea rax, [s]
+│           0x0040114e      4889c7         mov rdi, rax
+│           0x00401151      e8bafeffff     call sym.imp.gets
+└           0x00401156      b800000000     mov eax, 0
+[0x00401136]>

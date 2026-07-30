@@ -10,6 +10,80 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+_OUTPUT_FORMATS = ("cli", "csv", "json", "xml")
+
+CONTRACT = ToolContract(
+    tool_name="checksec",
+    category="reverse_engineering",
+    phase="recon",
+    description=(
+        "Report which hardening features a binary was built with (NX, PIE, RELRO, "
+        "stack canary, FORTIFY). Determines which binary-exploitation techniques are "
+        "viable before any is attempted."
+    ),
+    parser="checksec",
+    actions=(
+        ActionContract(
+            action="binary",
+            description="Check the hardening features of a single binary.",
+            args=(
+                ArgSpec(
+                    "binary_path",
+                    "str",
+                    required=True,
+                    description="Path to the binary inside the sandbox.",
+                ),
+                ArgSpec(
+                    "output_format",
+                    "enum",
+                    required=False,
+                    default="json",
+                    choices=_OUTPUT_FORMATS,
+                    description="checksec --output format. json is the parseable one.",
+                ),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("note",),
+            example_args={"binary_path": "/opt/lab/vulnbin", "output_format": "json"},
+        ),
+        ActionContract(
+            action="directory",
+            description="Check every binary in a directory, to find the softest target.",
+            args=(
+                ArgSpec(
+                    "directory_path",
+                    "str",
+                    required=True,
+                    description="Directory to scan inside the sandbox.",
+                ),
+                ArgSpec(
+                    "output_format",
+                    "enum",
+                    required=False,
+                    default="json",
+                    choices=_OUTPUT_FORMATS,
+                    description="checksec --output format. json is the parseable one.",
+                ),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("note",),
+            example_args={"directory_path": "/usr/local/bin", "output_format": "json"},
+        ),
+        ActionContract(
+            action="kernel",
+            description="Report the running kernel's hardening configuration.",
+            args=(),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("note",),
+            example_args={},
+        ),
+    ),
+)
 
 
 class ChecksecWrapper(BaseToolWrapper):
@@ -108,10 +182,10 @@ class ChecksecWrapper(BaseToolWrapper):
         if action == "binary":
             binary_path = self._required_string(kwargs, "binary_path")
             command = ["checksec", "--file", binary_path]
-            output_format = kwargs.get("output_format")
-            if output_format:
-                output_format = self._validate_output_format(output_format)
-                command.append(f"--output={output_format}")
+            # The CONTRACT declares output_format optional with default "json", so
+            # apply that default rather than silently emitting unparseable cli output.
+            output_format = self._validate_output_format(kwargs.get("output_format") or "json")
+            command.append(f"--output={output_format}")
 
             return ToolCommand(
                 command=command,
@@ -125,10 +199,10 @@ class ChecksecWrapper(BaseToolWrapper):
         if action == "directory":
             directory_path = self._required_string(kwargs, "directory_path")
             command = ["checksec", "--dir", directory_path]
-            output_format = kwargs.get("output_format")
-            if output_format:
-                output_format = self._validate_output_format(output_format)
-                command.append(f"--output={output_format}")
+            # The CONTRACT declares output_format optional with default "json", so
+            # apply that default rather than silently emitting unparseable cli output.
+            output_format = self._validate_output_format(kwargs.get("output_format") or "json")
+            command.append(f"--output={output_format}")
 
             return ToolCommand(
                 command=command,

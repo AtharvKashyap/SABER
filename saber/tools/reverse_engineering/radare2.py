@@ -10,6 +10,132 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+DEFAULT_ANALYSIS_LEVEL = "aaa"
+
+CONTRACT = ToolContract(
+    tool_name="radare2",
+    category="reverse_engineering",
+    phase="recon",
+    description=(
+        "Static analysis of a local binary with radare2: auto-analysis, binary "
+        "info (arch/bits/protections), function listing (with dangerous-function "
+        "triage), and operator-authored r2 command sequences."
+    ),
+    parser="radare2",
+    aliases=("r2",),
+    actions=(
+        ActionContract(
+            action="analyze",
+            description=(
+                "Run radare2 auto-analysis (aa/aaa/aaaa) over a binary so later "
+                "info/functions calls have full analysis available."
+            ),
+            args=(
+                ArgSpec(
+                    "binary_path",
+                    "str",
+                    required=True,
+                    description="Path to the binary inside the sandbox.",
+                ),
+                ArgSpec(
+                    "analysis_level",
+                    "enum",
+                    required=False,
+                    default=DEFAULT_ANALYSIS_LEVEL,
+                    choices=("aa", "aaa", "aaaa"),
+                    description="Analysis depth; aaa is the usual full auto-analysis.",
+                ),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("note",),
+            example_args={"binary_path": "/tmp/challenge.bin", "analysis_level": "aaa"},
+        ),
+        ActionContract(
+            action="info",
+            description=(
+                "Collect binary info (arch, bits, and hardening protections) with "
+                "radare2's `ij`/`i` command, to plan which exploit techniques are viable."
+            ),
+            args=(
+                ArgSpec(
+                    "binary_path",
+                    "str",
+                    required=True,
+                    description="Path to the binary inside the sandbox.",
+                ),
+                ArgSpec(
+                    "json_output",
+                    "bool",
+                    required=False,
+                    default=True,
+                    description="Use `ij` (JSON) instead of `i` (text).",
+                ),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("note",),
+            example_args={"binary_path": "/tmp/challenge.bin", "json_output": True},
+        ),
+        ActionContract(
+            action="functions",
+            description=(
+                "List functions with radare2's `aflj`/`afl` command, surfacing "
+                "notable/dangerous functions (gets, strcpy, system, memcpy) rather "
+                "than the full symbol table."
+            ),
+            args=(
+                ArgSpec(
+                    "binary_path",
+                    "str",
+                    required=True,
+                    description="Path to the binary inside the sandbox.",
+                ),
+                ArgSpec(
+                    "json_output",
+                    "bool",
+                    required=False,
+                    default=True,
+                    description="Use `aflj` (JSON) instead of `afl` (text).",
+                ),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("note",),
+            example_args={"binary_path": "/tmp/challenge.bin", "json_output": True},
+        ),
+        ActionContract(
+            action="custom_commands",
+            description=(
+                "Run an operator-authored sequence of radare2 commands. Arbitrary "
+                "r2 command execution, so this is approval-gated."
+            ),
+            args=(
+                ArgSpec(
+                    "binary_path",
+                    "str",
+                    required=True,
+                    description="Path to the binary inside the sandbox.",
+                ),
+                ArgSpec(
+                    "commands",
+                    "list[str]",
+                    required=True,
+                    description="r2 commands to run in order, e.g. ['aaa', 'afl', 'pdf @main'].",
+                ),
+            ),
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=("note",),
+            example_args={
+                "binary_path": "/tmp/challenge.bin",
+                "commands": ["aaa", "afl"],
+            },
+        ),
+    ),
+)
 
 
 class Radare2Wrapper(BaseToolWrapper):
@@ -131,7 +257,11 @@ class Radare2Wrapper(BaseToolWrapper):
         }
 
         if action == "analyze":
-            analysis_level = self._required_string(kwargs, "analysis_level")
+            # The CONTRACT declares analysis_level optional with a default, so
+            # apply it rather than raising when the decider omits it.
+            analysis_level = self._string_with_default(
+                kwargs, "analysis_level", DEFAULT_ANALYSIS_LEVEL
+            )
             self._validate_analysis_level(analysis_level)
 
             return ToolCommand(
@@ -214,3 +344,12 @@ class Radare2Wrapper(BaseToolWrapper):
         """Normalize a list of string arguments."""
 
         return [str(value).strip() for value in values if str(value).strip()]
+
+    @staticmethod
+    def _string_with_default(kwargs: dict[str, Any], key: str, default: str) -> str:
+        """Read a string kwarg, falling back to the CONTRACT-declared default."""
+
+        value = kwargs.get(key)
+        if not isinstance(value, str) or not value.strip():
+            return default
+        return value.strip()

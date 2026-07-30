@@ -10,10 +10,13 @@ from saber.parsers.amass import AmassParser
 from saber.parsers.base import BaseParser, ParserResult
 from saber.parsers.bettercap import BettercapParser
 from saber.parsers.bloodhound import BloodHoundParser
+from saber.parsers.checksec import ChecksecParser
 from saber.parsers.chisel import ChiselParser
 from saber.parsers.dnsrecon import DNSReconParser
 from saber.parsers.enum4linux import Enum4LinuxParser
 from saber.parsers.feroxbuster import FeroxbusterParser
+from saber.parsers.file import FileParser
+from saber.parsers.ghidra_headless import GhidraHeadlessParser
 from saber.parsers.hashcat import HashcatParser
 from saber.parsers.impacket import ImpacketParser
 from saber.parsers.john import JohnParser
@@ -28,11 +31,13 @@ from saber.parsers.nuclei import NucleiParser
 from saber.parsers.openvas import OpenVASParser
 from saber.parsers.path_validation import PathValidationParser
 from saber.parsers.plan import PlanParser
+from saber.parsers.radare2 import Radare2Parser
 from saber.parsers.responder import ResponderParser
 from saber.parsers.session_checks import SessionChecksParser
 from saber.parsers.searchsploit import SearchSploitParser
 from saber.parsers.snmpwalk import SnmpwalkParser
 from saber.parsers.sqlmap import SqlmapParser
+from saber.parsers.strings import StringsParser
 from saber.parsers.subfinder import SubfinderParser
 from saber.parsers.theharvester import TheHarvesterParser
 from saber.parsers.whatweb import WhatWebParser
@@ -367,6 +372,36 @@ def default_parser_entries() -> list[ParserRegistryEntry]:
             tool_name="enum4linux",
             parser=Enum4LinuxParser(),
             aliases=("enum4linux-ng", "smb_enum", "smb_enumeration"),
+            file_extensions=("txt",),
+        ),
+        ParserRegistryEntry(
+            tool_name="checksec",
+            parser=ChecksecParser(),
+            aliases=("binary_hardening",),
+            file_extensions=("json", "txt"),
+        ),
+        ParserRegistryEntry(
+            tool_name="file",
+            parser=FileParser(),
+            aliases=("file_identify", "libmagic"),
+            file_extensions=("txt",),
+        ),
+        ParserRegistryEntry(
+            tool_name="strings",
+            parser=StringsParser(),
+            aliases=("string_extract",),
+            file_extensions=("txt",),
+        ),
+        ParserRegistryEntry(
+            tool_name="radare2",
+            parser=Radare2Parser(),
+            aliases=("r2",),
+            file_extensions=("json", "txt"),
+        ),
+        ParserRegistryEntry(
+            tool_name="ghidra_headless",
+            parser=GhidraHeadlessParser(),
+            aliases=("ghidra",),
             file_extensions=("txt",),
         ),
         ParserRegistryEntry(

@@ -1,0 +1,29 @@
+/lib64/ld-linux-x86-64.so.2
+libc.so.6
+__cxa_finalize
+__libc_start_main
+puts
+printf
+read
+GLIBC_2.2.5
+_ITM_deregisterTMCloneTable
+__gmon_start__
+_ITM_registerTMCloneTable
+Enter your name:
+%s
+Welcome, %s!
+/bin/sh
+system(
+/etc/passwd
+/opt/lab/config.ini
+http://updates.lab.example.com/manifest.json
+postgres://labuser:FakeLabPassw0rd@db.lab.internal:5432/appdb
+AKIAFAKELABKEY1234XZ
+api_key=FAKE-LAB-API-KEY-000111
+-----BEGIN RSA PRIVATE KEY-----
+flag{f4ke_l4b_fl4g_for_tests}
+;*3$"
+GCC: (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0
+.shstrtab
+.interp
+.note.gnu.property
