@@ -59,7 +59,12 @@ The decision mode is chosen **per mission** via `agent_mode`, not a persistent e
 Tests run via the Makefile (they encode the right groupings and gate env vars):
 
 ```bash
-make unit        # offline: tests/unit + tests/agent_tests + tests/orchestration_tests (no Docker, no model)
+make unit        # ALL offline suites (no Docker, no model). Covers unit, agent_tests,
+                 # orchestration_tests, parser_tests, tools_tests, reporting_tests,
+                 # model_tests, storage_tests, integration. Only tests/e2e_tests is
+                 # excluded (gated). Do NOT hand-pick a subset of these directories:
+                 # `unit` used to run only the first three, and a breaking change to
+                 # the report adapter shipped green because reporting_tests never ran.
 make smoke       # py_compile core files + a few high-value unit tests
 make e2e         # Docker-gated E2E (sets SABER_RUN_DOCKER_E2E=1; needs Docker + real tools)
 make llm-e2e     # live-model mission-loop acceptance (sets SABER_RUN_LLM_E2E=1 + SABER_RUN_DOCKER_E2E=1; real API calls; not in CI)

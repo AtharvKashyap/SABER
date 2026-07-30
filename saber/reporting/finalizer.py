@@ -173,6 +173,10 @@ class ReportFinalizer:
             }
             for vuln in context["vulns"]
         ]
+        # F9: a vulnerability is not the only kind of finding. Proven access and
+        # exfiltrated material are what a reader actually needs to see, and they
+        # were previously absent from the report entirely.
+        findings.extend(self._impact_findings(context))
         observations = [
             {
                 "kind": "action",
@@ -221,6 +225,102 @@ class ReportFinalizer:
             self._record_report_artifact(session_id=session_id, artifact=artifact)
 
         return artifacts
+
+    @staticmethod
+    def _impact_findings(context: dict[str, Any]) -> list[dict[str, Any]]:
+        """Turn proven access and collected material into report findings.
+
+        Severity reflects demonstrated impact, not tool output: a captured flag or a
+        working credential is the strongest thing an engagement can show, so it
+        outranks an unexploited vulnerability. Secrets are already redacted by
+        ``MissionStateReportAdapter``; this only reshapes what it produced.
+        """
+
+        access = context.get("access") or {}
+        collected = context.get("collected") or {}
+        findings: list[dict[str, Any]] = []
+
+        for flag in collected.get("flags") or []:
+            findings.append(
+                {
+                    "title": "Objective proven: flag captured",
+                    "severity": "critical",
+                    "description": (
+                        f"Captured proof token {flag.get('value')} from "
+                        f"{flag.get('location') or 'the target'}."
+                    ),
+                    "references": [],
+                    # "finding_kind", not "kind": several records carry their own
+                    # "kind" (a session's meterpreter, loot's key) which would
+                    # silently overwrite the marker when spread.
+                    "metadata": {**flag, "finding_kind": "flag"},
+                }
+            )
+
+        for session_record in access.get("sessions") or []:
+            findings.append(
+                {
+                    "title": f"Interactive access obtained on {session_record.get('host')}",
+                    "severity": "critical",
+                    "description": (
+                        f"A {session_record.get('kind')} session was established as "
+                        f"{session_record.get('user') or 'an unspecified user'} with "
+                        f"{session_record.get('privilege')} privilege."
+                    ),
+                    "references": [],
+                    "metadata": {**session_record, "finding_kind": "session"},
+                }
+            )
+
+        for credential in access.get("credentials") or []:
+            if not credential.get("validated"):
+                # An unvalidated credential is a lead, not a finding.
+                continue
+            service = credential.get("service")
+            via = f" ({service})" if service else ""
+            findings.append(
+                {
+                    "title": f"Valid credential for {credential.get('username')}",
+                    "severity": "high",
+                    "description": (
+                        f"Credential for {credential.get('username')} was confirmed "
+                        f"working against {credential.get('host') or 'the target'}{via}."
+                    ),
+                    "references": [],
+                    "metadata": {**credential, "finding_kind": "credential"},
+                }
+            )
+
+        for item in collected.get("loot") or []:
+            findings.append(
+                {
+                    "title": f"Sensitive material accessible: {item.get('kind')}",
+                    "severity": "medium",
+                    "description": str(item.get("description") or "Artifact collected."),
+                    "references": [],
+                    "metadata": {**item, "finding_kind": "loot"},
+                }
+            )
+
+        for share in access.get("shares") or []:
+            if str(share.get("access") or "none").lower() == "none":
+                continue
+            findings.append(
+                {
+                    "title": (
+                        f"Share {share.get('name')} readable on {share.get('host')}"
+                    ),
+                    "severity": "medium",
+                    "description": (
+                        f"{share.get('type')} share {share.get('name')} on "
+                        f"{share.get('host')} granted {share.get('access')} access."
+                    ),
+                    "references": [],
+                    "metadata": {**share, "finding_kind": "share"},
+                }
+            )
+
+        return findings
 
     def _build_export_jobs(
         self,

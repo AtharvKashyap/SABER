@@ -60,6 +60,15 @@ class PtesPhase(StrEnum):
             cls.POST_ENGAGEMENT,
         )
 
+    def index_in_order(self) -> int:
+        """Return this phase's position in methodology order.
+
+        Deliberately NOT named ``index``: this is a ``StrEnum``, so an ``index``
+        attribute would shadow ``str.index`` and break the str contract.
+        """
+
+        return self.ordered().index(self)
+
     def next_phase(self) -> PtesPhase | None:
         """Return the phase after this one, or None at the end."""
 

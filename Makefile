@@ -3,8 +3,15 @@
 test:
 	pytest -q
 
+# Every offline suite. This deliberately lists all non-gated directories rather
+# than three of them: an earlier version ran only unit/agent_tests/
+# orchestration_tests, so a breaking change to the report adapter shipped green
+# because tests/reporting_tests was never executed. tests/e2e_tests is the only
+# excluded directory (it is Docker/model gated — see `make e2e` / `make llm-e2e`).
 unit:
-	pytest tests/unit tests/agent_tests tests/orchestration_tests -q --tb=short -x
+	pytest tests/unit tests/agent_tests tests/orchestration_tests tests/parser_tests \
+		tests/tools_tests tests/reporting_tests tests/model_tests tests/storage_tests \
+		tests/integration -q --tb=short -x
 
 e2e:
 	SABER_RUN_DOCKER_E2E=1 pytest tests/e2e_tests -q --tb=short -x
