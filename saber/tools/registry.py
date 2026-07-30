@@ -194,8 +194,8 @@ def default_tool_entries() -> list[ToolRegistryEntry]:
         ),
         ToolRegistryEntry(
             name="impacket",
-            import_path="saber.tools.active_directory.impacket",
-            class_name="ImpacketWrapper",
+            import_path="saber.tools.active_directory.impacket_tools",
+            class_name="ImpacketToolsWrapper",
             category=RequestedActionCategory.ACTIVE_DIRECTORY,
             phase=AssessmentPhase.EXPLOITATION,
             description="Impacket AD and Windows protocol utilities.",
