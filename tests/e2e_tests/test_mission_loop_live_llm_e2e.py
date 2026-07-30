@@ -168,8 +168,26 @@ def _assert_loop_invariants(runtime, session_id: str, result) -> None:
         f"scope violations recorded: {[a.reason for a in scope_violations]}"
     )
 
-    # 3. On a finalized (completed/stopped) run: state grew and a report exists.
-    # A paused-for-approval run produces neither by design, so skip those checks.
+    # 3a. A paused run must still be a REAL pause, not merely a status string.
+    # Previously both substantive checks below were simply skipped for a pause, so a
+    # mission that paused on its very first decision passed this test having proven
+    # nothing at all. A pause is legitimate (a high-risk first action), but it must be
+    # evidenced: the loop records the gate reason as the stop_reason.
+    if result.status.value == "paused_for_approval":
+        assert state.stop_reason and "confirmation" in state.stop_reason.lower(), (
+            "a paused run must record the awaiting-confirmation stop_reason, got "
+            f"{state.stop_reason!r}"
+        )
+        # Say so loudly: this run did NOT exercise execute -> parse -> merge.
+        if not state.attempted_actions:
+            pytest.skip(
+                "mission paused on its first decision with no executed action: this "
+                "run proves nothing about the execute/parse/merge path. Re-run with a "
+                "target whose first useful action is low-risk, or set "
+                "autonomy_level=autonomous."
+            )
+
+    # 3b. On a finalized (completed/stopped) run: state grew and a report exists.
     if result.status.value in _FINALIZED:
         grew = len(state.services) + len(state.technologies) >= 1
         assert grew, (

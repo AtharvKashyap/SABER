@@ -68,12 +68,15 @@ _PACKAGE_BINARIES: dict[str, set[str]] = {
     "bloodhound.py": {"bloodhound-python"},
     "crackmapexec": {"crackmapexec", "cme"},
     "netexec": {"nxc", "netexec"},
+    # Kali prefixes every impacket entrypoint and drops the .py suffix, e.g.
+    # /usr/bin/impacket-GetADUsers. Verified against the built image — the wrapper
+    # originally invoked "GetADUsers.py", which does not exist on PATH.
     "impacket-scripts": {
-        "GetADUsers.py",
-        "GetNPUsers.py",
-        "GetUserSPNs.py",
-        "psexec.py",
-        "secretsdump.py",
+        "impacket-GetADUsers",
+        "impacket-GetNPUsers",
+        "impacket-GetUserSPNs",
+        "impacket-psexec",
+        "impacket-secretsdump",
     },
     "coreutils": _BASE_PROVIDED,
     # F7.2 additions.

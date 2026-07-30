@@ -1,7 +1,22 @@
-.PHONY: test unit e2e e2e-one llm-e2e smoke preflight launch final lab-up lab-down
+.PHONY: test unit e2e e2e-one llm-e2e smoke preflight launch final lab-up lab-down \
+	sandbox-build sandbox-verify
+
+SANDBOX_TAG ?= saber-sandbox:f7
 
 test:
 	pytest -q
+
+# Build context is the REPO ROOT, not docker/: the Dockerfile does
+# `COPY requirements.txt`, which lives at the root. A `docker/` context fails.
+sandbox-build:
+	docker build -f docker/Dockerfile.sandbox -t $(SANDBOX_TAG) .
+
+# Ground truth for the arsenal: asks the built image whether every executable a tool
+# CONTRACT invokes is actually on PATH. tests/tools_tests/test_sandbox_image_manifest.py
+# is only a static proxy for this — it reads the Dockerfile, it cannot run it.
+sandbox-verify:
+	SABER_RUN_DOCKER_E2E=1 SABER_SANDBOX_IMAGE=$(SANDBOX_TAG) \
+		pytest tests/e2e_tests/test_image_manifest.py -q --tb=short
 
 # Every offline suite. This deliberately lists all non-gated directories rather
 # than three of them: an earlier version ran only unit/agent_tests/

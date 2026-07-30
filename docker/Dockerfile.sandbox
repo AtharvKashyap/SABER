@@ -71,6 +71,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Reverse-engineering, binary-exploitation and capture tooling.
+# gcc + libc6-dev are here for the binary-exploit path: pwntools routinely compiles
+# helper stubs, and the gated vulnbin test builds a target to exploit. Without a
+# compiler that test could only skip, never verify.
 # These back the F5/F6 contracts (checksec, radare2, ghidra_headless, strings,
 # file, pwntools/gdb, tshark). Without them the decider can select those actions
 # and they die at runtime with "command not found".
@@ -82,6 +85,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     checksec \
     radare2 \
     gdb \
+    gcc \
+    libc6-dev \
     python3-pwntools \
     tshark \
     wireshark-common \

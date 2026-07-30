@@ -16,7 +16,7 @@ def test_get_ad_users_command():
         password_env_var="AD_PASSWORD",
     )
     assert cmd.command == [
-        "GetADUsers.py",
+        "impacket-GetADUsers",
         "corp.local/svc-recon:$AD_PASSWORD",
         "-all",
     ]
@@ -33,7 +33,7 @@ def test_get_ad_users_command_includes_dc_ip():
         dc_ip="10.0.0.1",
     )
     assert cmd.command == [
-        "GetADUsers.py",
+        "impacket-GetADUsers",
         "corp.local/svc-recon:$AD_PASSWORD",
         "-all",
         "-dc-ip",
@@ -50,7 +50,7 @@ def test_get_spns_command_without_request_tickets():
         username="svc-recon",
         request_tickets=False,
     )
-    assert cmd.command == ["GetUserSPNs.py", "corp.local/svc-recon:$AD_PASSWORD"]
+    assert cmd.command == ["impacket-GetUserSPNs", "corp.local/svc-recon:$AD_PASSWORD"]
     assert cmd.requires_explicit_authorization is False
 
 
@@ -65,7 +65,7 @@ def test_get_spns_command_with_request_tickets_requires_authorization():
         dc_ip="10.0.0.1",
     )
     assert cmd.command == [
-        "GetUserSPNs.py",
+        "impacket-GetUserSPNs",
         "corp.local/svc-recon:$AD_PASSWORD",
         "-request",
         "-dc-ip",
@@ -83,7 +83,7 @@ def test_get_asrep_candidates_command():
         username_file="/evidence/usernames.txt",
     )
     assert cmd.command == [
-        "GetNPUsers.py",
+        "impacket-GetNPUsers",
         "corp.local",
         "-usersfile",
         "/evidence/usernames.txt",
@@ -102,7 +102,7 @@ def test_smb_exec_check_command():
         username="administrator",
     )
     assert cmd.command == [
-        "psexec.py",
+        "impacket-psexec",
         "corp.local/administrator:$AD_PASSWORD",
         "@10.0.0.5",
         "whoami",

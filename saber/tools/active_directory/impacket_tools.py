@@ -349,7 +349,8 @@ class ImpacketToolsWrapper(BaseToolWrapper):
         password_env_var = str(kwargs.get("password_env_var", "AD_PASSWORD"))
         dc_ip = kwargs.get("dc_ip")
 
-        command = ["GetADUsers.py", self._identity(domain, username, password_env_var), "-all"]
+        identity = self._identity(domain, username, password_env_var)
+        command = ["impacket-GetADUsers", identity, "-all"]
         if dc_ip:
             command.extend(["-dc-ip", str(dc_ip)])
 
@@ -371,7 +372,7 @@ class ImpacketToolsWrapper(BaseToolWrapper):
         request_tickets = bool(kwargs.get("request_tickets", False))
         requires_explicit_authorization = bool(kwargs.get("requires_explicit_authorization", request_tickets))
 
-        command = ["GetUserSPNs.py", self._identity(domain, username, password_env_var)]
+        command = ["impacket-GetUserSPNs", self._identity(domain, username, password_env_var)]
         if request_tickets:
             command.append("-request")
         if dc_ip:
@@ -398,7 +399,7 @@ class ImpacketToolsWrapper(BaseToolWrapper):
         username_file = str(kwargs["username_file"])
         dc_ip = kwargs.get("dc_ip")
 
-        command = ["GetNPUsers.py", domain, "-usersfile", username_file, "-no-pass"]
+        command = ["impacket-GetNPUsers", domain, "-usersfile", username_file, "-no-pass"]
         if dc_ip:
             command.extend(["-dc-ip", str(dc_ip)])
 
@@ -422,7 +423,7 @@ class ImpacketToolsWrapper(BaseToolWrapper):
         password_env_var = str(kwargs.get("password_env_var", "AD_PASSWORD"))
 
         command = [
-            "psexec.py",
+            "impacket-psexec",
             self._identity(domain, username, password_env_var),
             f"@{target.tool_value()}",
             "whoami",

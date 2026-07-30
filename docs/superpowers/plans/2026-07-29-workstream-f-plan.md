@@ -1361,7 +1361,7 @@ Apply template. Specifics: action `capture`; args `interface` (req), `duration` 
 **Files:** Modify `docker/Dockerfile.sandbox`; Modify `scripts/install_kali_deps.sh` (keep in sync per the Dockerfile comment).
 
 - [ ] Add an apt layer: `radare2 gdb tshark checksec` (and `wireshark-common`; set `DEBIAN_FRONTEND` so tshark installs non-interactively). Add `python3-pwntools` (or `pip install --break-system-packages pwntools`). Add a download layer for `linpeas.sh`/`winpeas` into `/opt/peass`. Add `chisel` (download release binary). Document `ghidra` headless install (download + `analyzeHeadless` on PATH) and mark `mimikatz` N/A on Linux (wrapper still contracts it; image note only).
-- [ ] Rebuild locally: `docker build -f docker/Dockerfile.sandbox -t saber-sandbox:f7 docker/` → success.
+- [ ] Rebuild locally: `make sandbox-build` (i.e. `docker build -f docker/Dockerfile.sandbox -t saber-sandbox:f7 .`) → success. NOTE: the build context is the REPO ROOT, not `docker/` — the Dockerfile does `COPY requirements.txt`, which lives at the root, so a `docker/` context fails.
 - [ ] Run the gated manifest test against the new tag → PASS.
 - [ ] Commit `chore(sandbox): add radare2/gdb/tshark/pwntools/checksec/chisel/peass to image`. Publishing `ghcr.io/atharvkashyap/saber-sandbox:kali-*` is a release step outside unit CI.
 
