@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import time
 from dataclasses import replace
 from typing import Any
 
@@ -13,6 +14,34 @@ from saber.core.state_summary import StateSummary
 from saber.core.tool_catalog import ToolCatalog
 from saber.models.mission_state import AttemptedAction, MissionState
 from saber.models.target import Target, TargetType
+
+# Substrings that mark a model failure as worth retrying. Deliberately conservative:
+# a malformed-request or auth failure will not fix itself, so retrying it just burns
+# mission time.
+_TRANSIENT_MARKERS = (
+    "429",
+    "rate limit",
+    "rate_limit",
+    "too many requests",
+    "overloaded",
+    "timeout",
+    "timed out",
+    "temporarily unavailable",
+    "service unavailable",
+    "502",
+    "503",
+    "504",
+    "connection reset",
+    "connection aborted",
+    "remote end closed",
+)
+
+
+def _is_transient(error: Exception) -> bool:
+    """Return whether a model error is worth retrying."""
+
+    text = f"{type(error).__name__}: {error}".lower()
+    return any(marker in text for marker in _TRANSIENT_MARKERS)
 
 
 def _infer_target_type(value: str) -> TargetType:
@@ -40,13 +69,21 @@ class LlmDecider(NextActionDecider):
         tool_catalog: ToolCatalog,
         prompt_loader: PromptLoader | None = None,
         prompt_name: str = "next_action",
+        max_attempts: int = 3,
+        retry_backoff_seconds: float = 2.0,
     ) -> None:
-        """Initialize the LLM decider."""
+        """Initialize the LLM decider.
+
+        ``max_attempts``/``retry_backoff_seconds`` bound the retry of TRANSIENT model
+        failures (rate limits, 5xx, timeouts). Tests set the backoff to 0 to stay fast.
+        """
 
         self.llm_client = llm_client
         self.tool_catalog = tool_catalog
         self.prompt_loader = prompt_loader or PromptLoader()
         self.prompt_name = prompt_name
+        self.max_attempts = max(1, int(max_attempts))
+        self.retry_backoff_seconds = max(0.0, float(retry_backoff_seconds))
 
     def decide(self, state: MissionState, summary: StateSummary) -> ProposedAction:
         """Return the next action chosen by the LLM.
@@ -104,14 +141,28 @@ class LlmDecider(NextActionDecider):
             }
         user_prompt = json.dumps(payload, indent=2, sort_keys=True, default=str)
 
-        try:
-            raw = self.llm_client.complete_json(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                metadata={"component": "next_action_decider"},
-            )
-        except Exception as exc:  # noqa: BLE001 - decider must never crash the loop
-            return self._error(f"LLM error: {exc}")
+        # Retry TRANSIENT model failures before giving up. A decider ERROR fails the
+        # WHOLE mission (MissionLoop turns it into MissionRunStatus.FAILED), so a
+        # single 429 mid-run used to destroy an otherwise-healthy engagement. Observed
+        # live: two missions that passed individually both failed when the suite ran
+        # them back-to-back and the provider rate-limited one call.
+        last_error: Exception | None = None
+        for attempt in range(self.max_attempts):
+            try:
+                raw = self.llm_client.complete_json(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    metadata={"component": "next_action_decider", "attempt": attempt + 1},
+                )
+            except Exception as exc:  # noqa: BLE001 - decider must never crash the loop
+                last_error = exc
+                if attempt + 1 >= self.max_attempts or not _is_transient(exc):
+                    return self._error(f"LLM error: {exc}")
+                time.sleep(self.retry_backoff_seconds * (2**attempt))
+                continue
+            break
+        else:  # pragma: no cover - loop always breaks or returns above
+            return self._error(f"LLM error: {last_error}")
 
         return self._parse(raw)
 
