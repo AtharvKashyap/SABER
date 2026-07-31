@@ -9,9 +9,33 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
+from urllib.parse import urlsplit
 
 from saber.agents.deciders.base import ActionKind, ProposedAction, RiskLevel
 from saber.models.mission_state import AutonomyLevel, MissionState
+
+
+def _scope_host(value: str) -> str:
+    """Return the bare host/authority of a target value, lowercased.
+
+    Used ONLY to decide that two spellings name the same host ("http://dvwa:80/x" and
+    "dvwa"). Returns "" when no host can be determined, and the caller treats that as
+    "not in scope" — fail closed, never open.
+    """
+
+    text = (value or "").strip().lower()
+    if not text:
+        return ""
+    if "://" in text:
+        host = urlsplit(text).hostname or ""
+        return host
+    # Strip a userinfo prefix and any port/path suffix from a bare authority.
+    text = text.rsplit("@", 1)[-1]
+    text = text.split("/", 1)[0]
+    # Keep IPv6 literals intact; only strip a trailing :port from non-bracketed hosts.
+    if not text.startswith("[") and text.count(":") == 1:
+        text = text.split(":", 1)[0]
+    return text
 
 EXPLOIT_CLASS = {"exploitation", "post_exploit", "post_exploitation", "lateral_movement"}
 
@@ -88,4 +112,18 @@ class RiskGate:
         allowed = set(scope.target_values())
         if not allowed:
             return True
-        return target_value in allowed
+        if target_value in allowed:
+            return True
+        # Same host expressed differently must not be refused. Observed live: scope
+        # held "http://dvwa" while the decider proposed the bare host "dvwa" for a
+        # per-action target, and the exact string compare refused a perfectly in-scope
+        # action — so the mission executed nothing and MissionState stayed empty.
+        #
+        # Deliberately narrow: this compares the HOST/authority only, so a genuinely
+        # different host is still refused. It does NOT expand CIDR membership (an IP
+        # inside an in-scope network is still refused) — widening a network range is a
+        # real scope decision, not something to slip in through normalization.
+        normalized = _scope_host(target_value)
+        if not normalized:
+            return False
+        return any(_scope_host(candidate) == normalized for candidate in allowed)

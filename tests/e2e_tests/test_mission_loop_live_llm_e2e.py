@@ -103,6 +103,18 @@ def _build_live_runtime(tmp_path, *, profile: str, agent_mode: str = "llm"):
         require_approval=False,
         max_steps=MAX_STEPS,
         agent_mode=agent_mode,
+        # Honour the sandbox env vars. Constructing SaberConfig explicitly bypasses
+        # SaberConfig.from_env(), so these previously fell back to their DEFAULTS: the
+        # PUBLISHED ghcr image (which predates F7 and lacks radare2/pwntools/tshark/...)
+        # and network "host", where a lab hostname like "dvwa" does not resolve at all.
+        # The mission therefore executed tools that could not reach the target, and the
+        # "MissionState grew" assertion failed for an environmental reason that looked
+        # exactly like a product defect.
+        sandbox_backend=os.environ.get("SABER_SANDBOX_BACKEND", "docker"),
+        sandbox_image=os.environ.get(
+            "SABER_SANDBOX_IMAGE", "ghcr.io/atharvkashyap/saber-sandbox:kali-last-release"
+        ),
+        docker_network=os.environ.get("SABER_DOCKER_NETWORK", "host"),
         metadata={"source": "llm_e2e"},
     )
     return build_saber_runtime(config)
@@ -202,6 +214,58 @@ def _assert_loop_invariants(runtime, session_id: str, result) -> None:
         ), "expected a non-empty report artifact file on disk"
 
 
+def _reachable_from_sandbox(host: str, port: int) -> bool:
+    """Probe a host from INSIDE the sandbox network, as the tools will see it.
+
+    This matters more than it looks. These tests used to target ``127.0.0.1`` /
+    ``http://127.0.0.1``, but tools run inside a container, where loopback is the
+    CONTAINER's own loopback — nothing is served there. Verified against the built
+    image: 127.0.0.1:80 is closed, dvwa:80 is open. So the web acceptance test
+    asserted "MissionState grew" against a target the sandbox cannot reach, and could
+    never legitimately pass; it only ever reported a product failure that was really a
+    test-targeting bug.
+    """
+
+    import subprocess
+
+    try:
+        result = subprocess.run(  # noqa: S603 - fixed argv, test-only Docker probe
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--network",
+                os.getenv("SABER_DOCKER_NETWORK", "saber-lab"),
+                "--entrypoint",
+                "sh",
+                os.getenv("SABER_SANDBOX_IMAGE", "saber-sandbox:f7"),
+                "-lc",
+                f"nc -z -w 3 {host} {port}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
+def _require_lab_target(host: str, port: int, env_var: str) -> str:
+    """Return an operator-supplied target, else a reachable lab host, else skip."""
+
+    override = os.getenv(env_var, "").strip()
+    if override:
+        return override
+    if _reachable_from_sandbox(host, port):
+        return host
+    pytest.skip(
+        f"{host}:{port} is not reachable from inside the sandbox network. Run "
+        f"`make lab-up`, build the image (`make sandbox-build`), and set "
+        f"SABER_DOCKER_NETWORK=saber-lab — or point {env_var} at your own target."
+    )
+
+
 def _skip_if_model_disabled(runtime) -> None:
     """Skip (and close the runtime) when no live model is configured."""
 
@@ -218,9 +282,12 @@ def test_network_ip_loop_live(tmp_path) -> None:
 
     runtime = _build_live_runtime(tmp_path, profile="network")
     _skip_if_model_disabled(runtime)
+    # metasploitable is the lab's network target; loopback inside the sandbox serves
+    # nothing, so a scan of 127.0.0.1 could not grow state.
+    host = _require_lab_target("metasploitable", 80, "SABER_LAB_NETWORK_TARGET")
     try:
         session_id, result = _run_live_mission(
-            runtime, target=_build_target("127.0.0.1"), profile="network"
+            runtime, target=_build_target(host), profile="network"
         )
         _assert_loop_invariants(runtime, session_id, result)
     finally:
@@ -232,9 +299,11 @@ def test_web_url_loop_live(tmp_path) -> None:
 
     runtime = _build_live_runtime(tmp_path, profile="web")
     _skip_if_model_disabled(runtime)
+    host = _require_lab_target("dvwa", 80, "SABER_LAB_WEB_TARGET")
+    url = host if "://" in host else f"http://{host}"
     try:
         session_id, result = _run_live_mission(
-            runtime, target=_build_target("http://127.0.0.1"), profile="web"
+            runtime, target=_build_target(url), profile="web"
         )
         _assert_loop_invariants(runtime, session_id, result)
     finally:
