@@ -14,6 +14,26 @@ from urllib.parse import urlsplit
 from saber.agents.deciders.base import ActionKind, ProposedAction, RiskLevel
 from saber.models.mission_state import AutonomyLevel, MissionState
 
+# Arg names that can determine what the tool actually contacts. Wrappers prefer these
+# over the Target when present (whatweb/sqlmap/zap `url`, dnsrecon/subfinder/amass/
+# theharvester `domain`, masscan/snmpwalk `destination`), so they are part of the scope
+# boundary and must be checked. Deliberately an ALLOWLIST of known destination args:
+# adding a new host-bearing arg name to a contract means adding it here too.
+_HOST_BEARING_ARGS = frozenset(
+    {
+        "url",
+        "domain",
+        "destination",
+        "host",
+        "hostname",
+        "target_url",
+        "zap_url",
+        "rhosts",
+        "cidr",
+        "server",
+    }
+)
+
 
 def _scope_host(value: str) -> str:
     """Return the bare host/authority of a target value, lowercased.
@@ -102,6 +122,28 @@ class RiskGate:
         return ""
 
     @staticmethod
+    def _scope_allows_args(action: ProposedAction, allowed: set[str]) -> bool:
+        """Return whether every host-bearing ARG names an in-scope host.
+
+        Only args that can determine what gets contacted are inspected; a `pattern` or
+        `community` arg is not a destination. Anything unparseable is refused rather
+        than waved through.
+        """
+
+        allowed_hosts = {_scope_host(candidate) for candidate in allowed}
+        allowed_hosts.discard("")
+
+        for name, value in (action.args or {}).items():
+            if name not in _HOST_BEARING_ARGS:
+                continue
+            if not isinstance(value, str) or not value.strip():
+                continue
+            host = _scope_host(value)
+            if not host or host not in allowed_hosts:
+                return False
+        return True
+
+    @staticmethod
     def _scope_allows(state: MissionState, action: ProposedAction) -> bool:
         scope = state.scope
         if scope is None:
@@ -112,6 +154,15 @@ class RiskGate:
         allowed = set(scope.target_values())
         if not allowed:
             return True
+        # Scope-check HOST-BEARING ARGS as well as the target. Several wrappers prefer
+        # an arg over the Target when building the command — whatweb/sqlmap/zap take
+        # `url`, dnsrecon/subfinder/amass/theharvester take `domain` — so checking only
+        # action.target left scope BYPASSABLE: a decider could name an in-scope target
+        # to pass this gate and pass `url=http://evil.example.com` in args, and the
+        # wrapper would happily scan the out-of-scope host. Fails closed.
+        if not RiskGate._scope_allows_args(action, allowed):
+            return False
+
         if target_value in allowed:
             return True
         # Same host expressed differently must not be refused. Observed live: scope

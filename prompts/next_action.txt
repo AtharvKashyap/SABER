@@ -44,6 +44,12 @@ Hard rules:
   pivot: after recon reveals a second host or a specific service, name it here
   to direct the next tool at it instead of re-scanning the seed target. It must
   still be inside scope — out-of-scope targets are refused.
+- Name hosts EXACTLY as they appear in scope. Do NOT substitute an IP address you
+  learned from a scan for a scoped hostname (or vice versa): scope is matched on the
+  host you name, and "http://10.0.0.5" is not the scoped name "dvwa" even when DNS
+  resolves one to the other. The same applies to host-bearing args such as "url" and
+  "domain" — those are scope-checked too, so an out-of-scope value there is refused
+  exactly like an out-of-scope target.
 - When the objective is met or no safe useful action remains, return kind "report".
 
 Return ONE strict JSON object, no Markdown, with this schema:

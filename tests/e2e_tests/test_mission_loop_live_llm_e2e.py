@@ -251,16 +251,24 @@ def _reachable_from_sandbox(host: str, port: int) -> bool:
     return result.returncode == 0
 
 
-def _require_lab_target(host: str, port: int, env_var: str) -> str:
-    """Return an operator-supplied target, else a reachable lab host, else skip."""
+def _require_lab_target(candidates: list[tuple[str, int]], env_var: str) -> str:
+    """Return an operator-supplied target, else the first reachable lab host, else skip.
+
+    Takes a candidate LIST because lab containers are not equally reliable:
+    metasploitable is a heavy image that crash-loops on some hosts, so depending on it
+    alone made the test skip for an unrelated reason. dvwa/juiceshop come up reliably
+    and are perfectly good network-scan targets.
+    """
 
     override = os.getenv(env_var, "").strip()
     if override:
         return override
-    if _reachable_from_sandbox(host, port):
-        return host
+    for host, port in candidates:
+        if _reachable_from_sandbox(host, port):
+            return host
+    tried = ", ".join(f"{host}:{port}" for host, port in candidates)
     pytest.skip(
-        f"{host}:{port} is not reachable from inside the sandbox network. Run "
+        f"no lab target reachable from inside the sandbox network (tried {tried}). Run "
         f"`make lab-up`, build the image (`make sandbox-build`), and set "
         f"SABER_DOCKER_NETWORK=saber-lab — or point {env_var} at your own target."
     )
@@ -284,7 +292,10 @@ def test_network_ip_loop_live(tmp_path) -> None:
     _skip_if_model_disabled(runtime)
     # metasploitable is the lab's network target; loopback inside the sandbox serves
     # nothing, so a scan of 127.0.0.1 could not grow state.
-    host = _require_lab_target("metasploitable", 80, "SABER_LAB_NETWORK_TARGET")
+    host = _require_lab_target(
+        [("metasploitable", 80), ("dvwa", 80), ("juiceshop", 3000)],
+        "SABER_LAB_NETWORK_TARGET",
+    )
     try:
         session_id, result = _run_live_mission(
             runtime, target=_build_target(host), profile="network"
@@ -299,7 +310,7 @@ def test_web_url_loop_live(tmp_path) -> None:
 
     runtime = _build_live_runtime(tmp_path, profile="web")
     _skip_if_model_disabled(runtime)
-    host = _require_lab_target("dvwa", 80, "SABER_LAB_WEB_TARGET")
+    host = _require_lab_target([("dvwa", 80), ("juiceshop", 3000)], "SABER_LAB_WEB_TARGET")
     url = host if "://" in host else f"http://{host}"
     try:
         session_id, result = _run_live_mission(
