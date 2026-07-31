@@ -124,7 +124,16 @@ class LlmDecider(NextActionDecider):
         system_prompt = self._load_prompt()
         payload: dict[str, Any] = {
             "summary": summary.to_dict(),
-            "tool_catalog": self.tool_catalog.to_dict(),
+            # COMPACT catalog text, not the full JSON dump. The JSON form of 36 tools /
+            # 105 actions is ~122KB (~30.6k tokens) and was sent on EVERY decision,
+            # which blew a provider per-request prompt limit outright ("HTTP 402:
+            # Prompt tokens limit exceeded: 37223 > 30000") and made each step slow and
+            # expensive while drowning the state summary in boilerplate. The prompt text
+            # form carries the same choosable information at ~10.6k tokens.
+            #
+            # This changes only what the MODEL sees. `_validate_args` still validates
+            # against the full ToolCatalog objects, so arg checking is unaffected.
+            "tool_catalog": self.tool_catalog.to_prompt_text(),
             "autonomy_level": state.autonomy_level.value,
             "scope": state.scope.to_agent_context() if state.scope else None,
         }
