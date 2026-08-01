@@ -20,6 +20,128 @@
 | Info | {{ severity_counts.info }} |
 | Unknown | {{ severity_counts.unknown }} |
 
+{% if methodology %}
+## Methodology (PTES)
+
+| Phase | Reached | Completed | Evidence |
+|---|:---:|:---:|---|
+{% for phase in methodology %}
+| {{ phase.phase }} | {{ "yes" if phase.reached else "no" }} | {{ "yes" if phase.completed else "no" }} | {{ phase.evidence or "-" }} |
+{% endfor %}
+{% endif %}
+
+{% if attack_chain %}
+## Attack Chain
+
+How access was obtained, in order:
+
+{% for step in attack_chain %}
+{{ loop.index }}. **{{ step.step }}** — {{ step.detail }}
+{% endfor %}
+{% endif %}
+
+{% if hosts or services or technologies %}
+## Reconnaissance Results
+
+{% if hosts %}
+### Hosts ({{ hosts | length }})
+
+| Address | Hostnames | OS |
+|---|---|---|
+{% for host in hosts %}
+| {{ host.address }} | {{ (host.hostnames or []) | join(", ") or "-" }} | {{ host.os or "-" }} |
+{% endfor %}
+{% endif %}
+
+{% if services %}
+### Services ({{ services | length }})
+
+| Host | Port | Protocol | Service | Product | Version |
+|---|---:|---|---|---|---|
+{% for service in services %}
+| {{ service.host }} | {{ service.port }} | {{ service.protocol }} | {{ service.service or "-" }} | {{ service.product or "-" }} | {{ service.version or "-" }} |
+{% endfor %}
+{% endif %}
+
+{% if technologies %}
+### Technologies ({{ technologies | length }})
+
+| Host | Technology | Version |
+|---|---|---|
+{% for technology in technologies %}
+| {{ technology.host }} | {{ technology.name }} | {{ technology.version or "-" }} |
+{% endfor %}
+{% endif %}
+{% endif %}
+
+{% if access.sessions or access.credentials or access.accounts or access.shares %}
+## Access Obtained
+
+{% if access.sessions %}
+### Sessions ({{ access.sessions | length }})
+
+| Host | Kind | User | Privilege |
+|---|---|---|---|
+{% for session in access.sessions %}
+| {{ session.host }} | {{ session.kind }} | {{ session.user or "-" }} | {{ session.privilege }} |
+{% endfor %}
+{% endif %}
+
+{% if access.credentials %}
+### Credentials ({{ access.credentials | length }})
+
+Secrets are redacted. "Validated" means the credential was confirmed working.
+
+| Username | Kind | Host | Service | Validated |
+|---|---|---|---|:---:|
+{% for credential in access.credentials %}
+| {{ credential.username }} | {{ credential.kind }} | {{ credential.host or "-" }} | {{ credential.service or "-" }} | {{ "yes" if credential.validated else "no" }} |
+{% endfor %}
+{% endif %}
+
+{% if access.accounts %}
+### Accounts ({{ access.accounts | length }})
+
+| Username | Domain | Source |
+|---|---|---|
+{% for account in access.accounts %}
+| {{ account.username }} | {{ account.domain or "-" }} | {{ account.source or "-" }} |
+{% endfor %}
+{% endif %}
+
+{% if access.shares %}
+### Shares ({{ access.shares | length }})
+
+| Host | Share | Type | Access |
+|---|---|---|---|
+{% for share in access.shares %}
+| {{ share.host }} | {{ share.name }} | {{ share.type }} | {{ share.access }} |
+{% endfor %}
+{% endif %}
+{% endif %}
+
+{% if collected.flags or collected.loot %}
+## Material Collected
+
+{% if collected.flags %}
+### Flags / Proof Tokens ({{ collected.flags | length }})
+
+{% for flag in collected.flags %}
+- `{{ flag.value }}`{% if flag.location %} from {{ flag.location }}{% endif %}
+{% endfor %}
+{% endif %}
+
+{% if collected.loot %}
+### Loot ({{ collected.loot | length }})
+
+| Description | Kind | Path | Host |
+|---|---|---|---|
+{% for item in collected.loot %}
+| {{ item.description }} | {{ item.kind }} | {{ item.path or "-" }} | {{ item.host or "-" }} |
+{% endfor %}
+{% endif %}
+{% endif %}
+
 ## Findings
 
 {% if findings %}

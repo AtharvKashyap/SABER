@@ -37,12 +37,28 @@ class PdfExporter:
         findings = sorted(document.findings, key=lambda finding: SEVERITY_ORDER[finding.severity])
         priority_findings = self._priority_findings(document)
 
+        # Pass the MissionState context through. Without it the human-readable report
+        # rendered only findings + a raw tool-call timeline, so a mission that had
+        # discovered hosts, services and technologies still printed "No reportable
+        # findings" with an all-zero severity table — while the methodology, attack
+        # chain and recon inventory sat unused in document.metadata. The report is the
+        # deliverable a client reads; it has to show what the mission actually learned.
+        mission_state = (document.metadata or {}).get("mission_state") or {}
+
         return template.render(
             document=document,
             severity_counts=document.severity_counts(),
             findings=findings,
             observations=document.observations,
             priority_findings=priority_findings,
+            mission_state=mission_state,
+            methodology=mission_state.get("methodology") or [],
+            attack_chain=mission_state.get("attack_chain") or [],
+            hosts=mission_state.get("hosts") or [],
+            services=mission_state.get("services") or [],
+            technologies=mission_state.get("technologies") or [],
+            access=mission_state.get("access") or {},
+            collected=mission_state.get("collected") or {},
         ).strip() + "\n"
 
     def export_markdown(
