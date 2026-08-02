@@ -548,7 +548,7 @@ class TestWhatWebWrapper:
             json_output="whatweb.json",
         )
 
-        assert command.command == ["whatweb", "-a", "2", "https://example.com/", "--log-json", "whatweb.json"]
+        assert command.command == ["whatweb", "--colour=never", "-a", "2", "https://example.com/", "--log-json", "whatweb.json"]
         assert command.action == "fingerprint"
 
     def test_aggressive_delegates_to_sandbox(self) -> None:
@@ -559,7 +559,7 @@ class TestWhatWebWrapper:
 
         wrapper.aggressive(target=make_url_target(), session=make_session())
 
-        assert sandbox.requests[0].command == ["whatweb", "-a", "3", "https://example.com/"]
+        assert sandbox.requests[0].command == ["whatweb", "--colour=never", "-a", "3", "https://example.com/"]
         assert sandbox.requests[0].tool_request.action == "aggressive"
 
     def test_list_scan_command(self) -> None:
@@ -568,7 +568,7 @@ class TestWhatWebWrapper:
         wrapper = WhatWebWrapper(FakeSandbox())
         command = wrapper.build_command(action="list_scan", input_file="urls.txt", aggression=1)
 
-        assert command.command == ["whatweb", "-a", "1", "-i", "urls.txt"]
+        assert command.command == ["whatweb", "--colour=never", "-a", "1", "-i", "urls.txt"]
 
     def test_missing_input_file_raises(self) -> None:
         """Missing input file should raise."""

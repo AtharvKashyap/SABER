@@ -122,16 +122,48 @@ class RiskGate:
         return ""
 
     @staticmethod
-    def _scope_allows_args(action: ProposedAction, allowed: set[str]) -> bool:
+    def _allowed_hosts(state: MissionState, allowed: set[str]) -> set[str]:
+        """Return every host spelling that counts as in scope.
+
+        That is the declared scope entries, plus the ADDRESS of any host this
+        mission's own recon tied to an in-scope hostname.
+
+        Without the second part, recon poisons everything after it: scope declares
+        `dvwa`, nmap resolves it to 172.21.0.4 and records the service under the
+        address, and the very next action — built as `url=http://172.21.0.4:80` —
+        is refused as out of scope. Observed live against the bundled lab, where
+        it killed the mission one step in.
+
+        This stays narrow on purpose. An address qualifies only when a KnownHost in
+        THIS mission's state carries both that address and an in-scope hostname, so
+        it is the same machine under a name the operator already authorized. A host
+        with no in-scope hostname, an address never seen in state, and a neighbour
+        in the same subnet are all still refused; CIDR membership is still not
+        expanded. Scope remains a hard wall.
+        """
+
+        allowed_hosts = {_scope_host(candidate) for candidate in allowed}
+        allowed_hosts.discard("")
+
+        for host in state.hosts:
+            names = {_scope_host(name) for name in (host.hostnames or [])}
+            names.discard("")
+            if not names & allowed_hosts:
+                continue
+            address = _scope_host(host.address)
+            if address:
+                allowed_hosts.add(address)
+
+        return allowed_hosts
+
+    @staticmethod
+    def _scope_allows_args(action: ProposedAction, allowed_hosts: set[str]) -> bool:
         """Return whether every host-bearing ARG names an in-scope host.
 
         Only args that can determine what gets contacted are inspected; a `pattern` or
         `community` arg is not a destination. Anything unparseable is refused rather
         than waved through.
         """
-
-        allowed_hosts = {_scope_host(candidate) for candidate in allowed}
-        allowed_hosts.discard("")
 
         for name, value in (action.args or {}).items():
             if name not in _HOST_BEARING_ARGS:
@@ -154,13 +186,14 @@ class RiskGate:
         allowed = set(scope.target_values())
         if not allowed:
             return True
+        allowed_hosts = RiskGate._allowed_hosts(state, allowed)
         # Scope-check HOST-BEARING ARGS as well as the target. Several wrappers prefer
         # an arg over the Target when building the command — whatweb/sqlmap/zap take
         # `url`, dnsrecon/subfinder/amass/theharvester take `domain` — so checking only
         # action.target left scope BYPASSABLE: a decider could name an in-scope target
         # to pass this gate and pass `url=http://evil.example.com` in args, and the
         # wrapper would happily scan the out-of-scope host. Fails closed.
-        if not RiskGate._scope_allows_args(action, allowed):
+        if not RiskGate._scope_allows_args(action, allowed_hosts):
             return False
 
         if target_value in allowed:
@@ -177,4 +210,4 @@ class RiskGate:
         normalized = _scope_host(target_value)
         if not normalized:
             return False
-        return any(_scope_host(candidate) == normalized for candidate in allowed)
+        return normalized in allowed_hosts

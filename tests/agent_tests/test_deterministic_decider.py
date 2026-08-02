@@ -103,5 +103,9 @@ def test_rung4_fires_searchsploit_for_versioned_service():
         ],
     )
     action = _decide(state)
-    assert (action.tool_name, action.tool_action) == ("searchsploit", "lookup")
+    # exploit_search is what SearchSploit actually declares, and it takes a
+    # free-form `query`. The ladder previously proposed a `lookup` action with
+    # product/version, which the wrapper rejected outright.
+    assert (action.tool_name, action.tool_action) == ("searchsploit", "exploit_search")
+    assert action.args == {"query": "Apache 2.4.49"}
     assert action.metadata["category"] == "exploitation"

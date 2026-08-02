@@ -79,12 +79,16 @@ class DeterministicDecider(NextActionDecider):
         # 4. Exploit intelligence for versioned services.
         if not state.metadata.get("exploit_intel_done"):
             svc = next((s for s in state.services if s.product and s.version), None)
-            if svc is not None and ("searchsploit", "lookup") not in attempted:
+            if svc is not None and ("searchsploit", "exploit_search") not in attempted:
+                # SearchSploit declares exploit_search/cve_search/copy_exploit and takes
+                # a free-form `query`. This rung used to propose `lookup` with
+                # product/version, so it raised "Unsupported SearchSploit action" every
+                # time it was reached and the mission never got exploit intel.
                 return ProposedAction(
                     kind=ActionKind.TOOL,
                     tool_name="searchsploit",
-                    tool_action="lookup",
-                    args={"product": svc.product, "version": svc.version},
+                    tool_action="exploit_search",
+                    args={"query": f"{svc.product} {svc.version}".strip()},
                     agent_name="exploit_agent",
                     objective=f"Look up known exploits for {svc.product} {svc.version}",
                     risk=RiskLevel.LOW,

@@ -21,7 +21,31 @@ _IGNORED_PLUGINS = {
     "HTTPStatus",
     "HTTPServer",
     "RedirectLocation",
+    # Response attributes, not stack components. These reached MissionState as
+    # "technologies" once bare and versioned plugin names were both parsed, which
+    # put rows like "PasswordField 1.0" in the client report.
+    "Allow",
+    "Cookies",
+    "PasswordField",
+    "UncommonHeaders",
+    "Meta-Refresh-Redirect",
 }
+
+# WhatWeb colours stdout by default, and the colouring is interleaved with the
+# data: "\x1b[1mApache\x1b[0m[\x1b[1m\x1b[32m2.4.25\x1b[0m]". Left in, the plugin
+# name parses as "0m" and the version keeps its escapes, and both land in
+# MissionState and the client report. The wrapper now passes --no-colour, but
+# stripping here keeps already-captured evidence parseable too.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+# A plugin in a stdout line: a name at a comma or whitespace boundary (WhatWeb
+# uses both), with zero or more
+# bracket groups. Zero matters — "PHP" and "DVWA" carry no version and were
+# dropped entirely by a pattern that required a trailing "[".
+_PLUGIN_RE = re.compile(r"(?:^|[,\s])\s*([A-Za-z][A-Za-z0-9_\-]*)((?:\[[^\]]*\])*)")
+
+# The "[302 Found]" status block that follows the URL on every stdout line.
+_STATUS_RE = re.compile(r"^\[[^\]]*\]\s*")
 
 
 class WhatWebParser(BaseParser):
@@ -90,7 +114,7 @@ class WhatWebParser(BaseParser):
         observations: list[ParsedObservation] = []
 
         for raw_line in text.splitlines():
-            line = raw_line.strip()
+            line = _ANSI_RE.sub("", raw_line).strip()
             if not line:
                 continue
 
@@ -101,9 +125,12 @@ class WhatWebParser(BaseParser):
             if not host:
                 continue
 
+            # Plugins follow the URL and its status block; scanning the whole line
+            # would read the URL's own scheme as a plugin name.
+            remainder = _STATUS_RE.sub("", line[len(url):].lstrip())
+
             server = self._extract_bracket_value(line, r"HTTPServer\[([^\]]+)\]")
-            for name in self._stdout_technology_names(line):
-                version = self._extract_bracket_value(line, rf"{re.escape(name)}\[([^\]]+)\]")
+            for name, version in self._stdout_plugins(remainder):
                 observations.append(
                     self._technology(host, url, name, version)
                 )
@@ -256,8 +283,26 @@ class WhatWebParser(BaseParser):
         return match.group(1) if match else None
 
     @staticmethod
-    def _stdout_technology_names(line: str) -> list[str]:
-        """Extract technology plugin names from a stdout line."""
+    def _stdout_plugins(remainder: str) -> list[tuple[str, str | None]]:
+        """Extract (plugin name, version) pairs from the plugin part of a line.
 
-        names = re.findall(r"([A-Za-z0-9_\-]+)\[", line)
-        return sorted({name for name in names if name not in _IGNORED_PLUGINS})
+        The version is the first bracket group, when there is one: WhatWeb writes
+        ``Apache[2.4.25]`` but also bare ``PHP`` and multi-group
+        ``HTTPServer[Debian Linux][Apache/2.4.25 (Debian)]``.
+        """
+
+        found: dict[str, str | None] = {}
+
+        for name, groups in _PLUGIN_RE.findall(remainder):
+            if name in _IGNORED_PLUGINS:
+                continue
+            version = None
+            if groups:
+                first = groups.split("]", 1)[0].lstrip("[").strip()
+                version = first or None
+            # Keep the first spelling seen, but let a later line supply a version
+            # the earlier one lacked.
+            if name not in found or (found[name] is None and version):
+                found[name] = version
+
+        return sorted(found.items())
