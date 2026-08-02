@@ -1,0 +1,130 @@
+{% extends "base.html.j2" %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Scoped automated breach, exploitation &amp; reporting</p>
+    <h1 class="page-title">Launch a mission</h1>
+    <p class="page-note">
+      SABER runs no pre-built plan. It keeps a live picture of what it knows about the
+      target and, each iteration, picks the single highest-value next action, checks it
+      against scope, runs it in a Kali sandbox, and folds the result back into what it knows.
+    </p>
+  </div>
+</div>
+
+<section class="panel">
+  <form id="mission-start-form" data-endpoint="/sessions/run" novalidate>
+    <div class="form-grid">
+      <div class="field field-wide">
+        <label for="target">Target</label>
+        <input type="text" id="target" name="target" required
+               placeholder="10.10.14.7 · dvwa · http://juice.local:3000"
+               autocomplete="off" spellcheck="false">
+        <span class="field-hint">
+          An IP, hostname, CIDR, or URL. This becomes the mission scope — anything outside
+          it is refused, not queued for approval.
+        </span>
+      </div>
+
+      <div class="field">
+        <label for="profile">Profile</label>
+        <select id="profile" name="profile">
+          {% for name in profiles %}
+          <option value="{{ name }}" {% if name == "recon" %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+        <span class="field-hint">Which capability agents are available to the loop.</span>
+      </div>
+
+      <div class="field">
+        <label for="strategy">Strategy</label>
+        <select id="strategy" name="strategy">
+          <option value="auto" selected>auto</option>
+          <option value="network">network</option>
+          <option value="web">web</option>
+          <option value="ctf">ctf</option>
+        </select>
+        <span class="field-hint">auto infers from the target. Sets the objective and when the loop stops.</span>
+      </div>
+
+      <div class="field">
+        <label for="agent_mode">Decision mode</label>
+        <select id="agent_mode" name="agent_mode">
+          <option value="deterministic" selected>deterministic</option>
+          <option value="llm">llm</option>
+        </select>
+        <span class="field-hint">
+          Deterministic needs no model and is repeatable. LLM reasons about results and
+          chains attacks, and needs <code class="mono">SABER_MODEL</code> configured.
+        </span>
+      </div>
+
+      <div class="field">
+        <label for="max_steps">Step budget</label>
+        <input type="number" id="max_steps" name="max_steps" value="20" min="1" max="200">
+        <span class="field-hint">Hard ceiling on loop iterations.</span>
+      </div>
+
+      <div class="field field-wide">
+        <label for="objective">Objective</label>
+        <textarea id="objective" name="objective"
+                  placeholder="Enumerate the host, identify the web stack, and confirm any injection point with evidence."></textarea>
+        <span class="field-hint">Optional. Left blank, the strategy supplies one.</span>
+      </div>
+
+      <div class="field field-wide">
+        <label for="mission_name">Mission name</label>
+        <input type="text" id="mission_name" name="mission_name"
+               placeholder="Acme external — August retest" autocomplete="off">
+        <span class="field-hint">Optional. Shows on the report and in the mission list.</span>
+      </div>
+    </div>
+
+    <div class="form-foot">
+      <div class="check-row">
+        <label class="check">
+          <input type="checkbox" id="require_approval" name="require_approval">
+          Pause on high-risk actions
+        </label>
+        <label class="check">
+          <input type="checkbox" id="dry_run" name="dry_run">
+          Dry run — plan only, execute nothing
+        </label>
+        <label class="check">
+          <input type="checkbox" id="lab" name="lab">
+          Lab target
+        </label>
+      </div>
+      <button class="btn" type="submit" id="mission-start-button">Start mission</button>
+      <span class="field-hint" id="mission-start-status" role="status" aria-live="polite"></span>
+    </div>
+  </form>
+</section>
+
+<div class="notice notice-signal gap-top">
+  Run SABER only against systems you are authorized in writing to test.
+  Scope is enforced in code, but authorization is yours to hold.
+</div>
+
+{% include "partials/running.html.j2" %}
+
+<div class="grid grid-2 gap-top">
+  <section class="panel">
+    <div class="panel-head">
+      <h2 class="panel-title">Recent missions</h2>
+      <a href="/ui/sessions">All missions</a>
+    </div>
+    {% include "partials/session_table.html.j2" %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2 class="panel-title">Findings by severity</h2>
+      <a href="/ui/findings">All findings</a>
+    </div>
+    {% include "partials/severity.html.j2" %}
+  </section>
+</div>
+
+{% endblock %}

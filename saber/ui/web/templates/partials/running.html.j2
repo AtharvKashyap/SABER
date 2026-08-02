@@ -1,0 +1,29 @@
+{# Swapped whole by HTMX (hx-swap="outerHTML"), so this partial owns its wrapper. #}
+<section class="panel gap-top" hx-get="/ui/partials/running" hx-trigger="every 4s" hx-swap="outerHTML">
+  <div class="panel-head">
+    <h2 class="panel-title">In flight</h2>
+    <span class="badge badge-running"><span class="dot"></span>live</span>
+  </div>
+  {% if running %}
+  <div class="table-wrap">
+    <table class="data">
+      <thead>
+        <tr><th>Mission</th><th>Target</th><th>Status</th><th>Steps</th><th></th></tr>
+      </thead>
+      <tbody>
+      {% for row in running %}
+        <tr>
+          <td class="wrap">{{ row.mission_name or "Untitled mission" }}</td>
+          <td class="num">{{ row.target or "—" }}</td>
+          <td>{{ badge(row.status) }}</td>
+          <td class="num">{{ row.step_count }}</td>
+          <td><a class="btn btn-ghost btn-sm" href="/ui/sessions/{{ row.session_id }}">Watch</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">No mission is running right now.</p>
+  {% endif %}
+</section>

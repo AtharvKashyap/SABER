@@ -1,0 +1,37 @@
+{% if findings %}
+<div class="table-wrap">
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Severity</th>
+        <th>Finding</th>
+        <th>Tool</th>
+        {% if show_mission %}<th>Mission</th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in findings %}
+      <tr>
+        <td>{{ badge(row.severity) }}</td>
+        <td class="wrap">
+          {{ row.title }}
+          {% if row.description %}
+          <div class="field-hint">{{ row.description | truncate(180) }}</div>
+          {% endif %}
+        </td>
+        <td class="num">{{ row.source_tool or "—" }}</td>
+        {% if show_mission %}
+        <td class="num"><a href="/ui/sessions/{{ row.session_id }}">{{ row.session_id }}</a></td>
+        {% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty">
+  <strong>No findings</strong>
+  SABER records a finding only when a parsed result supports one. An empty list means the
+  mission has not yet confirmed a weakness — check the evidence for what it did see.
+</div>
+{% endif %}

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }} · SABER</title>
+  <link rel="stylesheet" href="/static/saber.css">
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/saber.js" defer></script>
+</head>
+<body>
+<div class="shell">
+  <nav class="rail" aria-label="Primary">
+    <a class="brand" href="/ui">
+      <span class="brand-mark">SABER</span>
+      <span class="brand-sub">Operator console</span>
+    </a>
+
+    <div class="rail-group">
+      <p class="rail-label">Engagement</p>
+      <a class="rail-link" href="/ui" {% if active == "dashboard" %}aria-current="page"{% endif %}>
+        Launch a mission
+      </a>
+      <a class="rail-link" href="/ui/sessions" {% if active == "sessions" %}aria-current="page"{% endif %}>
+        Missions <span class="rail-count">{{ nav.sessions }}</span>
+      </a>
+      <a class="rail-link" href="/ui/findings" {% if active == "findings" %}aria-current="page"{% endif %}>
+        Findings <span class="rail-count">{{ nav.findings }}</span>
+      </a>
+      <a class="rail-link" href="/ui/reports" {% if active == "reports" %}aria-current="page"{% endif %}>
+        Reports <span class="rail-count">{{ nav.reports }}</span>
+      </a>
+    </div>
+
+    <div class="rail-group">
+      <p class="rail-label">Reference</p>
+      <a class="rail-link" href="/docs">API reference</a>
+      <a class="rail-link" href="/health">Service health</a>
+    </div>
+
+    <div class="rail-foot">
+      <span>Authorized assessments only.</span>
+      <span>Every action is scope-checked before it runs.</span>
+    </div>
+  </nav>
+
+  <main class="main">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>

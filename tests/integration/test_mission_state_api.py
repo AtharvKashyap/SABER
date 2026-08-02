@@ -92,6 +92,36 @@ def test_mission_detail_page_includes_live_state_panel(tmp_path) -> None:
     assert resp.status_code == 200
     text = resp.text
     assert 'id="mission-state-panel"' in text
-    # Panel polls the live state endpoint with the page's session id.
-    assert '/api/sessions/" + encodeURIComponent(sessionId) + "/state' in text
-    assert 'const sessionId = "s1";' in text
+    # The panel is bound to this session's live state, and refreshes itself from
+    # the server rather than being a static render of the page load.
+    assert "/api/sessions/s1/state" in text
+    assert "/ui/sessions/s1/state-panel" in text
+
+
+def test_state_panel_partial_renders_standalone(tmp_path) -> None:
+    """The polled partial renders on its own so HTMX can swap it in."""
+
+    from saber.models.session import MissionSession
+    from saber.storage.connection import StorageConnection
+    from saber.storage.session_store import SessionStore
+    from saber.ui.web.app import create_app
+
+    db = tmp_path / "saber.db"
+    conn = StorageConnection(db)
+    conn.initialize()
+    SessionStore(conn).create_session(MissionSession(session_id="s1", mission_name="m"))
+    conn.close()
+
+    app = create_app(
+        db_path=str(db),
+        reports_dir=tmp_path / "reports",
+        evidence_dir=tmp_path / "evidence",
+        require_auth=False,
+    )
+    client = TestClient(app)
+
+    resp = client.get("/ui/sessions/s1/state-panel")
+
+    assert resp.status_code == 200
+    assert 'id="mission-state-panel"' in resp.text
+    assert client.get("/ui/sessions/nope/state-panel").status_code == 404

@@ -1,0 +1,21 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Engagement history</p>
+    <h1 class="page-title">Missions</h1>
+    <p class="page-note">Every mission SABER has run against this database, newest first.</p>
+  </div>
+  <a class="btn" href="/ui">Start a mission</a>
+</div>
+
+<div class="stat-row">
+  {% for label, value in stats %}
+  <div class="stat"><div class="stat-value">{{ value }}</div><span class="stat-label">{{ label }}</span></div>
+  {% endfor %}
+</div>
+
+<section class="panel">
+  {% include "partials/session_table.html.j2" %}
+</section>
+{% endblock %}

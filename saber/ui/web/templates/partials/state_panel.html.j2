@@ -1,0 +1,88 @@
+{# Live working memory. Swapped whole by HTMX, so this partial owns its wrapper.
+   Polling stops once the mission reaches a terminal state. #}
+<section class="panel" id="mission-state-panel"
+         data-state-url="/api/sessions/{{ session.session_id }}/state"
+         hx-get="/ui/sessions/{{ session.session_id }}/state-panel"
+         {% if live %}hx-trigger="every 3s"{% endif %}
+         hx-swap="outerHTML">
+
+  <div class="panel-head">
+    <h2 class="panel-title">What it knows</h2>
+    {% if live %}
+    <span class="badge badge-running"><span class="dot"></span>live</span>
+    {% else %}
+    <span class="badge">final</span>
+    {% endif %}
+  </div>
+
+  {% if state %}
+  <ul class="phases" aria-label="PTES phase progress">
+    {% for phase in phases %}
+    <li class="phase {% if phase.current %}is-current{% elif phase.done %}is-done{% endif %}">
+      {{ phase.label }}
+    </li>
+    {% endfor %}
+  </ul>
+
+  <div class="ledger gap-top">
+    {% for key, value in ledger %}
+    <div class="ledger-row {% if not value %}is-zero{% endif %}">
+      <span class="ledger-key">{{ key }}</span>
+      <span class="ledger-val">{{ value }}</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if state.flags %}
+  <div class="subhead"><h3>Flags captured</h3></div>
+  {% for flag in state.flags %}
+  <div class="notice notice-verified">
+    <span class="mono">{{ flag.value }}</span>
+    {% if flag.location %}<div class="field-hint">from {{ flag.location }}</div>{% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if state.credentials %}
+  <div class="subhead"><h3>Credentials</h3><span class="field-hint">secrets redacted</span></div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>User</th><th>Host</th><th>Works</th></tr></thead>
+      <tbody>
+      {% for cred in state.credentials %}
+        <tr>
+          <td class="num">{{ cred.username }}</td>
+          <td class="num">{{ cred.host or "—" }}</td>
+          <td>{% if cred.validated %}<span class="badge badge-verified">yes</span>{% else %}<span class="badge">untested</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if state.services %}
+  <div class="subhead"><h3>Services</h3></div>
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr><th>Host</th><th>Port</th><th>Service</th></tr></thead>
+      <tbody>
+      {% for svc in state.services %}
+        <tr>
+          <td class="num">{{ svc.host }}</td>
+          <td class="num">{{ svc.port }}/{{ svc.protocol }}</td>
+          <td class="num">{{ svc.product or svc.service or "—" }} {{ svc.version or "" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="empty">
+    <strong>Nothing yet</strong>
+    Working memory appears the moment the first action returns a result the parser understands.
+  </div>
+  {% endif %}
+</section>

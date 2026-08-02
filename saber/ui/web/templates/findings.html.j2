@@ -1,0 +1,20 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Across every mission</p>
+    <h1 class="page-title">Findings</h1>
+    <p class="page-note">Normalized findings from all missions in this database.</p>
+  </div>
+  <a class="btn btn-ghost" href="/findings">JSON</a>
+</div>
+
+<section class="panel">
+  <div class="panel-head"><h2 class="panel-title">By severity</h2></div>
+  {% include "partials/severity.html.j2" %}
+</section>
+
+<section class="panel">
+  {% include "partials/findings_table.html.j2" %}
+</section>
+{% endblock %}

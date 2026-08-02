@@ -1,0 +1,26 @@
+{% set total = severity_counts.values() | sum %}
+{% if total %}
+<div class="sev-bar" role="img"
+     aria-label="{% for name, count in severity_counts.items() if count %}{{ count }} {{ name }}. {% endfor %}">
+  {% for name, count in severity_counts.items() if count %}
+  <span class="sev-seg sev-{{ name }}" style="width: {{ (count / total * 100) | round(2) }}%"></span>
+  {% endfor %}
+</div>
+<div class="ledger">
+  {% for name, count in severity_counts.items() %}
+  <div class="ledger-row {% if not count %}is-zero{% endif %}">
+    <span class="ledger-key"><i class="sev-chip sev-{{ name }}"></i> {{ name }}</span>
+    <span class="ledger-val">{{ count }}</span>
+  </div>
+  {% endfor %}
+  <div class="ledger-row">
+    <span class="ledger-key"><b>Total</b></span>
+    <span class="ledger-val">{{ total }}</span>
+  </div>
+</div>
+{% else %}
+<div class="empty">
+  <strong>Nothing found yet</strong>
+  Findings appear here once a mission parses a result it can attribute to a weakness.
+</div>
+{% endif %}
