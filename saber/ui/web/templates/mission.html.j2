@@ -10,22 +10,9 @@
       {% if session.target %} · target <span class="mono">{{ session.target }}</span>{% endif %}
     </p>
   </div>
-  <div class="check-row">
-    {{ badge(session.status) }}
-    <a class="btn btn-ghost btn-sm" href="/sessions/{{ session.session_id }}">JSON</a>
-    <a class="btn btn-ghost btn-sm" href="/ui/sessions">All missions</a>
-  </div>
 </div>
 
-{% if session.status in ("waiting_for_approval", "paused_for_approval") %}
-<div class="notice notice-hold">
-  <strong>Held for confirmation.</strong>
-  The risk gate stopped this mission before a high-risk action. Approve or deny it below to
-  continue.
-</div>
-{% elif stop_reason %}
-<div class="notice">Stopped: {{ stop_reason }}</div>
-{% endif %}
+{% include "partials/mission_status.html.j2" %}
 
 {% if approvals %}
 <section class="panel gap-top">

@@ -365,3 +365,61 @@ def test_severity_counts_keep_every_level_in_order() -> None:
 
 def test_badge_escapes_its_input() -> None:
     assert "<script>" not in str(templating.badge("<script>"))
+
+
+def test_a_failed_mission_says_so_and_says_why(tmp_path) -> None:
+    """Observed live: a mission died on an HTTP 402 from the model provider and the
+    page still showed RUNNING with an empty timeline and no error anywhere. The
+    reason was sitting in MissionState.stop_reason the whole time."""
+
+    def seed(conn):
+        now = datetime.now(UTC)
+        SessionStore(conn).create_session(
+            MissionSession(
+                session_id="s1", mission_name="m", status="running",
+                created_at=now, started_at=now,
+            )
+        )
+        MissionStateStore(conn).save(
+            MissionState(
+                session_id="s1",
+                target=Target(type=TargetType.HOST, value="dvwa"),
+                stop_reason="LLM error: Model request failed with HTTP 402: out of credit",
+            )
+        )
+
+    app = _app(tmp_path, seed)
+    client = TestClient(app)
+    app.state.session_store.update_session_status("s1", "failed")
+
+    text = client.get("/ui/sessions/s1").text
+
+    assert "The mission failed" in text
+    assert "HTTP 402" in text
+
+
+def test_the_status_header_refreshes_itself_while_the_mission_runs(tmp_path) -> None:
+    """The header used to render once. A mission that failed mid-run kept showing
+    RUNNING forever, while the panel beside it updated and said 'final'."""
+
+    app = _app(tmp_path, _seed_mission)
+    client = TestClient(app)
+
+    running = client.get("/ui/sessions/s1").text
+    assert 'id="mission-status"' in running
+    assert "/ui/sessions/s1/status" in running
+    assert running.count('hx-trigger="every 3s"') >= 2  # status header AND state panel
+
+    app.state.session_store.update_session_status("s1", "completed")
+    finished = client.get("/ui/sessions/s1").text
+    assert 'hx-trigger="every 3s"' not in finished
+
+
+def test_status_fragment_renders_standalone(tmp_path) -> None:
+    client = TestClient(_app(tmp_path, _seed_mission))
+
+    response = client.get("/ui/sessions/s1/status")
+
+    assert response.status_code == 200
+    assert 'id="mission-status"' in response.text
+    assert client.get("/ui/sessions/nope/status").status_code == 404

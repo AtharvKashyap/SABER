@@ -728,6 +728,27 @@ table.data td.wrap {
   box-shadow: 0 0 0 3px var(--signal-wash);
 }
 
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.25rem;
+}
+
+/* A failure reason is raw provider/tool text: long, unbroken, and worth reading
+   in full rather than truncating, so it wraps hard and scrolls if it must. */
+.failure-reason {
+  margin: 0.35rem 0 0;
+  font-family: var(--mono);
+  font-size: var(--step--2);
+  line-height: 1.5;
+  max-height: 9rem;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .check-row {
   display: flex;
   flex-wrap: wrap;

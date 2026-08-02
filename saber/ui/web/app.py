@@ -326,6 +326,18 @@ def create_app(
             )
         )
 
+    @app.get("/ui/sessions/{session_id}/status", response_class=HTMLResponse)
+    def ui_status_fragment(request: Request, session_id: str) -> HTMLResponse:
+        """Mission status and outcome, polled by the mission page."""
+
+        context = _mission_context(request, session_id)
+        if context is None:
+            return HTMLResponse("", status_code=404)
+
+        return HTMLResponse(
+            templates.get_template("partials/mission_status.html.j2").render(**context)
+        )
+
     @app.get("/ui/sessions/{session_id}/state-panel", response_class=HTMLResponse)
     def ui_state_panel(request: Request, session_id: str) -> HTMLResponse:
         """Live working-memory panel, polled by the mission page."""

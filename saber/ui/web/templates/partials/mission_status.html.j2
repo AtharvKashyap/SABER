@@ -1,0 +1,34 @@
+{# Mission status and outcome. Polled while the loop can still act, because the
+   page header used to be rendered once and never refreshed: a mission that
+   failed mid-run kept showing RUNNING and said nothing about why, while the
+   working-memory panel beside it updated and switched to "final". #}
+<div id="mission-status"
+     hx-get="/ui/sessions/{{ session.session_id }}/status"
+     {% if live %}hx-trigger="every 3s"{% endif %}
+     hx-swap="outerHTML">
+
+  <div class="status-row">
+    {{ badge(session.status) }}
+    <a class="btn btn-ghost btn-sm" href="/sessions/{{ session.session_id }}">JSON</a>
+    <a class="btn btn-ghost btn-sm" href="/ui/sessions">All missions</a>
+  </div>
+
+  {% if session.status in ("waiting_for_approval", "paused_for_approval") %}
+  <div class="notice notice-hold gap-top">
+    <strong>Held for confirmation.</strong>
+    The risk gate stopped this mission before a high-risk action. Approve or deny it below
+    to continue.
+  </div>
+  {% elif session.status == "failed" %}
+  <div class="notice notice-breach gap-top">
+    <strong>The mission failed.</strong>
+    {% if stop_reason %}
+    <p class="failure-reason">{{ stop_reason }}</p>
+    {% else %}
+    <p>No reason was recorded. Check the evidence directory for the last tool output.</p>
+    {% endif %}
+  </div>
+  {% elif stop_reason %}
+  <div class="notice gap-top">Stopped: {{ stop_reason }}</div>
+  {% endif %}
+</div>
