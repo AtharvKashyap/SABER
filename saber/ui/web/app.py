@@ -405,3 +405,9 @@ def create_app(
         app.state.storage_connection.close()
 
     return app
+
+
+# Module-level ASGI application. `./run_saber` / `scripts/launch_saber.py` start
+# the console with `uvicorn saber.ui.web.app:app`, so this attribute is part of
+# this module's contract, not an accident. tests/unit/test_web_console.py pins it.
+app = create_app()

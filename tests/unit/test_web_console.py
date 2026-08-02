@@ -91,6 +91,20 @@ def test_pages_load_the_scripts_that_make_them_work(tmp_path) -> None:
     assert '/static/saber.css' in text
 
 
+def test_module_exposes_the_asgi_app_the_launcher_starts() -> None:
+    """`./run_saber` runs `uvicorn saber.ui.web.app:app`.
+
+    Without this attribute uvicorn fails with "Attribute 'app' not found" and
+    the console never starts, which no create_app()-based test would catch.
+    """
+
+    from starlette.applications import Starlette
+
+    from saber.ui.web import app as app_module
+
+    assert isinstance(app_module.app, Starlette)
+
+
 def test_unknown_mission_renders_a_404_page_not_a_stack_trace(tmp_path) -> None:
     client = TestClient(_app(tmp_path))
     response = client.get("/ui/sessions/does-not-exist")
