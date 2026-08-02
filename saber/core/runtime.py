@@ -205,7 +205,17 @@ def build_saber_runtime(
     from saber.storage.mission_state_store import MissionStateStore
 
     if runtime_config.agent_mode == "llm" and llm_client is not None and llm_client.enabled:
-        decider = LlmDecider(llm_client=llm_client, tool_catalog=tool_catalog)
+        # Scope the catalog the MODEL sees to the mission profile. The full catalog
+        # is ~10.6k tokens and was sent on every decision regardless of profile —
+        # 76% of a 14,091-token prompt on a live web mission, which the provider
+        # refused with HTTP 402 for exceeding the key's prompt ceiling. A web
+        # profile is ~3k tokens. RiskGate below deliberately keeps the FULL catalog:
+        # it classifies whatever is proposed, including tools this profile did not
+        # offer, so gating must not have blind spots.
+        decider = LlmDecider(
+            llm_client=llm_client,
+            tool_catalog=tool_catalog.for_profile(runtime_config.profile),
+        )
     else:
         decider = DeterministicDecider()
 

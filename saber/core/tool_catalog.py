@@ -35,6 +35,28 @@ class ToolSpec:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+# Tool categories each mission profile can actually make use of, aligned with the
+# agents PROFILE_AGENTS enables for that profile.
+#
+# "unknown" is custom_cli — the escape hatch the loop uses to run a script it
+# wrote itself — and "recon" is how every mission starts, so both are in every
+# profile. A profile not listed here is not filtered at all: an unrecognized
+# profile should fail OPEN, because scope is what restricts a mission, not this.
+PROFILE_CATEGORIES: dict[str, set[str]] = {
+    "recon": {"recon", "unknown"},
+    "web": {"recon", "web", "unknown"},
+    "network": {"recon", "network", "unknown"},
+    "ad": {
+        "recon",
+        "network",
+        "active_directory",
+        "post_exploitation",
+        "password_cracking",
+        "unknown",
+    },
+}
+
+
 class ToolCatalog:
     """Catalog of exact tool capabilities available to agents."""
 
@@ -146,6 +168,27 @@ class ToolCatalog:
                     lines.append(f"    arg {arg.name}: {arg.type}, {req}; {arg.description}")
 
         return "\n".join(lines)
+
+    def for_profile(self, profile: str) -> "ToolCatalog":
+        """Return a catalog holding only the tools this profile can use.
+
+        The LLM decider is handed this rather than the whole catalog. The full
+        catalog renders to ~10.6k tokens and was sent on every decision whatever
+        the profile — 76% of the prompt on a live web mission, which the provider
+        then refused outright (HTTP 402) because the key's remaining balance
+        capped prompts below that. It was also simply wrong: a web mission was
+        being offered mimikatz, ghidra and bloodhound.
+
+        An unrecognized profile returns the full catalog unchanged.
+        """
+
+        categories = PROFILE_CATEGORIES.get((profile or "").strip().lower())
+        if not categories:
+            return self
+
+        return ToolCatalog(
+            [tool for tool in self.tools if tool.category.lower() in categories]
+        )
 
     def actions_for_phase(self, phase: str) -> list[ToolActionSpec]:
         """Return actions matching a phase."""
