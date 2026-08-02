@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import time
 from dataclasses import replace
@@ -57,6 +58,7 @@ def run_cli_mission(
     strategy: str = "auto",
     lab: bool = False,
     scope_path: str | None = None,
+    scope: Any = None,
 ) -> dict[str, Any]:
     """Run a SABER mission from the CLI and persist the result."""
 
@@ -96,10 +98,14 @@ def run_cli_mission(
 
     try:
         session = _make_session(session_id, resolved_mission_name, target_value, normalized_profile, dry_run)
+        # A file wins over a pre-built scope object; the web console has no way to
+        # name a file, so it passes the scope it derived from the target instead.
         if scope_path:
             from saber.core.scope_loader import load_scope
 
             session = session.model_copy(update={"scope": load_scope(scope_path)})
+        elif scope is not None:
+            session = session.model_copy(update={"scope": scope})
         target = _make_target(target_value)
 
         runtime.session_store.create_session(
@@ -630,15 +636,41 @@ def _make_session(
     raise RuntimeError("Could not construct MissionSession.")
 
 
+def _infer_target_type(value: str) -> TargetType:
+    """Infer the TargetType from a bare target string.
+
+    Everything used to be typed HOST regardless of what it was, which broke two
+    things quietly. `select_strategy` picks the web strategy on
+    `target.type == URL`, so `--strategy auto` could never choose it for a URL;
+    and a HOST-typed Target holding "http://host:3000" fails MissionScope
+    validation outright ("host targets must not include a URL scheme or path").
+    """
+
+    text = (value or "").strip()
+    if "://" in text:
+        return TargetType.URL
+    try:
+        ipaddress.ip_network(text, strict=False)
+    except ValueError:
+        pass
+    else:
+        return TargetType.CIDR if "/" in text else TargetType.IP
+    if "-" in text and text.count(".") >= 3:
+        return TargetType.IP_RANGE
+    return TargetType.DOMAIN if "." in text else TargetType.HOST
+
+
 def _make_target(target_value: str) -> Target:
     """Create Target with tolerant constructor handling."""
 
+    inferred = _infer_target_type(target_value)
     attempts = (
+        {"type": inferred, "value": target_value},
+        {"target_type": inferred, "value": target_value},
+        {"kind": inferred, "value": target_value},
+        {"type": inferred.value, "value": target_value},
+        {"target_type": inferred.value, "value": target_value},
         {"type": TargetType.HOST, "value": target_value},
-        {"target_type": TargetType.HOST, "value": target_value},
-        {"kind": TargetType.HOST, "value": target_value},
-        {"type": "host", "value": target_value},
-        {"target_type": "host", "value": target_value},
         {"value": target_value},
     )
 

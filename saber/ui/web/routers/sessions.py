@@ -15,7 +15,8 @@ from saber.storage.evidence_index import EvidenceIndex
 from saber.storage.finding_store import FindingStore
 from saber.storage.graph_store import GraphStore
 from saber.storage.session_store import SessionStore
-from saber.ui.cli.run_command import PROFILE_AGENTS, run_cli_mission
+from saber.models.scope import MissionScope
+from saber.ui.cli.run_command import PROFILE_AGENTS, _make_target, run_cli_mission
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -98,9 +99,24 @@ def run_mission_from_web(request: Request, run_request: MissionRunRequest) -> di
     reports_dir = str(getattr(request.app.state, "reports_dir", "runs/reports"))
     evidence_dir = str(getattr(request.app.state, "evidence_dir", "runs/evidence"))
 
+    target_value = run_request.target.strip()
+
+    # Scope the mission to its target. The launch form tells the operator that the
+    # target "becomes the mission scope — anything outside it is refused", but the
+    # console has no field for a scope file, so nothing was ever set and
+    # MissionSession.scope stayed None — which RiskGate treats as "allow every
+    # host". The form's promise is now enforced. Operators who need a richer scope
+    # (extra hosts, exclusions, prohibited actions) still use the CLI --scope file,
+    # which takes precedence over this.
+    scope = MissionScope(
+        mission_name=run_request.mission_name or f"SABER mission for {target_value}",
+        targets=[_make_target(target_value)],
+    )
+
     kwargs = {
         "session_id": session_id,
-        "target_value": run_request.target.strip(),
+        "target_value": target_value,
+        "scope": scope,
         "profile": profile,
         "mission_name": run_request.mission_name,
         "objective": run_request.objective,
@@ -121,7 +137,7 @@ def run_mission_from_web(request: Request, run_request: MissionRunRequest) -> di
     return {
         "session_id": session_id,
         "status": "started",
-        "target": run_request.target.strip(),
+        "target": target_value,
         "profile": profile,
         "detail_url": f"/ui/sessions/{session_id}",
         "api_url": f"/sessions/{session_id}",
