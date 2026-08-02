@@ -14,6 +14,7 @@ def test_template_scan_command_includes_severity():
     )
     assert cmd.command == [
         "nuclei",
+        "-nc",
         "-u",
         "127.0.0.1",
         "-severity",

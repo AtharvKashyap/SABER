@@ -50,6 +50,7 @@ optional ``metadata`` kwarg carrying target/url context so parsers can derive a
 from __future__ import annotations
 
 import json
+import re
 from abc import ABC
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -171,10 +172,31 @@ class ParserResult:
         }
 
 
+# Terminal colouring, in both the form tools emit and the form that survives a
+# round trip through storage. Several CLI tools colour stdout by default and
+# interleave the escapes with the data, so leaving them in does not just look
+# untidy — it corrupts the parse. whatweb produced a technology named "0m", and
+# nuclei produced findings whose severity could not be read at all.
+_ANSI_RE = re.compile(r"(?:\x1b|\033)\[[0-9;]*[A-Za-z]|(?<!\w)\[[0-9;]{1,6}m")
+
+
 class BaseParser(ABC):
     """Base parser interface."""
 
     source_tool: str = "unknown"
+
+    @staticmethod
+    def strip_ansi(text: str) -> str:
+        """Remove terminal colouring from tool output.
+
+        Handles the real escape sequence and the bare "[92m" residue left behind
+        when the ESC byte is lost in transit. Parsers that read human-facing
+        stdout should call this before anything else; passing --no-color to the
+        tool is the other half, and both are needed because stored evidence
+        predates the flag.
+        """
+
+        return _ANSI_RE.sub("", text or "")
 
     def parse_text(self, text: str, metadata: dict[str, Any] | None = None) -> ParserResult:
         """Parse text output. `metadata` may carry target/url context for host derivation."""

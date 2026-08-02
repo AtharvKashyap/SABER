@@ -31,13 +31,6 @@ _IGNORED_PLUGINS = {
     "Meta-Refresh-Redirect",
 }
 
-# WhatWeb colours stdout by default, and the colouring is interleaved with the
-# data: "\x1b[1mApache\x1b[0m[\x1b[1m\x1b[32m2.4.25\x1b[0m]". Left in, the plugin
-# name parses as "0m" and the version keeps its escapes, and both land in
-# MissionState and the client report. The wrapper now passes --no-colour, but
-# stripping here keeps already-captured evidence parseable too.
-_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
-
 # A plugin in a stdout line: a name at a comma or whitespace boundary (WhatWeb
 # uses both), with zero or more
 # bracket groups. Zero matters — "PHP" and "DVWA" carry no version and were
@@ -114,7 +107,7 @@ class WhatWebParser(BaseParser):
         observations: list[ParsedObservation] = []
 
         for raw_line in text.splitlines():
-            line = _ANSI_RE.sub("", raw_line).strip()
+            line = self.strip_ansi(raw_line).strip()
             if not line:
                 continue
 

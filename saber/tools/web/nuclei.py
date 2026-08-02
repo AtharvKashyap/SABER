@@ -113,7 +113,9 @@ class NucleiWrapper(BaseToolWrapper):
             raise ValueError(f"Unsupported Nuclei action: {action}")
 
         url = self._url_from_target_or_kwargs(target, kwargs)
-        command = ["nuclei", "-u", url]
+        # -nc: nuclei colours stdout by default and the escapes wrap the template
+        # id and the severity, so every finding parsed as severity "unknown".
+        command = ["nuclei", "-nc", "-u", url]
 
         templates = kwargs.get("templates")
         if templates:

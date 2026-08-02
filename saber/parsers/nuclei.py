@@ -80,8 +80,11 @@ class NucleiParser(BaseParser):
         observations: list[ParsedObservation] = []
         findings: list[ParsedFinding] = []
 
-        for line in text.splitlines():
-            line = line.strip()
+        for raw_line in text.splitlines():
+            # Nuclei colours stdout by default and the escapes wrap the template id
+            # and the severity, so splitting first yields an unreadable title and
+            # severity "unknown" for every finding.
+            line = self.strip_ansi(raw_line).strip()
             if not line:
                 continue
 

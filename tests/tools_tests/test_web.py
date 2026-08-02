@@ -266,6 +266,7 @@ class TestNucleiWrapper:
 
         assert command.command == [
             "nuclei",
+            "-nc",
             "-u",
             "https://example.com/",
             "-t",
@@ -294,6 +295,7 @@ class TestNucleiWrapper:
 
         assert sandbox.requests[0].command == [
             "nuclei",
+            "-nc",
             "-u",
             "https://example.com/",
             "-t",
