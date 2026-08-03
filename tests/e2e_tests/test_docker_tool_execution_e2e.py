@@ -12,6 +12,7 @@ import os
 import pytest
 
 from saber.core.docker_runner import (
+    DEFAULT_SHARED_IMAGE,
     DockerSubprocessRunner,
     docker_available,
     docker_info,
@@ -40,7 +41,7 @@ def test_docker_runner_executes_real_nmap_and_writes_evidence(tmp_path) -> None:
     runner = DockerSubprocessRunner(
         image=os.getenv(
             "SABER_SANDBOX_IMAGE",
-            "ghcr.io/atharvkashyap/saber-sandbox:kali-last-release",
+            DEFAULT_SHARED_IMAGE,
         ),
         repo_dir=tmp_path,
         default_timeout_seconds=120,

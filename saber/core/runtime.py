@@ -21,7 +21,7 @@ from saber.agents.recon_agent import ReconAgent
 from saber.agents.reporter_agent import ReporterAgent
 from saber.agents.reverse_engineering_agent import ReverseEngineerAgent
 from saber.agents.web_agent import WebAgent
-from saber.core.docker_runner import DockerSubprocessRunner
+from saber.core.docker_runner import DEFAULT_SHARED_IMAGE, DockerSubprocessRunner
 from saber.core.env_loader import load_env_file
 from saber.core.evidence_store import EvidenceStore
 from saber.core.llm_client import LlmClient, LlmConfig
@@ -49,7 +49,7 @@ class SaberConfig:
     profile: str = "recon"
     require_approval: bool = True
     sandbox_backend: str = "docker"
-    sandbox_image: str = "ghcr.io/atharvkashyap/saber-sandbox:kali-last-release"
+    sandbox_image: str = DEFAULT_SHARED_IMAGE
     docker_network: str = "host"
     docker_user: str = ""
     default_timeout_seconds: int = 300
@@ -74,10 +74,7 @@ class SaberConfig:
             profile=os.environ.get("SABER_PROFILE", "recon"),
             require_approval=_env_bool("SABER_REQUIRE_APPROVAL", default=True),
             sandbox_backend=os.environ.get("SABER_SANDBOX_BACKEND", "docker"),
-            sandbox_image=os.environ.get(
-                "SABER_SANDBOX_IMAGE",
-                "ghcr.io/atharvkashyap/saber-sandbox:kali-last-release",
-            ),
+            sandbox_image=os.environ.get("SABER_SANDBOX_IMAGE", DEFAULT_SHARED_IMAGE),
             docker_network=os.environ.get("SABER_DOCKER_NETWORK", "host"),
             docker_user=os.environ.get("SABER_DOCKER_USER", ""),
             default_timeout_seconds=int(os.environ.get("SABER_DEFAULT_TIMEOUT_SECONDS", "300")),

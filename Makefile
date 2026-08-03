@@ -1,7 +1,7 @@
 .PHONY: test unit e2e e2e-one llm-e2e smoke preflight launch final lab-up lab-down \
 	sandbox-build sandbox-verify
 
-SANDBOX_TAG ?= saber-sandbox:f7
+SANDBOX_TAG ?= saber-sandbox:local
 
 test:
 	pytest -q

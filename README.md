@@ -200,7 +200,7 @@ SABER_MODEL_API_KEY=                                  # required for hosted mode
 
 # Sandbox
 SABER_SANDBOX_BACKEND=docker
-SABER_SANDBOX_IMAGE=ghcr.io/atharvkashyap/saber-sandbox:kali-last-release
+SABER_SANDBOX_IMAGE=saber-sandbox:local
 SABER_DOCKER_NETWORK=host
 ```
 
@@ -564,7 +564,7 @@ Live-model acceptance tests (`SABER_RUN_LLM_E2E`) are never run in CI; they are 
 Sandbox image:
 
 ```text
-ghcr.io/atharvkashyap/saber-sandbox:kali-last-release
+saber-sandbox:local
 ```
 
 ---

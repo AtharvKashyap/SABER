@@ -28,6 +28,7 @@ from saber.models.target import Target, TargetType
 from saber.orchestration.execution_plan import ExecutionStep, ExecutionStepStatus
 from saber.orchestration.step_runner import StepRunner
 from saber.tools.registry import ToolRegistry
+from saber.core.docker_runner import DEFAULT_SHARED_IMAGE
 
 
 pytestmark = pytest.mark.e2e
@@ -115,7 +116,7 @@ def test_real_step_runner_executes_real_docker_nmap(tmp_path) -> None:
     runner = DockerSubprocessRunner(
         image=os.getenv(
             "SABER_SANDBOX_IMAGE",
-            "ghcr.io/atharvkashyap/saber-sandbox:kali-last-release",
+            DEFAULT_SHARED_IMAGE,
         ),
         repo_dir=tmp_path,
         default_timeout_seconds=120,

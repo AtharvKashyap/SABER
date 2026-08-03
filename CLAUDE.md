@@ -80,7 +80,7 @@ Full list with defaults in `.env.example`. Key ones:
 
 - `SABER_AGENT_MODE` — documented in `.env.example`, but the actual decider mode is read from the CLI `--mode` flag / the web form's `agent_mode` field, **not** from the environment (it is not read by `SaberConfig.from_env()` in `saber/core/runtime.py`). Setting only the env var does not change the mode.
 - `SABER_MODEL`, `SABER_MODEL_API_KEY`, `SABER_LOCAL_MODEL_URL` — model config (used only in LLM mode).
-- `SABER_SANDBOX_BACKEND` (docker), `SABER_SANDBOX_IMAGE` (`ghcr.io/atharvkashyap/saber-sandbox:kali-last-release`), `SABER_DOCKER_NETWORK` (host).
+- `SABER_SANDBOX_BACKEND` (docker), `SABER_SANDBOX_IMAGE` (`saber-sandbox:local`, built by `make sandbox-build`), `SABER_DOCKER_NETWORK` (host).
 - `SABER_RUN_DOCKER_E2E`, `SABER_RUN_LLM_E2E` — default `0`; gate the E2E and live-model tests (see `make e2e` / `make llm-e2e`).
 
 `autonomy_level` (`recon_only` / `assisted` / `autonomous`, default `autonomous`) tightens or relaxes the risk gate. It is carried in the mission constraints and `MissionState.autonomy_level` — **not yet exposed as a CLI or GUI flag**.

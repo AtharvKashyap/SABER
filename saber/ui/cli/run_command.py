@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from saber.agents.base_agent import AgentObservation
 from saber.agents.llm_decision_engine import LlmDecisionEngine
+from saber.core.docker_runner import DEFAULT_SHARED_IMAGE
 from saber.core.env_loader import load_env_file
 from saber.core.prompt_loader import PromptLoader
 from saber.core.runtime import SaberConfig, SaberRuntime, build_saber_runtime
@@ -84,9 +85,7 @@ def run_cli_mission(
         max_steps=max_steps,
         agent_mode=agent_mode,
         sandbox_backend=os.environ.get("SABER_SANDBOX_BACKEND", "docker"),
-        sandbox_image=os.environ.get(
-            "SABER_SANDBOX_IMAGE", "ghcr.io/atharvkashyap/saber-sandbox:kali-last-release"
-        ),
+        sandbox_image=os.environ.get("SABER_SANDBOX_IMAGE", DEFAULT_SHARED_IMAGE),
         docker_network=os.environ.get("SABER_DOCKER_NETWORK", "host"),
         docker_user=os.environ.get("SABER_DOCKER_USER", ""),
         metadata={"source": "cli_run"},

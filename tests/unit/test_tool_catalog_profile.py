@@ -12,7 +12,6 @@ ghidra and bloodhound.
 from __future__ import annotations
 
 import pytest
-
 from saber.core.tool_catalog import PROFILE_CATEGORIES, ToolCatalog
 from saber.tools.registry import build_default_registry
 
@@ -81,10 +80,10 @@ def test_runtime_gives_the_decider_a_scoped_catalog_and_the_gate_the_full_one() 
     action naming a tool the profile never offered.
     """
 
-    from saber.core.runtime import SaberConfig, build_saber_runtime
-
     import tempfile
     from pathlib import Path
+
+    from saber.core.runtime import SaberConfig, build_saber_runtime
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)

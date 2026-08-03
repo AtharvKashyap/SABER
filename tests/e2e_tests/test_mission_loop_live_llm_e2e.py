@@ -54,6 +54,7 @@ from saber.models.session import MissionSession
 from saber.models.target import Target, TargetType
 from saber.storage.mission_state_store import MissionStateStore
 from saber.ui.cli.run_command import _configure_llm_agents
+from saber.core.docker_runner import DEFAULT_SHARED_IMAGE
 
 
 def _truthy(name: str) -> bool:
@@ -112,7 +113,7 @@ def _build_live_runtime(tmp_path, *, profile: str, agent_mode: str = "llm"):
         # exactly like a product defect.
         sandbox_backend=os.environ.get("SABER_SANDBOX_BACKEND", "docker"),
         sandbox_image=os.environ.get(
-            "SABER_SANDBOX_IMAGE", "ghcr.io/atharvkashyap/saber-sandbox:kali-last-release"
+            "SABER_SANDBOX_IMAGE", DEFAULT_SHARED_IMAGE
         ),
         docker_network=os.environ.get("SABER_DOCKER_NETWORK", "host"),
         metadata={"source": "llm_e2e"},
@@ -238,7 +239,7 @@ def _reachable_from_sandbox(host: str, port: int) -> bool:
                 os.getenv("SABER_DOCKER_NETWORK", "saber-lab"),
                 "--entrypoint",
                 "sh",
-                os.getenv("SABER_SANDBOX_IMAGE", "saber-sandbox:f7"),
+                os.getenv("SABER_SANDBOX_IMAGE", DEFAULT_SHARED_IMAGE),
                 "-lc",
                 f"nc -z -w 3 {host} {port}",
             ],

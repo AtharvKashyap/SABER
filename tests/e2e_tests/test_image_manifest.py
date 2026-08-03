@@ -19,8 +19,8 @@ import shutil
 import subprocess
 
 import pytest
-from saber.models.target import Target, TargetType
-from saber.tools.registry import build_default_registry
+from saber.tools.image_manifest import expected_executables
+from saber.core.docker_runner import DEFAULT_SHARED_IMAGE
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("SABER_RUN_DOCKER_E2E") != "1",
@@ -28,49 +28,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 _IMAGE = os.environ.get(
-    "SABER_SANDBOX_IMAGE", "ghcr.io/atharvkashyap/saber-sandbox:kali-last-release"
+    "SABER_SANDBOX_IMAGE", DEFAULT_SHARED_IMAGE
 )
-
-# Not expected on PATH in the Linux sandbox — see the Dockerfile's
-# "deliberately NOT installed" note and _KNOWN_GAPS in the static audit.
-_NOT_EXPECTED = {
-    "cmd.exe",
-    "mimikatz.exe",
-    "winPEASx64.exe",
-    "analyzeHeadless",
-    "openvas-cli",
-    "zap-baseline.py",
-    "zap-cli",
-}
-
-
-def _required_executables() -> dict[str, set[str]]:
-    """Map tool -> executables its declared actions invoke, from the contracts."""
-
-    registry = build_default_registry()
-    target = Target(type=TargetType.IP, value="127.0.0.1")
-    required: dict[str, set[str]] = {}
-
-    for name in sorted({entry.name for entry in registry._entries.values()}):
-        entry = registry.get(name)
-        contract = entry.load_contract()
-        if contract is None:
-            continue
-        wrapper = entry.load_class()(sandbox=None)
-        executables = set()
-        for action in contract.actions:
-            command = wrapper.build_command(target, action=action.action, **action.example_args)
-            if command.command:
-                executables.add(command.command[0])
-        required[name] = executables
-    return required
-
-
-def _expected_executables() -> list[str]:
-    required = _required_executables()
-    everything = {exe for exes in required.values() for exe in exes}
-    return sorted(everything - _NOT_EXPECTED)
-
 
 @pytest.fixture(scope="module")
 def docker_available() -> None:
@@ -78,7 +37,7 @@ def docker_available() -> None:
         pytest.skip("docker binary not available on PATH")
 
 
-@pytest.mark.parametrize("executable", _expected_executables())
+@pytest.mark.parametrize("executable", expected_executables())
 def test_executable_is_present_in_sandbox_image(executable: str, docker_available: None) -> None:
     """Every executable a contract invokes must resolve inside the image."""
 

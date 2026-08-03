@@ -8,6 +8,7 @@ import socket
 import subprocess
 
 import pytest
+from saber.core.docker_runner import DEFAULT_SHARED_IMAGE
 
 pytestmark = pytest.mark.skipif(
     os.getenv("SABER_RUN_DOCKER_E2E", "0") not in {"1", "true", "True"},
@@ -44,7 +45,7 @@ def _reachable_in_lab_network(host: str, port: int) -> bool:
                 _LAB_NETWORK,
                 "--entrypoint",
                 "sh",
-                os.getenv("SABER_SANDBOX_IMAGE", "saber-sandbox:f7"),
+                os.getenv("SABER_SANDBOX_IMAGE", DEFAULT_SHARED_IMAGE),
                 "-lc",
                 f"nc -z -w 3 {host} {port}",
             ],

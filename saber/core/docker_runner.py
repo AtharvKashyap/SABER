@@ -10,7 +10,19 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 
-DEFAULT_SHARED_IMAGE = "ghcr.io/atharvkashyap/saber-sandbox:kali-last-release"
+# The sandbox image every mission runs in, and the ONE place its name is defined.
+#
+# This defaults to the locally built image rather than a registry one on purpose.
+# The previously published tag is missing six executables that tool contracts
+# invoke (checksec, radare2, gdb, pwntools, chisel, enum4linux), so every
+# reverse-engineering and binary-exploitation action failed against it while
+# recon and web work carried on looking fine. `make sandbox-build` produces this
+# tag and `make sandbox-verify` proves it satisfies every contract.
+#
+# Import this rather than repeating the literal. The name used to be duplicated
+# across runtime.py, run_command.py, the Makefile and eight e2e tests, which is
+# exactly how two different defaults ended up in the tree at once.
+DEFAULT_SHARED_IMAGE = "saber-sandbox:local"
 DEFAULT_LOCAL_IMAGE = "saber/sandbox:kali-last-release"
 CONTAINER_WORKSPACE = PurePosixPath("/workspace")
 
