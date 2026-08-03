@@ -73,29 +73,53 @@ def test_filtering_preserves_action_detail(catalog) -> None:
     assert {a.action for a in nuclei.actions} == {a.action for a in original.actions}
 
 
-def test_runtime_gives_the_decider_a_scoped_catalog_and_the_gate_the_full_one() -> None:
+def test_runtime_gives_the_decider_a_scoped_catalog_and_the_gate_the_full_one(
+    tmp_path, monkeypatch, catalog
+) -> None:
     """The model sees only its profile's tools; the risk gate must still see all.
 
     A gate with a filtered catalog would have blind spots when classifying an
-    action naming a tool the profile never offered.
-    """
+    action that names a tool the profile never offered.
 
-    import tempfile
-    from pathlib import Path
+    The first version of this test asserted only that for_profile() shrinks the
+    catalog — which three tests above already cover — while building a runtime in
+    deterministic mode, where no LlmDecider is constructed at all. It verified
+    nothing about the wiring it was named for.
+    """
 
     from saber.core.runtime import SaberConfig, build_saber_runtime
 
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        runtime = build_saber_runtime(
-            SaberConfig(
-                db_path=root / "s.db",
-                evidence_dir=root / "e",
-                reports_dir=root / "r",
-                profile="web",
-                agent_mode="deterministic",
-            )
-        )
+    # An enabled model is what makes build_saber_runtime choose LlmDecider.
+    monkeypatch.setenv("SABER_MODEL", "openrouter:test/model")
+    monkeypatch.setenv("SABER_MODEL_API_KEY", "test-key-not-used-offline")
 
-    # The runtime always carries the full catalog for gating and dispatch.
-    assert len(runtime.tool_catalog.tools) > len(runtime.tool_catalog.for_profile("web").tools)
+    runtime = build_saber_runtime(
+        SaberConfig(
+            db_path=tmp_path / "s.db",
+            evidence_dir=tmp_path / "e",
+            reports_dir=tmp_path / "r",
+            profile="web",
+            agent_mode="llm",
+        )
+    )
+    try:
+        decider = runtime.orchestrator.mission_loop.decider
+        gate = runtime.orchestrator.mission_loop.risk_gate
+
+        if not getattr(runtime.llm_client, "enabled", False):
+            pytest.skip("no model enabled in this environment; decider falls back")
+
+        decider_tools = {tool.name for tool in decider.tool_catalog.tools}
+        gate_tools = {tool.name for tool in gate.tool_catalog.tools}
+
+        # The model is offered its profile's tools and nothing else.
+        assert "nuclei" in decider_tools
+        assert not decider_tools & {"mimikatz", "ghidra_headless", "bloodhound"}
+
+        # The gate still sees everything, so it can classify anything proposed.
+        assert gate_tools == {tool.name for tool in catalog.tools}
+        assert decider_tools < gate_tools
+    finally:
+        # Windows cannot delete an open SQLite file, so the connection has to be
+        # closed before the tmp_path fixture tears the directory down.
+        runtime.close()
