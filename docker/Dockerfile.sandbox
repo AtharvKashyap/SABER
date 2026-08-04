@@ -143,11 +143,23 @@ RUN setcap -r /usr/lib/nmap/nmap 2>/dev/null || true
 
 RUN mkdir -p /workspace/input /workspace/output /workspace/evidence /workspace/tmp
 
-# Non-root sandbox user. Some tools may still require elevated privileges in lab mode,
-# but default execution should avoid root where possible.
-RUN useradd --create-home --shell /bin/bash saber \
-    && chown -R saber:saber /workspace
-
-USER saber
+# The account exists for tools that expect a non-root user to be present, but the
+# container deliberately runs as ROOT.
+#
+# `USER saber` used to be set here, and it silently broke a lot. A non-root user
+# does not inherit the container's capabilities, so the NET_RAW/NET_ADMIN that
+# DockerSubprocessRunner grants were unusable — and the `setcap -r` above (needed
+# because Docker Desktop rejects binaries carrying file capabilities) had already
+# removed the only other route. The result was that `nmap -sU`, which the nmap
+# contract declares, plus masscan, responder and bettercap could not function at
+# all, and on Linux the bind-mounted workspace was not writable because the host
+# directory belongs to a different uid. None of it failed loudly; the tools just
+# returned permission errors.
+#
+# The container is the isolation boundary here: it is --rm, non-privileged, holds
+# only the two capabilities SABER asks for, and exists to run offensive tooling
+# that is designed to run as root. Dropping privileges inside it bought nothing
+# and cost most of the network arsenal.
+RUN useradd --create-home --shell /bin/bash saber
 
 CMD ["/bin/bash"]
