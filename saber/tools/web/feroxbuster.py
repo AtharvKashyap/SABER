@@ -10,6 +10,40 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+# NOTE: the workstream-F plan text called this action "content_discovery", but the
+# wrapper's real (and only) build_command dispatch branch is "directory_bruteforce".
+# Per the migration template precedent (masscan/dnsrecon/theharvester keep the real
+# dispatch name rather than a plan alias), this CONTRACT declares the actual branch
+# name so the AST-based coverage gate matches build_command exactly.
+CONTRACT = ToolContract(
+    tool_name="feroxbuster",
+    category="web",
+    phase="recon",
+    description="Recursive web content discovery (directory/file bruteforce).",
+    parser="feroxbuster",
+    actions=(
+        ActionContract(
+            action="directory_bruteforce",
+            description="Feroxbuster recursive content discovery, --json output for parsing.",
+            args=(
+                ArgSpec("url", "str", required=True, description="Base URL in scope."),
+                ArgSpec(
+                    "wordlist",
+                    "str",
+                    required=False,
+                    default="wordlists/common.txt",
+                    description="Wordlist path inside the sandbox.",
+                ),
+            ),
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=("note",),
+            example_args={"url": "http://127.0.0.1/", "wordlist": "wordlists/common.txt"},
+        ),
+    ),
+)
 
 
 class FeroxbusterWrapper(BaseToolWrapper):
@@ -93,10 +127,10 @@ class FeroxbusterWrapper(BaseToolWrapper):
             raise ValueError(f"Unsupported Feroxbuster action: {action}")
 
         url = self._url_from_target_or_kwargs(target, kwargs)
-        wordlist = self._required_string(kwargs, "wordlist")
+        wordlist = self._wordlist_from_kwargs(kwargs)
         threads = self._positive_int(kwargs.get("threads", 50), "threads")
 
-        command = ["feroxbuster", "-u", url, "-w", wordlist, "-t", str(threads)]
+        command = ["feroxbuster", "-u", url, "-w", wordlist, "--json", "-t", str(threads)]
 
         extensions = self._string_list(kwargs.get("extensions") or [])
         if extensions:
@@ -123,6 +157,14 @@ class FeroxbusterWrapper(BaseToolWrapper):
                 **(kwargs.get("metadata") or {}),
             },
         )
+
+    @classmethod
+    def _wordlist_from_kwargs(cls, kwargs: dict[str, Any]) -> str:
+        """Resolve wordlist from kwargs, defaulting when omitted entirely."""
+
+        if "wordlist" in kwargs and kwargs["wordlist"] is not None:
+            return cls._string_value(kwargs["wordlist"], "wordlist")
+        return "wordlists/common.txt"
 
     @classmethod
     def _url_from_target_or_kwargs(cls, target: Target | str | None, kwargs: dict[str, Any]) -> str:

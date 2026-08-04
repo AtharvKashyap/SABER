@@ -10,6 +10,98 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="sqlmap",
+    category="web",
+    phase="exploitation",
+    description="Automated SQL injection detection and exploitation.",
+    parser="sqlmap",
+    actions=(
+        ActionContract(
+            action="injection_test",
+            description="Test a URL for SQL injection (sqlmap --risk --level --batch).",
+            args=(
+                ArgSpec(
+                    "url",
+                    "str",
+                    required=True,
+                    description="Target URL with injectable parameter.",
+                ),
+                ArgSpec(
+                    "risk",
+                    "int",
+                    required=False,
+                    default=1,
+                    example=1,
+                    description="sqlmap --risk (1-3).",
+                ),
+                ArgSpec(
+                    "level",
+                    "int",
+                    required=False,
+                    default=1,
+                    example=1,
+                    description="sqlmap --level (1-5).",
+                ),
+                ArgSpec(
+                    "batch",
+                    "bool",
+                    required=False,
+                    default=True,
+                    description="Run non-interactively (--batch).",
+                ),
+            ),
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("vuln", "note"),
+            example_args={"url": "https://127.0.0.1/item?id=1"},
+        ),
+        ActionContract(
+            action="test_request",
+            description=(
+                "Test a saved raw HTTP request file for SQL injection (sqlmap -r). Use when the "
+                "injectable parameter is in a POST body, header, or cookie rather than the URL."
+            ),
+            args=(
+                ArgSpec(
+                    "request_file",
+                    "str",
+                    required=True,
+                    description="Path to a raw HTTP request file inside the sandbox.",
+                ),
+                ArgSpec("risk", "int", required=False, default=1, description="--risk (1-3)."),
+                ArgSpec("level", "int", required=False, default=1, description="--level (1-5)."),
+                ArgSpec("batch", "bool", required=False, default=True),
+            ),
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("vuln", "note"),
+            example_args={"request_file": "/tmp/request.txt"},
+        ),
+        ActionContract(
+            action="dump_schema",
+            description=(
+                "Enumerate the database schema through a confirmed injection (sqlmap --schema). "
+                "Run only after injection_test has confirmed the vulnerability."
+            ),
+            args=(
+                ArgSpec(
+                    "url",
+                    "str",
+                    required=True,
+                    description="Target URL with the confirmed injectable parameter.",
+                ),
+                ArgSpec("batch", "bool", required=False, default=True),
+            ),
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("vuln", "note"),
+            example_args={"url": "https://127.0.0.1/item?id=1"},
+        ),
+    ),
+)
 
 
 class SqlmapWrapper(BaseToolWrapper):
@@ -117,14 +209,14 @@ class SqlmapWrapper(BaseToolWrapper):
             **(kwargs.get("metadata") or {}),
         }
 
-        if action == "test_url":
+        if action in ("test_url", "injection_test"):
             url = self._url_from_target_or_kwargs(target, kwargs)
             command = ["sqlmap", "-u", url]
             self._append_common_options(command, kwargs)
 
             return ToolCommand(
                 command=command,
-                action="test_url",
+                action=action,
                 evidence_title=f"sqlmap URL test: {url}",
                 evidence_relative_dir="web/sqlmap/test_url",
                 timeout_seconds=kwargs.get("timeout_seconds"),

@@ -10,6 +10,86 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+_ENCODINGS = ("s", "S", "b", "l", "B", "L")
+
+_FILE_PATH_ARG = ArgSpec(
+    "file_path",
+    "str",
+    required=True,
+    description="Path to the file to extract strings from, inside the sandbox.",
+)
+_MIN_LENGTH_ARG = ArgSpec(
+    "min_length",
+    "int",
+    required=False,
+    default=4,
+    example=6,
+    description="Minimum string length to report (strings -n).",
+)
+
+CONTRACT = ToolContract(
+    tool_name="strings",
+    category="reverse_engineering",
+    phase="recon",
+    description=(
+        "Extract printable strings from a binary or blob. Often the fastest route to "
+        "hardcoded credentials, connection strings, embedded URLs, and CTF flags."
+    ),
+    parser="strings",
+    actions=(
+        ActionContract(
+            action="extract",
+            description="Extract ASCII strings, optionally in a specific encoding.",
+            args=(
+                _FILE_PATH_ARG,
+                _MIN_LENGTH_ARG,
+                ArgSpec(
+                    "encoding",
+                    "enum",
+                    required=False,
+                    choices=_ENCODINGS,
+                    description="strings -e encoding (s/S single byte, b/l 16-bit, B/L 32-bit).",
+                ),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("note", "loot", "flag"),
+            example_args={"file_path": "/opt/lab/vulnbin", "min_length": 6},
+        ),
+        ActionContract(
+            action="unicode",
+            description=(
+                "Extract 16-bit little-endian strings (-e l). Use on Windows binaries, "
+                "whose strings are usually UTF-16 and invisible to a plain scan."
+            ),
+            args=(_FILE_PATH_ARG, _MIN_LENGTH_ARG),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("note", "loot", "flag"),
+            example_args={"file_path": "/opt/lab/agent.exe"},
+        ),
+        ActionContract(
+            action="grep",
+            description="Extract strings and keep only those matching a pattern.",
+            args=(
+                _FILE_PATH_ARG,
+                _MIN_LENGTH_ARG,
+                ArgSpec(
+                    "pattern",
+                    "str",
+                    required=True,
+                    description="Case-insensitive pattern to filter on, e.g. password.",
+                ),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("note", "loot", "flag"),
+            example_args={"file_path": "/opt/lab/vulnbin", "pattern": "password"},
+        ),
+    ),
+)
 
 
 class StringsWrapper(BaseToolWrapper):

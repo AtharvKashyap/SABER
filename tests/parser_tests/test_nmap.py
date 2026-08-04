@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from saber.parsers.nmap import NmapParser
 
+from tests.conftest import assert_observation, merge_observations
 
 NMAP_XML = """<?xml version="1.0"?>
 <nmaprun>
@@ -127,3 +130,20 @@ PORT   STATE SERVICE VERSION
 
         assert result.success is False
         assert result.errors == ["No Nmap JSON observations could be parsed."]
+
+
+def test_nmap_xml_emits_host_and_service_and_grows_state() -> None:
+    """Fixture XML yields canonical host/service observations that grow state."""
+
+    text = Path("tests/fixtures/sample_nmap_output.xml").read_text()
+    result = NmapParser().parse_text(text)
+    obs = [o.to_dict() for o in result.observations]
+    hosts = [o for o in obs if o["kind"] == "host"]
+    services = [o for o in obs if o["kind"] == "service"]
+    assert hosts and services
+    assert_observation(
+        services[0], kind="service", data_subset={"host": hosts[0]["data"]["address"]}
+    )
+    state = merge_observations(obs, tool="nmap", action="service_scan")
+    assert len(state.services) >= 1
+    assert len(state.hosts) >= 1

@@ -10,6 +10,71 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="dnsrecon",
+    category="recon",
+    phase="recon",
+    description="Standard DNS enumeration.",
+    parser="dnsrecon",
+    actions=(
+        ActionContract(
+            action="standard",
+            description="Standard DNSRecon enumeration (-t std).",
+            args=(ArgSpec("domain", "str", required=True, description="Domain in scope."),),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("host", "note"),
+            example_args={"domain": "example.com"},
+        ),
+        ActionContract(
+            action="zone_transfer",
+            description="Attempt an AXFR zone transfer against the domain's nameservers.",
+            args=(
+                ArgSpec("domain", "str", required=True, description="Domain in scope."),
+                ArgSpec("nameserver", "str", required=False, description="Specific NS to query."),
+            ),
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=("host", "note"),
+            example_args={"domain": "example.com"},
+        ),
+        ActionContract(
+            action="brute_force",
+            description="Brute-force subdomain names from a wordlist. Noisy: many DNS queries.",
+            args=(
+                ArgSpec("domain", "str", required=True, description="Domain in scope."),
+                ArgSpec(
+                    "wordlist",
+                    "str",
+                    required=True,
+                    description="Path to a subdomain wordlist inside the sandbox.",
+                ),
+            ),
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=("host", "note"),
+            example_args={"domain": "example.com", "wordlist": "/usr/share/wordlists/dns.txt"},
+        ),
+        ActionContract(
+            action="reverse_lookup",
+            description="Reverse-DNS sweep across an IP range to map names onto addresses.",
+            args=(
+                ArgSpec(
+                    "cidr",
+                    "str",
+                    required=True,
+                    description="IP range in scope, e.g. 192.168.56.0/24.",
+                ),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("host", "note"),
+            example_args={"cidr": "192.168.56.0/24"},
+        ),
+    ),
+)
 
 
 class DNSReconWrapper(BaseToolWrapper):

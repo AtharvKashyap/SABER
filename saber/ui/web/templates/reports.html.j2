@@ -1,0 +1,17 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Deliverables</p>
+    <h1 class="page-title">Reports</h1>
+    <p class="page-note">
+      Technical reports and executive summaries, rendered from final mission state.
+    </p>
+  </div>
+  <a class="btn btn-ghost" href="/reports">JSON</a>
+</div>
+
+<section class="panel">
+  {% include "partials/reports_table.html.j2" %}
+</section>
+{% endblock %}

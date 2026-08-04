@@ -1,0 +1,8 @@
+2026/07/29 12:00:01 server: Reverse tunnelling enabled
+2026/07/29 12:00:01 server: Fingerprint AbCdEfGhIjKlMnOpQrStUvWxYz0123456789fake=
+2026/07/29 12:00:01 server: Listening on http://0.0.0.0:8000
+2026/07/29 12:00:14 server: session#1: Handshaking...
+2026/07/29 12:00:14 client: Connecting to ws://10.0.0.1:8000
+2026/07/29 12:00:15 client: Connected (Latency 1.2ms)
+2026/07/29 12:00:15 server: session#1: tun: proxy#R:127.0.0.1:1080=>socks: Listening
+2026/07/29 12:00:16 server: session#1: tun: proxy#R:3389:10.0.0.5:3389: Listening

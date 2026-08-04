@@ -29,6 +29,7 @@ from saber.storage.connection import StorageConnection
 from saber.storage.evidence_index import EvidenceIndex
 from saber.storage.finding_store import FindingStore
 from saber.storage.graph_store import GraphStore
+from saber.core.docker_runner import DEFAULT_SHARED_IMAGE
 
 
 pytestmark = pytest.mark.e2e
@@ -102,7 +103,7 @@ def test_result_processor_parses_real_nmap_xml_from_docker(tmp_path) -> None:
     runner = DockerSubprocessRunner(
         image=os.getenv(
             "SABER_SANDBOX_IMAGE",
-            "ghcr.io/atharvkashyap/saber-sandbox:kali-last-release",
+            DEFAULT_SHARED_IMAGE,
         ),
         repo_dir=tmp_path,
         default_timeout_seconds=120,

@@ -19,9 +19,23 @@ def test_dashboard_contains_start_mission_form(tmp_path) -> None:
     response = client.get("/ui")
 
     assert response.status_code == 200
-    assert "Start Mission" in response.text
+    assert "Start mission" in response.text
     assert "mission-start-form" in response.text
     assert "/sessions/run" in response.text
+    # Every field the run endpoint accepts is reachable from the form.
+    for field in (
+        "target",
+        "profile",
+        "strategy",
+        "agent_mode",
+        "max_steps",
+        "objective",
+        "mission_name",
+        "require_approval",
+        "dry_run",
+        "lab",
+    ):
+        assert f'id="{field}"' in response.text, f"missing form field: {field}"
 
 
 def test_sessions_run_endpoint_starts_background_mission(monkeypatch, tmp_path) -> None:

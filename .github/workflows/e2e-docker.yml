@@ -13,8 +13,6 @@ permissions:
 
   contents: read
 
-  packages: read
-
 jobs:
 
   docker-e2e:
@@ -49,21 +47,22 @@ jobs:
 
           python -m pip install pytest openpyxl jinja2 reportlab fastapi httpx uvicorn
 
-      - name: Pull SABER sandbox image
-
+      # Build the image this commit defines rather than pulling a published one.
+      # Pulling meant the E2E suite validated a registry artifact instead of the
+      # repo's Dockerfile, so when the Dockerfile gained checksec/radare2/gdb/
+      # pwntools/chisel/enum4linux and the published tag did not, nothing caught
+      # it — the image-manifest test passed against an image that had drifted
+      # away from the contracts. Building here also removes the chicken-and-egg
+      # where a PR could not go green until its own image had been published.
+      - name: Build SABER sandbox image
         run: |
+          make sandbox-build
 
-          docker pull ghcr.io/atharvkashyap/saber-sandbox:kali-last-release
-
+      # SABER_SANDBOX_IMAGE is deliberately NOT set: the suite should exercise the
+      # documented default, which is what `make sandbox-build` produces.
       - name: Run Docker E2E tests
-
         env:
-
           SABER_RUN_DOCKER_E2E: "1"
-
-          SABER_SANDBOX_IMAGE: ghcr.io/atharvkashyap/saber-sandbox:kali-last-release
-
         run: |
-
           pytest tests/e2e_tests -q --tb=short -x
 

@@ -14,7 +14,7 @@ class NmapParser(BaseParser):
 
     source_tool = "nmap"
 
-    def parse_text(self, text: str) -> ParserResult:
+    def parse_text(self, text: str, metadata: dict[str, Any] | None = None) -> ParserResult:
         """Parse Nmap XML or stdout."""
 
         stripped = text.strip()
@@ -51,6 +51,7 @@ class NmapParser(BaseParser):
                     summary=f"Host {address} is {state}.",
                     source_tool=self.source_tool,
                     data={
+                        "address": address,
                         "host": address,
                         "state": state,
                         "hostnames": hostnames,
@@ -93,7 +94,12 @@ class NmapParser(BaseParser):
                         kind="host",
                         summary=f"Host {current_host} was reported by Nmap.",
                         source_tool=self.source_tool,
-                        data={"host": current_host, "state": "unknown", "raw": raw_host},
+                        data={
+                            "address": current_host,
+                            "host": current_host,
+                            "state": "unknown",
+                            "raw": raw_host,
+                        },
                         metadata={"format": "stdout"},
                     )
                 )
@@ -166,6 +172,10 @@ class NmapParser(BaseParser):
                 "version": version,
                 "extrainfo": extrainfo,
                 "cpes": cpes,
+                # KnownService has no cpes/extrainfo field, so these were discarded
+                # at merge. Routed through "metadata", which the service merger now
+                # carries, so CVE correlation can actually reach them.
+                "metadata": {"cpes": cpes, "extrainfo": extrainfo},
             },
             metadata={"format": "xml"},
         )
@@ -198,7 +208,11 @@ class NmapParser(BaseParser):
                 names.append(name)
         return names
 
-    def parse_json(self, data: dict[str, Any] | list[Any]) -> ParserResult:
+    def parse_json(
+        self,
+        data: dict[str, Any] | list[Any],
+        metadata: dict[str, Any] | None = None,
+    ) -> ParserResult:
         """Nmap JSON is not first-class; accept already-normalized records."""
 
         records = data if isinstance(data, list) else data.get("hosts", [])
@@ -215,7 +229,7 @@ class NmapParser(BaseParser):
                     kind="host",
                     summary=f"Host {host} was reported by Nmap.",
                     source_tool=self.source_tool,
-                    data=record,
+                    data={"address": host, **record},
                     metadata={"format": "json"},
                 )
             )

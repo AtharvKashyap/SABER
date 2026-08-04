@@ -349,7 +349,9 @@ class TestNmapWrapper:
             output_prefix="nmap/service",
         )
 
-        assert command.command == ["nmap", "-sT", "-sV", "-sC", "-p", "80,443", "-oA", "nmap/service", "192.0.2.10"]
+        assert command.command == [
+            "nmap", "-sT", "-sV", "-sC", "-Pn", "-p", "80,443", "-oA", "nmap/service", "192.0.2.10",
+        ]
         assert command.action == "service_scan"
 
     def test_vuln_scan_delegates_to_sandbox(self) -> None:
@@ -360,7 +362,9 @@ class TestNmapWrapper:
 
         wrapper.vuln_scan(target=make_host_target(), session=make_session(), ports="445")
 
-        assert sandbox.requests[0].command == ["nmap", "-sV", "--script", "vuln", "-p", "445", "192.0.2.10"]
+        assert sandbox.requests[0].command == [
+            "nmap", "-sV", "--script", "vuln", "-p", "445", "-oX", "-", "192.0.2.10"
+        ]
         assert sandbox.requests[0].tool_request.action == "vuln_scan"
 
     def test_udp_scan_command(self) -> None:
@@ -369,7 +373,9 @@ class TestNmapWrapper:
         wrapper = NmapWrapper(FakeSandbox())
         command = wrapper.build_command(target=make_host_target(), action="udp_scan", ports="53,161")
 
-        assert command.command == ["nmap", "-sU", "-p", "53,161", "192.0.2.10"]
+        assert command.command == [
+            "nmap", "-sU", "-Pn", "-p", "53,161", "-oX", "-", "192.0.2.10"
+        ]
 
     def test_script_scan_command(self) -> None:
         """Script scan should include script name."""
@@ -382,7 +388,9 @@ class TestNmapWrapper:
             ports="80",
         )
 
-        assert command.command == ["nmap", "-sV", "--script", "http-title", "-p", "80", "192.0.2.10"]
+        assert command.command == [
+            "nmap", "-sV", "--script", "http-title", "-p", "80", "-oX", "-", "192.0.2.10"
+        ]
         assert command.metadata["script"] == "http-title"
 
     def test_missing_script_raises(self) -> None:
@@ -540,7 +548,7 @@ class TestWhatWebWrapper:
             json_output="whatweb.json",
         )
 
-        assert command.command == ["whatweb", "-a", "2", "https://example.com/", "--log-json", "whatweb.json"]
+        assert command.command == ["whatweb", "--colour=never", "-a", "2", "https://example.com/", "--log-json", "whatweb.json"]
         assert command.action == "fingerprint"
 
     def test_aggressive_delegates_to_sandbox(self) -> None:
@@ -551,7 +559,7 @@ class TestWhatWebWrapper:
 
         wrapper.aggressive(target=make_url_target(), session=make_session())
 
-        assert sandbox.requests[0].command == ["whatweb", "-a", "3", "https://example.com/"]
+        assert sandbox.requests[0].command == ["whatweb", "--colour=never", "-a", "3", "https://example.com/"]
         assert sandbox.requests[0].tool_request.action == "aggressive"
 
     def test_list_scan_command(self) -> None:
@@ -560,7 +568,7 @@ class TestWhatWebWrapper:
         wrapper = WhatWebWrapper(FakeSandbox())
         command = wrapper.build_command(action="list_scan", input_file="urls.txt", aggression=1)
 
-        assert command.command == ["whatweb", "-a", "1", "-i", "urls.txt"]
+        assert command.command == ["whatweb", "--colour=never", "-a", "1", "-i", "urls.txt"]
 
     def test_missing_input_file_raises(self) -> None:
         """Missing input file should raise."""

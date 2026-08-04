@@ -10,6 +10,83 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="file",
+    category="reverse_engineering",
+    phase="recon",
+    description=(
+        "Identify file types via libmagic. Cheap first step on any downloaded or "
+        "discovered artifact: tells you whether it is an ELF, a PE, an archive, or a "
+        "script before anything heavier is run on it."
+    ),
+    parser="file",
+    actions=(
+        ActionContract(
+            action="identify",
+            description="Identify the type of a single file.",
+            args=(
+                ArgSpec(
+                    "file_path",
+                    "str",
+                    required=True,
+                    description="Path to the file inside the sandbox.",
+                ),
+                ArgSpec(
+                    "brief",
+                    "bool",
+                    required=False,
+                    default=False,
+                    description="Omit the filename prefix from the output (-b).",
+                ),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("note",),
+            example_args={"file_path": "/opt/lab/vulnbin"},
+        ),
+        ActionContract(
+            action="mime",
+            description="Report a file's MIME type rather than its prose description.",
+            args=(
+                ArgSpec(
+                    "file_path",
+                    "str",
+                    required=True,
+                    description="Path to the file inside the sandbox.",
+                ),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("note",),
+            example_args={"file_path": "/opt/lab/vulnbin"},
+        ),
+        ActionContract(
+            action="directory",
+            description="Identify every file in a directory, to triage a whole drop at once.",
+            args=(
+                ArgSpec(
+                    "directory_path",
+                    "str",
+                    required=True,
+                    description="Directory to walk inside the sandbox.",
+                ),
+                ArgSpec(
+                    "recursive",
+                    "bool",
+                    required=False,
+                    default=False,
+                    description="Recurse below the top level.",
+                ),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("note",),
+            example_args={"directory_path": "/opt/lab"},
+        ),
+    ),
+)
 
 
 class FileWrapper(BaseToolWrapper):

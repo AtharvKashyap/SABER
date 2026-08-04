@@ -10,6 +10,77 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="amass",
+    category="recon",
+    phase="recon",
+    description="Passive subdomain/asset enumeration.",
+    parser="amass",
+    actions=(
+        ActionContract(
+            action="passive_enum",
+            description="Passive enumeration (alias of `enum_passive`).",
+            args=(ArgSpec("domain", "str", required=True, description="Domain in scope."),),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("host",),
+            example_args={"domain": "example.com"},
+        ),
+        ActionContract(
+            action="enum_passive",
+            description="Passive enumeration using OSINT sources only (no traffic to the target).",
+            args=(ArgSpec("domain", "str", required=True, description="Domain in scope."),),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("host",),
+            example_args={"domain": "example.com"},
+        ),
+        ActionContract(
+            action="enum_active",
+            description="Active enumeration: resolves and probes the target's DNS infrastructure.",
+            args=(
+                ArgSpec("domain", "str", required=True, description="Domain in scope."),
+                ArgSpec("resolvers_file", "str", required=False, description="Custom resolver list."),
+            ),
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=("host",),
+            example_args={"domain": "example.com"},
+        ),
+        ActionContract(
+            action="intel",
+            description="Collect organisation intel (whois-adjacent) to widen the attack surface.",
+            args=(
+                ArgSpec("domain", "str", required=True, description="Domain in scope."),
+                ArgSpec("whois", "bool", required=False, default=True),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("host",),
+            example_args={"domain": "example.com", "whois": True},
+        ),
+        ActionContract(
+            action="db_export",
+            description="Export previously collected Amass graph data as JSON.",
+            args=(
+                ArgSpec("domain", "str", required=True, description="Domain in scope."),
+                ArgSpec(
+                    "output_file",
+                    "str",
+                    required=True,
+                    default="amass_graph.json",
+                    description="Destination path for the JSON graph export.",
+                ),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("host",),
+            example_args={"domain": "example.com", "output_file": "amass_graph.json"},
+        ),
+    ),
+)
 
 
 class AmassWrapper(BaseToolWrapper):
@@ -132,17 +203,22 @@ class AmassWrapper(BaseToolWrapper):
             **(kwargs.get("metadata") or {}),
         }
 
-        if action == "enum_passive":
+        if action in {"enum_passive", "passive_enum"}:
             command = ["amass", "enum", "-passive", "-d", domain]
             output_file = kwargs.get("output_file")
             if output_file:
                 command.extend(["-o", str(output_file)])
 
+            if action == "passive_enum":
+                relative_dir = "recon/amass/passive_enum"
+            else:
+                relative_dir = "recon/amass/enum_passive"
+
             return ToolCommand(
                 command=command,
-                action="enum_passive",
+                action=action,
                 evidence_title=f"Amass passive enum: {domain}",
-                evidence_relative_dir="recon/amass/enum_passive",
+                evidence_relative_dir=relative_dir,
                 timeout_seconds=kwargs.get("timeout_seconds"),
                 metadata={**metadata, "output_file": output_file},
             )

@@ -1,4 +1,13 @@
-"""BloodHound output parser for SABER."""
+"""BloodHound output parser for SABER.
+
+Emits the canonical observation vocabulary (see ``saber/parsers/base.py``):
+AD users become ``account``, computers become ``host``, and groups, domains,
+relationships and attack paths become ``note``. Before F3 this parser emitted
+``ad_entity``/``ad_relationship``/``ad_path``, none of which ``StateMerger``
+knows, so every BloodHound collection was silently discarded and
+``MissionState`` never grew — the same defect class as the original whatweb bug.
+``ParsedFinding`` output is unchanged and still feeds the report path.
+"""
 
 from __future__ import annotations
 
@@ -6,13 +15,24 @@ from typing import Any
 
 from saber.parsers.base import BaseParser, ParsedFinding, ParsedObservation, ParserResult, ParserSeverity
 
+# SharpHound/bloodhound-python meta.type -> the singular entity name used below.
+_SHARPHOUND_TYPES = {
+    "users": "user",
+    "computers": "computer",
+    "groups": "group",
+    "domains": "domain",
+    "gpos": "gpo",
+    "ous": "ou",
+    "containers": "container",
+}
+
 
 class BloodHoundParser(BaseParser):
     """Parse BloodHound/SharpHound-like JSON into AD observations and findings."""
 
     source_tool = "bloodhound"
 
-    def parse_text(self, text: str) -> ParserResult:
+    def parse_text(self, text: str, metadata: dict[str, Any] | None = None) -> ParserResult:
         """Parse BloodHound JSON text."""
 
         stripped = text.strip()
@@ -29,7 +49,11 @@ class BloodHoundParser(BaseParser):
 
         return self.parse_json(parsed)
 
-    def parse_json(self, data: dict[str, Any] | list[Any]) -> ParserResult:
+    def parse_json(
+        self,
+        data: dict[str, Any] | list[Any],
+        metadata: dict[str, Any] | None = None,
+    ) -> ParserResult:
         """Parse BloodHound JSON-compatible data."""
 
         observations: list[ParsedObservation] = []
@@ -62,15 +86,19 @@ class BloodHoundParser(BaseParser):
     ) -> None:
         """Consume BloodHound-like collection object."""
 
+        consumed_any = False
+
         for key in ("relationships", "edges", "links"):
             records = data.get(key)
             if isinstance(records, list):
+                consumed_any = True
                 for record in records:
                     self._consume_relationship(record, observations, findings)
 
         for key in ("paths", "attack_paths", "attackPaths"):
             paths = data.get(key)
             if isinstance(paths, list):
+                consumed_any = True
                 for path in paths:
                     self._consume_path(path, observations, findings)
 
@@ -80,7 +108,33 @@ class BloodHoundParser(BaseParser):
                 for record in records:
                     self._consume_entity(key.rstrip("s"), record, observations)
 
-        if any(name in data for name in ("source", "target", "relationship", "edges")):
+        # Real SharpHound / bloodhound-python output: {"meta": {"type": "users"},
+        # "data": [{"Properties": {...}}, ...]}.
+        meta = data.get("meta")
+        records = data.get("data")
+        if isinstance(records, list):
+            meta_type = ""
+            if isinstance(meta, dict):
+                meta_type = str(meta.get("type") or "").lower()
+            entity_type = _SHARPHOUND_TYPES.get(meta_type, "entity")
+            for record in records:
+                if isinstance(record, dict) and isinstance(record.get("Properties"), dict):
+                    self._consume_entity(entity_type, record["Properties"], observations)
+                else:
+                    self._consume_entity(entity_type, record, observations)
+
+        for key in ("users", "groups", "computers", "domains"):
+            if isinstance(data.get(key), list):
+                consumed_any = True
+
+        # Fall through to single-record handling ONLY if nothing above matched.
+        # Without this guard a collection like {"edges": [...]} was consumed twice:
+        # once as relationships, then again as a PATH (because "edges" in data),
+        # inventing an attack path from a single edge. Fabricating a finding is the
+        # worst failure mode for an evidence-first tool — it would reach the report.
+        if not consumed_any and any(
+            name in data for name in ("source", "target", "relationship", "edges")
+        ):
             self._consume_record(data, observations, findings)
 
     def _consume_record(
@@ -135,16 +189,23 @@ class BloodHoundParser(BaseParser):
             return
 
         summary = f"{source} has {relationship} relationship to {target}."
+        title = f"AD relationship: {source} -{relationship}-> {target}"
+        severity = "high" if self._is_high_value_target(target) else "info"
         observations.append(
             ParsedObservation(
-                kind="ad_relationship",
+                kind="note",
                 summary=summary,
                 source_tool=self.source_tool,
                 data={
-                    "source": source,
-                    "relationship": relationship,
-                    "target": target,
-                    "raw": record,
+                    "title": title,
+                    "detail": summary,
+                    "severity": severity,
+                    "metadata": {
+                        "source": source,
+                        "relationship": relationship,
+                        "target": target,
+                        "observation_type": "ad_relationship",
+                    },
                 },
                 metadata={"relationship": relationship},
             )
@@ -174,17 +235,22 @@ class BloodHoundParser(BaseParser):
             return
 
         summary = f"AD attack path found from {source or 'unknown source'} to {target or 'unknown target'}."
+        title = f"AD attack path: {source or 'unknown'} -> {target or 'unknown'}"
         observations.append(
             ParsedObservation(
-                kind="ad_path",
+                kind="note",
                 summary=summary,
                 source_tool=self.source_tool,
                 data={
-                    "source": source,
-                    "target": target,
-                    "path_length": path_length,
-                    "edges": edges,
-                    "raw": record,
+                    "title": title,
+                    "detail": summary,
+                    "severity": "high" if self._is_high_value_target(target) else "medium",
+                    "metadata": {
+                        "source": source,
+                        "target": target,
+                        "path_length": path_length,
+                        "observation_type": "ad_path",
+                    },
                 },
                 metadata={"path_length": path_length},
             )
@@ -222,15 +288,58 @@ class BloodHoundParser(BaseParser):
         if not name:
             return
 
+        name = str(name).strip()
+        summary = f"BloodHound entity discovered: {entity_type} {name}."
+        entity_metadata = {"entity_type": entity_type, "objectid": record.get("objectid")}
+
+        if entity_type == "user":
+            # SharpHound names are UPN-ish: "JDOE@LAB.LOCAL".
+            account, _, domain = name.partition("@")
+            observations.append(
+                ParsedObservation(
+                    kind="account",
+                    summary=summary,
+                    source_tool=self.source_tool,
+                    data={
+                        "username": account.lower() or name.lower(),
+                        "domain": (domain or record.get("domain") or None) or None,
+                        "source": "bloodhound",
+                        "enabled": bool(record.get("enabled", True)),
+                        "metadata": entity_metadata,
+                    },
+                    metadata={"entity_type": entity_type},
+                )
+            )
+            return
+
+        if entity_type == "computer":
+            observations.append(
+                ParsedObservation(
+                    kind="host",
+                    summary=summary,
+                    source_tool=self.source_tool,
+                    data={
+                        "address": name.lower(),
+                        "hostnames": [name.lower()],
+                        "os": record.get("operatingsystem") or record.get("os"),
+                        "metadata": entity_metadata,
+                    },
+                    metadata={"entity_type": entity_type},
+                )
+            )
+            return
+
+        # Groups, domains, OUs, GPOs: structural context, not a state primitive.
         observations.append(
             ParsedObservation(
-                kind="ad_entity",
-                summary=f"BloodHound entity discovered: {entity_type} {name}.",
+                kind="note",
+                summary=summary,
                 source_tool=self.source_tool,
                 data={
-                    "entity_type": entity_type,
-                    "name": name,
-                    "raw": record,
+                    "title": f"AD {entity_type}: {name}",
+                    "detail": summary,
+                    "severity": "info",
+                    "metadata": {**entity_metadata, "observation_type": "ad_entity"},
                 },
                 metadata={"entity_type": entity_type},
             )

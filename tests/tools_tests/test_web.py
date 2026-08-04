@@ -114,6 +114,7 @@ class TestFeroxbusterWrapper:
             "https://example.com/",
             "-w",
             "wordlists/common.txt",
+            "--json",
             "-t",
             "25",
             "-x",
@@ -139,6 +140,7 @@ class TestFeroxbusterWrapper:
             "https://example.com/",
             "-w",
             "wordlists/common.txt",
+            "--json",
             "-t",
             "20",
         ]
@@ -264,6 +266,7 @@ class TestNucleiWrapper:
 
         assert command.command == [
             "nuclei",
+            "-nc",
             "-u",
             "https://example.com/",
             "-t",
@@ -292,6 +295,7 @@ class TestNucleiWrapper:
 
         assert sandbox.requests[0].command == [
             "nuclei",
+            "-nc",
             "-u",
             "https://example.com/",
             "-t",

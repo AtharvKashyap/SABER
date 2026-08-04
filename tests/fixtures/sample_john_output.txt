@@ -1,0 +1,5 @@
+jdoe:Summer2023!:1001:1001:John Doe:/home/jdoe:/bin/bash
+asmith:Passw0rd!:1002:1002:Alice Smith:/home/asmith:/bin/bash
+svc_backup:hunter2:1003:1003::/home/svc_backup:/usr/sbin/nologin
+
+3 password hashes cracked, 1 left

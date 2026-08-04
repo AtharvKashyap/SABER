@@ -1,0 +1,16 @@
+- Nikto v2.5.0
+---------------------------------------------------------------------------
++ Target IP:          10.0.0.5
++ Target Hostname:    10.0.0.5
++ Target Port:        80
++ Start Time:         2024-01-01 00:00:00 (GMT0)
+---------------------------------------------------------------------------
++ Server: Apache/2.4.41 (Ubuntu)
++ /: The X-Content-Type-Options header is not set. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options
++ OSVDB-3092: /admin/: This might be interesting as it could be a admin interface.
++ OSVDB-3268: /doc/: Directory indexing found.
++ OSVDB-877: HTTP TRACE method is active which suggests XST is possible.
++ 7915 requests: 0 error(s) and 3 item(s) reported on remote host
++ End Time:           2024-01-01 00:05:00 (GMT0) (300 seconds)
+---------------------------------------------------------------------------
++ 1 host(s) tested

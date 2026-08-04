@@ -1,0 +1,6 @@
+www.example.com (FQDN) --> a_record --> 93.184.216.34 (IPAddress)
+mail.example.com (FQDN) --> a_record --> 93.184.216.35 (IPAddress)
+example.com (FQDN) --> mx_record --> mail.example.com (FQDN)
+ipv6.example.com (FQDN) --> aaaa_record --> 2606:2800:220:1:248:1893:25c8:1946 (IPAddress)
+dev.example.com
+staging.example.com

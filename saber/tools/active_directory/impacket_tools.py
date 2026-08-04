@@ -12,11 +12,149 @@ from __future__ import annotations
 from typing import Any
 
 from saber.core.sandbox import Sandbox, SandboxExecutionResult
-from saber.tools.capability import RequestedActionCategory
 from saber.models.scope import AssessmentPhase
 from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
+from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="impacket",
+    category="active_directory",
+    phase="active_directory",
+    description=(
+        "Impacket Active Directory utilities: user/SPN enumeration, AS-REP "
+        "roasting candidate checks, and SMB remote-execution validation."
+    ),
+    parser="impacket",
+    actions=(
+        ActionContract(
+            action="get_ad_users",
+            description=(
+                "Enumerate domain users via GetADUsers.py using authenticated "
+                "credentials (identity built from domain/username/password_env_var)."
+            ),
+            args=(
+                ArgSpec("domain", "str", required=True, description="AD domain, e.g. corp.local."),
+                ArgSpec("username", "str", required=True, description="Authenticating username."),
+                ArgSpec(
+                    "password_env_var",
+                    "str",
+                    required=False,
+                    default="AD_PASSWORD",
+                    description="Env var holding the authenticating password.",
+                ),
+                ArgSpec(
+                    "dc_ip",
+                    "str",
+                    required=False,
+                    default=None,
+                    description="Optional domain controller IP.",
+                ),
+            ),
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("account",),
+            example_args={
+                "domain": "corp.local",
+                "username": "svc-recon",
+                "password_env_var": "AD_PASSWORD",
+            },
+        ),
+        ActionContract(
+            action="get_spns",
+            description=(
+                "Enumerate Kerberoastable SPNs via GetUserSPNs.py; with "
+                "request_tickets=True it also requests service tickets, yielding "
+                "crackable $krb5tgs$ hashes."
+            ),
+            args=(
+                ArgSpec("domain", "str", required=True, description="AD domain, e.g. corp.local."),
+                ArgSpec("username", "str", required=True, description="Authenticating username."),
+                ArgSpec(
+                    "password_env_var",
+                    "str",
+                    required=False,
+                    default="AD_PASSWORD",
+                    description="Env var holding the authenticating password.",
+                ),
+                ArgSpec(
+                    "dc_ip",
+                    "str",
+                    required=False,
+                    default=None,
+                    description="Optional domain controller IP.",
+                ),
+                ArgSpec(
+                    "request_tickets",
+                    "bool",
+                    required=False,
+                    default=False,
+                    description="Request service tickets (-request) to obtain crackable hashes.",
+                ),
+            ),
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("credential",),
+            example_args={
+                "domain": "corp.local",
+                "username": "svc-recon",
+                "password_env_var": "AD_PASSWORD",
+                "request_tickets": True,
+            },
+        ),
+        ActionContract(
+            action="get_asrep_candidates",
+            description=(
+                "Check AS-REP roastable candidates from an approved username file "
+                "via GetNPUsers.py (-no-pass); yields crackable $krb5asrep$ hashes."
+            ),
+            args=(
+                ArgSpec("domain", "str", required=True, description="AD domain, e.g. corp.local."),
+                ArgSpec(
+                    "username_file",
+                    "str",
+                    required=True,
+                    description="Path to an approved username list evidence/input file.",
+                ),
+                ArgSpec(
+                    "dc_ip",
+                    "str",
+                    required=False,
+                    default=None,
+                    description="Optional domain controller IP.",
+                ),
+            ),
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("credential",),
+            example_args={"domain": "corp.local", "username_file": "/evidence/usernames.txt"},
+        ),
+        ActionContract(
+            action="smb_exec_check",
+            description=(
+                "Validate remote SMB code execution via psexec.py by running "
+                "'whoami' against the target; confirms a usable exec foothold."
+            ),
+            args=(
+                ArgSpec("domain", "str", required=True, description="AD domain, e.g. corp.local."),
+                ArgSpec("username", "str", required=True, description="Authenticating username."),
+                ArgSpec(
+                    "password_env_var",
+                    "str",
+                    required=False,
+                    default="AD_PASSWORD",
+                    description="Env var holding the authenticating password.",
+                ),
+            ),
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("session",),
+            example_args={"domain": "corp.local", "username": "administrator"},
+        ),
+    ),
+)
 
 
 class ImpacketToolsWrapper(BaseToolWrapper):
@@ -211,7 +349,8 @@ class ImpacketToolsWrapper(BaseToolWrapper):
         password_env_var = str(kwargs.get("password_env_var", "AD_PASSWORD"))
         dc_ip = kwargs.get("dc_ip")
 
-        command = ["GetADUsers.py", self._identity(domain, username, password_env_var), "-all"]
+        identity = self._identity(domain, username, password_env_var)
+        command = ["impacket-GetADUsers", identity, "-all"]
         if dc_ip:
             command.extend(["-dc-ip", str(dc_ip)])
 
@@ -233,7 +372,7 @@ class ImpacketToolsWrapper(BaseToolWrapper):
         request_tickets = bool(kwargs.get("request_tickets", False))
         requires_explicit_authorization = bool(kwargs.get("requires_explicit_authorization", request_tickets))
 
-        command = ["GetUserSPNs.py", self._identity(domain, username, password_env_var)]
+        command = ["impacket-GetUserSPNs", self._identity(domain, username, password_env_var)]
         if request_tickets:
             command.append("-request")
         if dc_ip:
@@ -260,7 +399,7 @@ class ImpacketToolsWrapper(BaseToolWrapper):
         username_file = str(kwargs["username_file"])
         dc_ip = kwargs.get("dc_ip")
 
-        command = ["GetNPUsers.py", domain, "-usersfile", username_file, "-no-pass"]
+        command = ["impacket-GetNPUsers", domain, "-usersfile", username_file, "-no-pass"]
         if dc_ip:
             command.extend(["-dc-ip", str(dc_ip)])
 
@@ -284,7 +423,7 @@ class ImpacketToolsWrapper(BaseToolWrapper):
         password_env_var = str(kwargs.get("password_env_var", "AD_PASSWORD"))
 
         command = [
-            "psexec.py",
+            "impacket-psexec",
             self._identity(domain, username, password_env_var),
             f"@{target.tool_value()}",
             "whoami",

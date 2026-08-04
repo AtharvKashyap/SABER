@@ -6,12 +6,42 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from saber.parsers.amass import AmassParser
 from saber.parsers.base import BaseParser, ParserResult
+from saber.parsers.bettercap import BettercapParser
 from saber.parsers.bloodhound import BloodHoundParser
+from saber.parsers.checksec import ChecksecParser
+from saber.parsers.chisel import ChiselParser
+from saber.parsers.dnsrecon import DNSReconParser
+from saber.parsers.enum4linux import Enum4LinuxParser
+from saber.parsers.feroxbuster import FeroxbusterParser
+from saber.parsers.file import FileParser
+from saber.parsers.ghidra_headless import GhidraHeadlessParser
+from saber.parsers.hashcat import HashcatParser
+from saber.parsers.impacket import ImpacketParser
+from saber.parsers.john import JohnParser
+from saber.parsers.linpeas import LinpeasParser
+from saber.parsers.masscan import MasscanParser
+from saber.parsers.metasploit import MetasploitParser
+from saber.parsers.mimikatz import MimikatzParser
+from saber.parsers.netexec import NetExecParser
+from saber.parsers.nikto import NiktoParser
 from saber.parsers.nmap import NmapParser
 from saber.parsers.nuclei import NucleiParser
+from saber.parsers.openvas import OpenVASParser
+from saber.parsers.pwntools import PwntoolsParser
+from saber.parsers.radare2 import Radare2Parser
+from saber.parsers.responder import ResponderParser
 from saber.parsers.searchsploit import SearchSploitParser
+from saber.parsers.snmpwalk import SnmpwalkParser
+from saber.parsers.sqlmap import SqlmapParser
+from saber.parsers.strings import StringsParser
+from saber.parsers.subfinder import SubfinderParser
+from saber.parsers.theharvester import TheHarvesterParser
+from saber.parsers.tshark import TsharkParser
 from saber.parsers.whatweb import WhatWebParser
+from saber.parsers.winpeas import WinpeasParser
+from saber.parsers.zap import ZapParser
 
 
 @dataclass(frozen=True)
@@ -242,16 +272,201 @@ def default_parser_entries() -> list[ParserRegistryEntry]:
             file_extensions=("json", "jsonl"),
         ),
         ParserRegistryEntry(
+            tool_name="nikto",
+            parser=NiktoParser(),
+            aliases=("nikto_scan", "web_scan"),
+            file_extensions=("txt",),
+        ),
+        ParserRegistryEntry(
             tool_name="searchsploit",
             parser=SearchSploitParser(),
             aliases=("exploitdb", "exploit_search"),
             file_extensions=("json", "txt"),
         ),
         ParserRegistryEntry(
+            tool_name="sqlmap",
+            parser=SqlmapParser(),
+            aliases=("injection_test", "sql_injection"),
+            file_extensions=("txt", "log"),
+        ),
+        ParserRegistryEntry(
             tool_name="bloodhound",
             parser=BloodHoundParser(),
             aliases=("bloodhound-python", "sharphound", "ad_graph"),
             file_extensions=("json",),
+        ),
+        ParserRegistryEntry(
+            tool_name="masscan",
+            parser=MasscanParser(),
+            aliases=("masscan_scan", "port_sweep", "scan_ports"),
+            file_extensions=("json", "txt", "list"),
+        ),
+        ParserRegistryEntry(
+            tool_name="subfinder",
+            parser=SubfinderParser(),
+            aliases=("subdomain_enum", "passive_subdomains"),
+            file_extensions=("txt",),
+        ),
+        ParserRegistryEntry(
+            tool_name="amass",
+            parser=AmassParser(),
+            aliases=("amass_enum", "asset_enum"),
+            file_extensions=("txt",),
+        ),
+        ParserRegistryEntry(
+            tool_name="dnsrecon",
+            parser=DNSReconParser(),
+            aliases=("dns_enum", "dns_recon"),
+            file_extensions=("json", "txt"),
+        ),
+        ParserRegistryEntry(
+            tool_name="theharvester",
+            parser=TheHarvesterParser(),
+            aliases=("theHarvester", "osint_harvest", "email_harvest"),
+            file_extensions=("json", "txt"),
+        ),
+        ParserRegistryEntry(
+            tool_name="responder",
+            parser=ResponderParser(),
+            aliases=("responder_listen", "llmnr_poison", "ntlm_capture"),
+            file_extensions=("txt", "log"),
+        ),
+        ParserRegistryEntry(
+            tool_name="snmpwalk",
+            parser=SnmpwalkParser(),
+            aliases=("snmp_enum", "snmp_walk"),
+            file_extensions=("txt",),
+        ),
+        ParserRegistryEntry(
+            tool_name="zap",
+            parser=ZapParser(),
+            aliases=("zap_api", "owasp_zap"),
+            file_extensions=("json",),
+        ),
+        ParserRegistryEntry(
+            tool_name="feroxbuster",
+            parser=FeroxbusterParser(),
+            aliases=("content_discovery", "dirbust"),
+            file_extensions=("json", "txt"),
+        ),
+        ParserRegistryEntry(
+            tool_name="openvas",
+            parser=OpenVASParser(),
+            aliases=("openvas_api", "gvm"),
+            file_extensions=("xml",),
+        ),
+        ParserRegistryEntry(
+            tool_name="bettercap",
+            parser=BettercapParser(),
+            aliases=("net_probe", "net_recon", "net_show"),
+            file_extensions=("txt", "log"),
+        ),
+        ParserRegistryEntry(
+            tool_name="netexec",
+            parser=NetExecParser(),
+            aliases=("nxc", "netexec_smb", "netexec_ldap"),
+            file_extensions=("txt", "log"),
+        ),
+        ParserRegistryEntry(
+            tool_name="enum4linux",
+            parser=Enum4LinuxParser(),
+            aliases=("enum4linux-ng", "smb_enum", "smb_enumeration"),
+            file_extensions=("txt",),
+        ),
+        ParserRegistryEntry(
+            tool_name="checksec",
+            parser=ChecksecParser(),
+            aliases=("binary_hardening",),
+            file_extensions=("json", "txt"),
+        ),
+        ParserRegistryEntry(
+            tool_name="file",
+            parser=FileParser(),
+            aliases=("file_identify", "libmagic"),
+            file_extensions=("txt",),
+        ),
+        ParserRegistryEntry(
+            tool_name="strings",
+            parser=StringsParser(),
+            aliases=("string_extract",),
+            file_extensions=("txt",),
+        ),
+        ParserRegistryEntry(
+            tool_name="tshark",
+            parser=TsharkParser(),
+            aliases=("wireshark", "passive_capture"),
+            file_extensions=("json", "txt"),
+        ),
+        ParserRegistryEntry(
+            tool_name="pwntools",
+            parser=PwntoolsParser(),
+            aliases=("pwn", "gdb", "binary_exploit"),
+            file_extensions=("txt", "log"),
+        ),
+        ParserRegistryEntry(
+            tool_name="radare2",
+            parser=Radare2Parser(),
+            aliases=("r2",),
+            file_extensions=("json", "txt"),
+        ),
+        ParserRegistryEntry(
+            tool_name="ghidra_headless",
+            parser=GhidraHeadlessParser(),
+            aliases=("ghidra",),
+            file_extensions=("txt",),
+        ),
+        ParserRegistryEntry(
+            tool_name="linpeas",
+            parser=LinpeasParser(),
+            aliases=("linux_privesc_enum",),
+            file_extensions=("txt", "out", "log"),
+        ),
+        ParserRegistryEntry(
+            tool_name="winpeas",
+            parser=WinpeasParser(),
+            aliases=("windows_privesc_enum",),
+            file_extensions=("txt", "out", "log"),
+        ),
+        ParserRegistryEntry(
+            tool_name="metasploit",
+            parser=MetasploitParser(),
+            aliases=("msfconsole", "msf_module"),
+            file_extensions=("txt", "log"),
+        ),
+        ParserRegistryEntry(
+            tool_name="mimikatz",
+            parser=MimikatzParser(),
+            aliases=("credential_dump", "sekurlsa"),
+            file_extensions=("txt", "log"),
+        ),
+        ParserRegistryEntry(
+            tool_name="hashcat",
+            parser=HashcatParser(),
+            aliases=("hashcat_show", "hashcat_crack"),
+            file_extensions=("txt", "pot"),
+        ),
+        ParserRegistryEntry(
+            tool_name="john",
+            parser=JohnParser(),
+            aliases=("john_the_ripper",),
+            file_extensions=("txt", "log"),
+        ),
+        ParserRegistryEntry(
+            tool_name="chisel",
+            parser=ChiselParser(),
+            aliases=("tunnel", "reverse_socks"),
+            file_extensions=("txt", "log"),
+        ),
+        ParserRegistryEntry(
+            tool_name="impacket",
+            parser=ImpacketParser(),
+            aliases=(
+                "impacket_get_ad_users",
+                "impacket_get_spns",
+                "impacket_get_asrep_candidates",
+                "impacket_smb_exec_check",
+            ),
+            file_extensions=("txt",),
         ),
     ]
 

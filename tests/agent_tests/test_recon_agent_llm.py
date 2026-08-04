@@ -5,19 +5,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from saber.agents.base_agent import AgentActionType
+from saber.agents.base_agent import AgentActionType, AgentContext
 from saber.agents.llm_decision_engine import LlmDecisionEngine
 from saber.agents.recon_agent import ReconAgent
+from saber.core.evidence_store import EvidenceStore
 from saber.core.llm_client import LlmClient, LlmConfig, LlmProvider
 from saber.core.prompt_loader import PromptLoader
-from saber.core.sandbox import Sandbox
-from saber.core.evidence_store import EvidenceStore
 from saber.core.runtime import LocalSubprocessRunner
-from saber.core.tool_catalog import ToolCatalog
+from saber.core.sandbox import Sandbox
 from saber.models.session import MissionSession
 from saber.models.target import Target, TargetType
-from saber.agents.base_agent import AgentContext
 from saber.tools.registry import build_default_registry
+
+from tests.support.catalog import build_test_catalog
 
 
 @dataclass
@@ -46,7 +46,7 @@ def test_recon_agent_uses_llm_decision_in_llm_mode(tmp_path) -> None:
     (prompt_dir / "recon_agent_prompt.txt").write_text("RECON", encoding="utf-8")
 
     registry = build_default_registry()
-    catalog = ToolCatalog.from_registry(registry)
+    catalog = build_test_catalog()
 
     engine = LlmDecisionEngine(
         llm_client=FakeLlmClient(
@@ -92,7 +92,7 @@ def test_recon_agent_rejects_invalid_llm_tool(tmp_path) -> None:
     prompt_dir.mkdir()
 
     registry = build_default_registry()
-    catalog = ToolCatalog.from_registry(registry)
+    catalog = build_test_catalog()
 
     engine = LlmDecisionEngine(
         llm_client=FakeLlmClient(

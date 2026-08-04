@@ -10,6 +10,125 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="hashcat",
+    category="password_cracking",
+    phase="exploitation",
+    description=(
+        "GPU-accelerated password/hash cracking against an already-captured hash "
+        "file. Cracking runs against local compute, not against the target host."
+    ),
+    parser="hashcat",
+    actions=(
+        ActionContract(
+            action="dictionary_attack",
+            description="Wordlist attack against a hash file (-a 0), optional rules.",
+            args=(
+                ArgSpec("hash_file", "str", required=True, description="Path to hash file."),
+                ArgSpec(
+                    "hash_mode",
+                    "str",
+                    required=True,
+                    description="Hashcat -m mode identifier, e.g. 1000 (NTLM).",
+                    example="1000",
+                ),
+                ArgSpec("wordlist", "str", required=True, description="Path to wordlist."),
+                ArgSpec(
+                    "rules",
+                    "list[str]",
+                    required=False,
+                    default=(),
+                    description="Hashcat rule file paths (-r).",
+                ),
+                ArgSpec(
+                    "workload_profile",
+                    "int",
+                    required=False,
+                    default=None,
+                    description="Hashcat -w workload profile (1-4).",
+                ),
+            ),
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=("credential",),
+            example_args={
+                "hash_file": "/data/hashes.txt",
+                "hash_mode": "1000",
+                "wordlist": "/wordlists/rockyou.txt",
+            },
+        ),
+        ActionContract(
+            action="mask_attack",
+            description="Brute-force mask attack against a hash file (-a 3).",
+            args=(
+                ArgSpec("hash_file", "str", required=True, description="Path to hash file."),
+                ArgSpec(
+                    "hash_mode",
+                    "str",
+                    required=True,
+                    description="Hashcat -m mode identifier, e.g. 1000 (NTLM).",
+                    example="1000",
+                ),
+                ArgSpec(
+                    "mask", "str", required=True, description="Hashcat mask, e.g. ?u?l?l?l?l?d?d."
+                ),
+                ArgSpec(
+                    "workload_profile",
+                    "int",
+                    required=False,
+                    default=None,
+                    description="Hashcat -w workload profile (1-4).",
+                ),
+            ),
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=("credential",),
+            example_args={
+                "hash_file": "/data/hashes.txt",
+                "hash_mode": "1000",
+                "mask": "?u?l?l?l?l?d?d",
+            },
+        ),
+        ActionContract(
+            action="show_cracked",
+            description="Show already-cracked hashes for a hash file from the local potfile.",
+            args=(
+                ArgSpec("hash_file", "str", required=True, description="Path to hash file."),
+                ArgSpec(
+                    "hash_mode",
+                    "str",
+                    required=True,
+                    description="Hashcat -m mode identifier, e.g. 1000 (NTLM).",
+                    example="1000",
+                ),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("credential",),
+            example_args={"hash_file": "/data/hashes.txt", "hash_mode": "1000"},
+        ),
+        ActionContract(
+            action="benchmark",
+            description="Run Hashcat's local benchmark (-b). Emits no credential data.",
+            args=(
+                ArgSpec(
+                    "hash_mode",
+                    "str",
+                    required=False,
+                    default=None,
+                    description="Restrict the benchmark to a single -m mode.",
+                    example="1000",
+                ),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=(),
+            example_args={},
+        ),
+    ),
+)
 
 
 class HashcatWrapper(BaseToolWrapper):

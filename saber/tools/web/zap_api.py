@@ -10,6 +10,105 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="zap_api",
+    category="web",
+    phase="recon",
+    description="OWASP ZAP crawling and active vulnerability scanning via zap-cli/zap-baseline.",
+    parser="zap",
+    aliases=("zap",),
+    actions=(
+        ActionContract(
+            action="baseline_scan",
+            description="zap-baseline.py passive spider + baseline alert scan.",
+            args=(
+                ArgSpec(
+                    "report_file",
+                    "str",
+                    required=False,
+                    default=None,
+                    description="Optional path to write the ZAP report.",
+                    example="/evidence/zap_baseline.html",
+                ),
+            ),
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("vuln", "note"),
+            example_args={},
+        ),
+        ActionContract(
+            action="spider",
+            description="zap-cli spider crawl to enumerate reachable URLs.",
+            args=(
+                ArgSpec(
+                    "zap_url",
+                    "str",
+                    required=True,
+                    description="Base URL of the running ZAP API daemon.",
+                    example="http://127.0.0.1:8080",
+                ),
+            ),
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("note",),
+            example_args={"zap_url": "http://127.0.0.1:8080"},
+        ),
+        ActionContract(
+            action="active_scan",
+            description="zap-cli active-scan: intrusive attack payload scan against the target.",
+            args=(
+                ArgSpec(
+                    "zap_url",
+                    "str",
+                    required=True,
+                    description="Base URL of the running ZAP API daemon.",
+                    example="http://127.0.0.1:8080",
+                ),
+            ),
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("vuln", "note"),
+            example_args={"zap_url": "http://127.0.0.1:8080"},
+        ),
+        ActionContract(
+            action="export_report",
+            description="zap-cli report: export the ZAP scan report from the running daemon.",
+            args=(
+                ArgSpec(
+                    "report_file",
+                    "str",
+                    required=True,
+                    description="Output path for the exported report.",
+                    example="/evidence/zap_report.html",
+                ),
+                ArgSpec(
+                    "zap_url",
+                    "str",
+                    required=True,
+                    description="Base URL of the running ZAP API daemon.",
+                    example="http://127.0.0.1:8080",
+                ),
+                ArgSpec(
+                    "report_format",
+                    "str",
+                    required=False,
+                    default="html",
+                    choices=("html", "xml", "json", "md"),
+                    example="html",
+                ),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("note",),
+            example_args={
+                "report_file": "/evidence/zap_report.html",
+                "zap_url": "http://127.0.0.1:8080",
+            },
+        ),
+    ),
+)
 
 
 class ZAPApiWrapper(BaseToolWrapper):

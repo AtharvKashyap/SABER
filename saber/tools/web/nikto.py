@@ -10,6 +10,26 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="nikto",
+    category="web",
+    phase="recon",
+    description="Web server vulnerability scanning.",
+    parser="nikto",
+    actions=(
+        ActionContract(
+            action="web_scan",
+            description="Run a Nikto scan against a web target.",
+            args=(ArgSpec("port", "str", required=False, example="8080"),),
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=("vuln",),
+            example_args={"port": "8080"},
+        ),
+    ),
+)
 
 
 class NiktoWrapper(BaseToolWrapper):
@@ -79,11 +99,15 @@ class NiktoWrapper(BaseToolWrapper):
             target = None
         if action is None:
             raise ValueError("action is required")
-        if action != "scan":
+        if action not in ("scan", "web_scan"):
             raise ValueError(f"Unsupported Nikto action: {action}")
 
         url = self._url_from_target_or_kwargs(target, kwargs)
         command = ["nikto", "-h", url]
+
+        port = kwargs.get("port")
+        if port:
+            command.extend(["-p", str(port)])
 
         output_file = kwargs.get("output_file")
         if output_file:
@@ -100,13 +124,14 @@ class NiktoWrapper(BaseToolWrapper):
 
         return ToolCommand(
             command=command,
-            action="scan",
+            action=action,
             evidence_title=f"Nikto scan: {url}",
             evidence_relative_dir="web/nikto/scan",
             timeout_seconds=kwargs.get("timeout_seconds"),
             metadata={
                 "action": action,
                 "url": url,
+                "port": port,
                 "output_file": output_file,
                 "output_format": output_format,
                 "tuning": tuning,

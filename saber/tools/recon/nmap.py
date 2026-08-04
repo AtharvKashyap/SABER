@@ -10,6 +10,56 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="nmap",
+    category="recon",
+    phase="recon",
+    description="Network discovery and service/version enumeration.",
+    parser="nmap",
+    actions=(
+        ActionContract(
+            action="service_scan",
+            description="TCP connect service/version scan (-sT -sV -sC -Pn).",
+            args=(ArgSpec("ports", "str", required=False, default=None, example="1-1000"),),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("host", "service"),
+            example_args={"ports": "1-1000"},
+        ),
+        ActionContract(
+            action="vuln_scan",
+            description="NSE vuln category scan. Intrusive.",
+            args=(ArgSpec("ports", "str"),),
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=("vuln", "service"),
+            example_args={},
+        ),
+        ActionContract(
+            action="udp_scan",
+            description="UDP service discovery. Slower and noisier than TCP.",
+            args=(ArgSpec("ports", "str"),),
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=("host", "service"),
+            example_args={"ports": "53,161"},
+        ),
+        ActionContract(
+            action="script_scan",
+            description="Run a specific NSE script or category.",
+            args=(
+                ArgSpec("script", "str", required=True, description="NSE script or category"),
+                ArgSpec("ports", "str"),
+            ),
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=("host", "service", "vuln"),
+            example_args={"script": "http-title"},
+        ),
+    ),
+)
 
 
 class NmapWrapper(BaseToolWrapper):
@@ -134,7 +184,7 @@ class NmapWrapper(BaseToolWrapper):
         if action == "service_scan":
             # Docker Desktop on macOS does not reliably allow raw socket scans.
             # -sT uses TCP connect scan and works consistently in the sandbox.
-            command = ["nmap", "-sT", "-sV", "-sC"]
+            command = ["nmap", "-sT", "-sV", "-sC", "-Pn"]
             relative_dir = "recon/nmap/service_scan"
             title = f"Nmap service scan: {destination}"
 
@@ -144,7 +194,7 @@ class NmapWrapper(BaseToolWrapper):
             title = f"Nmap vuln scan: {destination}"
 
         elif action == "udp_scan":
-            command = ["nmap", "-sU"]
+            command = ["nmap", "-sU", "-Pn"]
             relative_dir = "recon/nmap/udp_scan"
             title = f"Nmap UDP scan: {destination}"
 
@@ -165,6 +215,13 @@ class NmapWrapper(BaseToolWrapper):
         output_prefix = kwargs.get("output_prefix")
         if output_prefix:
             command.extend(["-oA", str(output_prefix)])
+        else:
+            # Emit XML on stdout. nmap's human-readable output does NOT carry
+            # product/version/cpe, so the stdout path silently lost everything -sV
+            # was run to obtain: services arrived with product=None, version=None,
+            # starving searchsploit correlation, technology inference and CVE
+            # matching. The parser auto-detects XML, so this needs no parser change.
+            command.extend(["-oX", "-"])
 
         command.append(destination)
 

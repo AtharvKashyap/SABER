@@ -10,6 +10,73 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="theharvester",
+    category="recon",
+    phase="recon",
+    description="OSINT harvesting of hosts, emails, and other artifacts.",
+    parser="theharvester",
+    actions=(
+        ActionContract(
+            action="search",
+            description="theHarvester OSINT search across configured sources.",
+            args=(
+                ArgSpec("domain", "str", required=True, description="Domain in scope."),
+                ArgSpec(
+                    "sources",
+                    "str",
+                    required=False,
+                    default="all",
+                    description="Comma-separated OSINT source list (wrapper kwarg name).",
+                ),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("host", "account", "note"),
+            example_args={"domain": "example.com", "sources": "all"},
+        ),
+        ActionContract(
+            action="email_search",
+            description="OSINT collection focused on email addresses for the domain.",
+            args=(
+                ArgSpec("domain", "str", required=True, description="Domain in scope."),
+                ArgSpec(
+                    "sources",
+                    "str",
+                    required=False,
+                    default="bing,duckduckgo,crtsh",
+                    description="Comma-separated OSINT source list.",
+                ),
+                ArgSpec("limit", "int", required=False, description="Max results per source."),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("host", "account", "note"),
+            example_args={"domain": "example.com", "sources": "bing,duckduckgo,crtsh"},
+        ),
+        ActionContract(
+            action="host_search",
+            description="OSINT collection focused on hostnames/subdomains for the domain.",
+            args=(
+                ArgSpec("domain", "str", required=True, description="Domain in scope."),
+                ArgSpec(
+                    "sources",
+                    "str",
+                    required=False,
+                    default="bing,duckduckgo,crtsh",
+                    description="Comma-separated OSINT source list.",
+                ),
+                ArgSpec("limit", "int", required=False, description="Max results per source."),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("host", "account", "note"),
+            example_args={"domain": "example.com", "sources": "bing,duckduckgo,crtsh"},
+        ),
+    ),
+)
 
 
 class TheHarvesterWrapper(BaseToolWrapper):

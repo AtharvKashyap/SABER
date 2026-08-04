@@ -308,7 +308,7 @@ class TestImpacketToolsWrapper:
         )
 
         assert command.command == [
-            "GetADUsers.py",
+            "impacket-GetADUsers",
             "CORP/alice:$AD_PASSWORD",
             "-all",
             "-dc-ip",
@@ -334,7 +334,7 @@ class TestImpacketToolsWrapper:
             request_tickets=False,
         )
 
-        assert command.command == ["GetUserSPNs.py", "CORP/alice:$AD_PASSWORD"]
+        assert command.command == ["impacket-GetUserSPNs", "CORP/alice:$AD_PASSWORD"]
         assert command.action == "impacket_get_spns"
         assert command.requires_explicit_authorization is False
         assert command.metadata["request_tickets"] is False
@@ -356,7 +356,7 @@ class TestImpacketToolsWrapper:
         )
 
         assert command.command == [
-            "GetUserSPNs.py",
+            "impacket-GetUserSPNs",
             "CORP/alice:$AD_PASSWORD",
             "-request",
             "-dc-ip",
@@ -380,7 +380,7 @@ class TestImpacketToolsWrapper:
         )
 
         assert command.command == [
-            "GetNPUsers.py",
+            "impacket-GetNPUsers",
             "CORP",
             "-usersfile",
             "/evidence/users.txt",
@@ -407,7 +407,7 @@ class TestImpacketToolsWrapper:
         )
 
         assert command.command == [
-            "psexec.py",
+            "impacket-psexec",
             "CORP/alice:$AD_PASSWORD",
             "@dc01.corp.example.com",
             "whoami",

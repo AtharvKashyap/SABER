@@ -1,0 +1,7 @@
+b4b9b02e6f09a9bd760f388b67351e2b:Summer2024!
+jdoe::LAB:1122334455667788:c336d5c0a3b78c1e1c9a4a1f7e6d5b2a:0101000000000000d1f4a7b2c3d4e5f60000000000:Fall2024!
+b4b9b02e6f09a9bd760f388b67351e2b:Summer2024!
+
+hashcat (v6.2.6) starting in show mode
+
+not a valid potfile line without a colon

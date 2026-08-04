@@ -33,6 +33,7 @@ class ProcessedToolResult:
     evidence_ids: list[str] = field(default_factory=list)
     finding_ids: list[str] = field(default_factory=list)
     observation_ids: list[str] = field(default_factory=list)
+    parsed_observations: list[dict[str, Any]] = field(default_factory=list)
     graph_updates: int = 0
     errors: list[str] = field(default_factory=list)
 
@@ -47,6 +48,7 @@ class ProcessedToolResult:
             "evidence_ids": self.evidence_ids,
             "finding_ids": self.finding_ids,
             "observation_ids": self.observation_ids,
+            "parsed_observations": self.parsed_observations,
             "graph_updates": self.graph_updates,
             "errors": self.errors,
         }
@@ -90,8 +92,15 @@ class ResultProcessor:
         self._ensure_session_exists(session_id)
 
         metadata = dict(metadata or {})
-        inferred_tool = tool_name or self._get(tool_result, "tool_name") or self._get(tool_result, "tool") or "unknown"
-        inferred_action = action or self._get(tool_result, "action") or self._get(tool_result, "command") or "run"
+        inferred_tool = (
+            tool_name
+            or self._get(tool_result, "tool_name")
+            or self._get(tool_result, "tool")
+            or "unknown"
+        )
+        inferred_action = (
+            action or self._get(tool_result, "action") or self._get(tool_result, "command") or "run"
+        )
 
         evidence_ids: list[str] = []
         finding_ids: list[str] = []
@@ -151,6 +160,8 @@ class ResultProcessor:
         parser_used = dispatch.get("parser_used")
         errors.extend(dispatch.get("errors", []))
 
+        parsed_observations: list[dict[str, Any]] = []
+
         parser_result = dispatch.get("result")
         if parser_result is not None:
             for observation in getattr(parser_result, "observations", []) or []:
@@ -162,6 +173,14 @@ class ResultProcessor:
                         evidence_id=evidence_ids[0] if evidence_ids else None,
                     )
                     observation_ids.append(observation_id)
+                    parsed_observations.append(
+                        {
+                            "kind": self._value_from_observation(observation, "kind"),
+                            "data": self._value_from_observation(observation, "data") or {},
+                            "summary": self._value_from_observation(observation, "summary") or "",
+                            "source_tool": self._value_from_observation(observation, "source_tool"),
+                        }
+                    )
 
                     promoted_finding = self._finding_from_observation(observation)
                     if promoted_finding is not None:
@@ -198,6 +217,7 @@ class ResultProcessor:
             evidence_ids=evidence_ids,
             finding_ids=finding_ids,
             observation_ids=observation_ids,
+            parsed_observations=parsed_observations,
             graph_updates=graph_updates,
             errors=errors,
         )
@@ -261,6 +281,8 @@ class ResultProcessor:
         parser_used = dispatch.parser_used
         errors.extend(dispatch.errors)
 
+        parsed_observations: list[dict[str, Any]] = []
+
         parser_result = dispatch.result
         if parser_result is not None:
             for observation in getattr(parser_result, "observations", []) or []:
@@ -272,6 +294,14 @@ class ResultProcessor:
                         evidence_id=evidence_id,
                     )
                     observation_ids.append(observation_id)
+                    parsed_observations.append(
+                        {
+                            "kind": self._value_from_observation(observation, "kind"),
+                            "data": self._value_from_observation(observation, "data") or {},
+                            "summary": self._value_from_observation(observation, "summary") or "",
+                            "source_tool": self._value_from_observation(observation, "source_tool"),
+                        }
+                    )
 
                     promoted_finding = self._finding_from_observation(observation)
                     if promoted_finding is not None:
@@ -308,6 +338,7 @@ class ResultProcessor:
             evidence_ids=[evidence_id] if evidence_id else [],
             finding_ids=finding_ids,
             observation_ids=observation_ids,
+            parsed_observations=parsed_observations,
             graph_updates=graph_updates,
             errors=errors,
         )
@@ -523,7 +554,11 @@ class ResultProcessor:
             if result is not None:
                 outputs["output"] = result
 
-        json_payload = self._get(tool_result, "json") or self._get(tool_result, "json_output") or self._get(tool_result, "parsed_json")
+        json_payload = (
+            self._get(tool_result, "json")
+            or self._get(tool_result, "json_output")
+            or self._get(tool_result, "parsed_json")
+        )
         if json_payload is not None:
             outputs["json"] = json_payload
 
@@ -549,11 +584,15 @@ class ResultProcessor:
         session_dir = self.evidence_root / self._safe_name(session_id) / safe_step
         session_dir.mkdir(parents=True, exist_ok=True)
 
-        suffix = "json" if isinstance(output_value, (dict, list)) or output_name == "json" else "txt"
+        suffix = (
+            "json" if isinstance(output_value, (dict, list)) or output_name == "json" else "txt"
+        )
         path = session_dir / f"{safe_tool}_{safe_output}.{suffix}"
 
         if isinstance(output_value, (dict, list)):
-            path.write_text(json.dumps(output_value, indent=2, sort_keys=True, default=str), encoding="utf-8")
+            path.write_text(
+                json.dumps(output_value, indent=2, sort_keys=True, default=str), encoding="utf-8"
+            )
         else:
             path.write_text(str(output_value), encoding="utf-8")
 
@@ -574,7 +613,10 @@ class ResultProcessor:
         """Make filesystem-safe name."""
 
         text = str(value or "unknown")
-        safe = "".join(character if character.isalnum() or character in {"_", "-"} else "_" for character in text)
+        safe = "".join(
+            character if character.isalnum() or character in {"_", "-"} else "_"
+            for character in text
+        )
         return safe.strip("_") or "unknown"
 
     @staticmethod

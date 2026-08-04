@@ -1,0 +1,37 @@
+# docker/lab/docker-compose.yml
+# SABER vulnerable-target lab. Authorized local testing only.
+name: saber-lab
+
+services:
+  dvwa:
+    image: vulnerables/web-dvwa:latest
+    container_name: saber-lab-dvwa
+    networks: [saber-lab]
+    restart: unless-stopped
+
+  juiceshop:
+    image: bkimminich/juice-shop:latest
+    container_name: saber-lab-juiceshop
+    networks: [saber-lab]
+    restart: unless-stopped
+
+  metasploitable:
+    image: tleemcjr/metasploitable2:latest
+    container_name: saber-lab-metasploitable
+    networks: [saber-lab]
+    restart: unless-stopped
+
+  vulnbin:
+    build: ./vulnbin
+    image: saber/lab-vulnbin:latest
+    container_name: saber-lab-vulnbin
+    networks: [saber-lab]
+    restart: unless-stopped
+
+networks:
+  saber-lab:
+    name: saber-lab
+    # Created and owned by `make lab-up` (docker network create saber-lab) so the
+    # SABER sandbox can also attach to it via SABER_DOCKER_NETWORK=saber-lab.
+    # external: true tells Compose to attach to it rather than manage/label it.
+    external: true

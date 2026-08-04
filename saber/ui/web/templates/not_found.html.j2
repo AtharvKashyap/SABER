@@ -1,0 +1,14 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">404</p>
+    <h1 class="page-title">No mission with that ID</h1>
+    <p class="page-note">
+      Nothing is stored for <span class="mono">{{ session_id }}</span> in this database.
+      It may have been run against a different <code class="mono">--db</code> path.
+    </p>
+  </div>
+  <a class="btn" href="/ui/sessions">All missions</a>
+</div>
+{% endblock %}

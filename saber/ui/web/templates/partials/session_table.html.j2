@@ -1,0 +1,34 @@
+{% if sessions %}
+<div class="table-wrap">
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Mission</th>
+        <th>Target</th>
+        <th>Status</th>
+        <th>Steps</th>
+        <th>Started</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in sessions %}
+      <tr>
+        <td class="wrap">
+          <a href="/ui/sessions/{{ row.session_id }}">{{ row.mission_name or "Untitled mission" }}</a>
+          <div class="mono muted">{{ row.session_id }}</div>
+        </td>
+        <td class="num">{{ row.target or "—" }}</td>
+        <td>{{ badge(row.status) }}</td>
+        <td class="num">{{ row.step_count }}</td>
+        <td class="num">{{ row.started_at | shortdate }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty">
+  <strong>No missions yet</strong>
+  Set a target above and start one. Everything the loop learns is recorded here as it runs.
+</div>
+{% endif %}

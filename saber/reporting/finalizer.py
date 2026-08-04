@@ -13,9 +13,12 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from saber.models.mission_state import MissionState
+from saber.models.session import MissionSession
 from saber.reporting.json_exporter import JsonExporter, ReportDocument
-from saber.reporting.xlsx_exporter import XlsxExporter
 from saber.reporting.pdf_exporter import PdfExporter
+from saber.reporting.state_report_adapter import MissionStateReportAdapter
+from saber.reporting.xlsx_exporter import XlsxExporter
 
 
 @dataclass(frozen=True)
@@ -106,9 +109,241 @@ class ReportFinalizer:
             },
         )
 
-        export_jobs = [
-            ("json", session_dir / "findings.json", lambda path: self.json_exporter.export(document, path)),
-            ("xlsx", session_dir / "findings.xlsx", lambda path: self.xlsx_exporter.export(document, path)),
+        export_jobs = self._build_export_jobs(document, session_dir)
+
+        for report_type, path, exporter in export_jobs:
+            try:
+                exported_path = Path(exporter(path))
+                artifact = self._artifact_for_path(
+                    path=exported_path,
+                    report_type=report_type,
+                    metadata={
+                        "session_id": session_id,
+                        "mission_name": mission_name,
+                        "target": target,
+                        "report_id": report_id,
+                    },
+                )
+                artifacts.append(artifact)
+                self._record_report_artifact(session_id=session_id, artifact=artifact)
+            except Exception as exc:
+                errors.append(f"{report_type}:{type(exc).__name__}: {exc}")
+
+        return ReportFinalizationResult(
+            report_id=report_id,
+            artifacts=artifacts,
+            errors=errors,
+        )
+
+    def finalize_from_state(
+        self,
+        state: MissionState,
+        session: MissionSession,
+        reports_dir: str | Path,
+    ) -> list[ReportArtifact]:
+        """Export reports directly from a mission's final ``MissionState``.
+
+        Mirrors :meth:`finalize` but derives the report document from the
+        accumulated ``MissionState`` (via ``MissionStateReportAdapter``) instead
+        of the persisted finding/observation stores. Reuses the exact same
+        JSON/XLSX/Markdown/PDF exporters and artifact recording. Returns the
+        exported artifacts; export failures are skipped best-effort so the JSON
+        report is always emitted when possible.
+        """
+
+        report_id = f"report_{uuid4().hex[:12]}"
+        session_id = state.session_id
+        session_dir = Path(reports_dir) / session_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+
+        context = MissionStateReportAdapter().build_report_context(state, session)
+
+        findings = [
+            {
+                "title": vuln.get("title") or "Vulnerability",
+                "severity": vuln.get("severity"),
+                "description": vuln.get("title") or "Vulnerability identified during the mission.",
+                "references": list(vuln.get("evidence_refs") or []),
+                "metadata": {
+                    "host": vuln.get("host"),
+                    "port": vuln.get("port"),
+                    "identifier": vuln.get("identifier"),
+                    "confirmed": vuln.get("confirmed"),
+                },
+            }
+            for vuln in context["vulns"]
+        ]
+        # F9: a vulnerability is not the only kind of finding. Proven access and
+        # exfiltrated material are what a reader actually needs to see, and they
+        # were previously absent from the report entirely.
+        findings.extend(self._impact_findings(context))
+        observations = [
+            {
+                "kind": "action",
+                "summary": (
+                    f"{entry['tool_name']}.{entry['action']} -> "
+                    f"{'ok' if entry['success'] else 'failed'}"
+                ),
+                "source_tool": entry["tool_name"],
+                "data": entry,
+            }
+            for entry in context["timeline"]
+        ]
+
+        document = self.json_exporter.build_document(
+            report_id=report_id,
+            mission_name=session.mission_name,
+            target=state.target.value,
+            findings=findings,
+            observations=observations,
+            metadata={
+                "session_id": session_id,
+                "mission_state": context,
+            },
+        )
+
+        export_jobs = self._build_export_jobs(document, session_dir)
+
+        artifacts: list[ReportArtifact] = []
+        for report_type, path, exporter in export_jobs:
+            try:
+                exported_path = Path(exporter(path))
+            except Exception:
+                continue
+            artifact = self._artifact_for_path(
+                path=exported_path,
+                report_type=report_type,
+                metadata={
+                    "session_id": session_id,
+                    "mission_name": session.mission_name,
+                    "target": state.target.value,
+                    "report_id": report_id,
+                    "source": "mission_state",
+                },
+            )
+            artifacts.append(artifact)
+            self._record_report_artifact(session_id=session_id, artifact=artifact)
+
+        return artifacts
+
+    @staticmethod
+    def _impact_findings(context: dict[str, Any]) -> list[dict[str, Any]]:
+        """Turn proven access and collected material into report findings.
+
+        Severity reflects demonstrated impact, not tool output: a captured flag or a
+        working credential is the strongest thing an engagement can show, so it
+        outranks an unexploited vulnerability. Secrets are already redacted by
+        ``MissionStateReportAdapter``; this only reshapes what it produced.
+        """
+
+        access = context.get("access") or {}
+        collected = context.get("collected") or {}
+        findings: list[dict[str, Any]] = []
+
+        for flag in collected.get("flags") or []:
+            findings.append(
+                {
+                    "title": "Objective proven: flag captured",
+                    "severity": "critical",
+                    "description": (
+                        f"Captured proof token {flag.get('value')} from "
+                        f"{flag.get('location') or 'the target'}."
+                    ),
+                    "references": [],
+                    # "finding_kind", not "kind": several records carry their own
+                    # "kind" (a session's meterpreter, loot's key) which would
+                    # silently overwrite the marker when spread.
+                    "metadata": {**flag, "finding_kind": "flag"},
+                }
+            )
+
+        for session_record in access.get("sessions") or []:
+            findings.append(
+                {
+                    "title": f"Interactive access obtained on {session_record.get('host')}",
+                    "severity": "critical",
+                    "description": (
+                        f"A {session_record.get('kind')} session was established as "
+                        f"{session_record.get('user') or 'an unspecified user'} with "
+                        f"{session_record.get('privilege')} privilege."
+                    ),
+                    "references": [],
+                    "metadata": {**session_record, "finding_kind": "session"},
+                }
+            )
+
+        for credential in access.get("credentials") or []:
+            if not credential.get("validated"):
+                # An unvalidated credential is a lead, not a finding.
+                continue
+            service = credential.get("service")
+            via = f" ({service})" if service else ""
+            findings.append(
+                {
+                    "title": f"Valid credential for {credential.get('username')}",
+                    "severity": "high",
+                    "description": (
+                        f"Credential for {credential.get('username')} was confirmed "
+                        f"working against {credential.get('host') or 'the target'}{via}."
+                    ),
+                    "references": [],
+                    "metadata": {**credential, "finding_kind": "credential"},
+                }
+            )
+
+        for item in collected.get("loot") or []:
+            findings.append(
+                {
+                    "title": f"Sensitive material accessible: {item.get('kind')}",
+                    "severity": "medium",
+                    "description": str(item.get("description") or "Artifact collected."),
+                    "references": [],
+                    "metadata": {**item, "finding_kind": "loot"},
+                }
+            )
+
+        for share in access.get("shares") or []:
+            if str(share.get("access") or "none").lower() == "none":
+                continue
+            findings.append(
+                {
+                    "title": (
+                        f"Share {share.get('name')} readable on {share.get('host')}"
+                    ),
+                    "severity": "medium",
+                    "description": (
+                        f"{share.get('type')} share {share.get('name')} on "
+                        f"{share.get('host')} granted {share.get('access')} access."
+                    ),
+                    "references": [],
+                    "metadata": {**share, "finding_kind": "share"},
+                }
+            )
+
+        return findings
+
+    def _build_export_jobs(
+        self,
+        document: ReportDocument,
+        session_dir: Path,
+    ) -> list[tuple[str, Path, Any]]:
+        """Return the ordered (report_type, path, exporter) jobs for a document.
+
+        Single source of truth for the exporter-call pattern shared by
+        :meth:`finalize` and :meth:`finalize_from_state`.
+        """
+
+        export_jobs: list[tuple[str, Path, Any]] = [
+            (
+                "json",
+                session_dir / "findings.json",
+                lambda path: self.json_exporter.export(document, path),
+            ),
+            (
+                "xlsx",
+                session_dir / "findings.xlsx",
+                lambda path: self.xlsx_exporter.export(document, path),
+            ),
         ]
 
         if self.export_markdown:
@@ -159,32 +394,12 @@ class ReportFinalizer:
                 ]
             )
 
-        for report_type, path, exporter in export_jobs:
-            try:
-                exported_path = Path(exporter(path))
-                artifact = self._artifact_for_path(
-                    path=exported_path,
-                    report_type=report_type,
-                    metadata={
-                        "session_id": session_id,
-                        "mission_name": mission_name,
-                        "target": target,
-                        "report_id": report_id,
-                    },
-                )
-                artifacts.append(artifact)
-                self._record_report_artifact(session_id=session_id, artifact=artifact)
-            except Exception as exc:
-                errors.append(f"{report_type}:{type(exc).__name__}: {exc}")
-
-        return ReportFinalizationResult(
-            report_id=report_id,
-            artifacts=artifacts,
-            errors=errors,
-        )
+        return export_jobs
 
     @staticmethod
-    def _artifact_for_path(path: Path, report_type: str, metadata: dict[str, Any]) -> ReportArtifact:
+    def _artifact_for_path(
+        path: Path, report_type: str, metadata: dict[str, Any]
+    ) -> ReportArtifact:
         return ReportArtifact(
             path=str(path),
             report_type=report_type,

@@ -1,0 +1,31 @@
+{# The loop spine. One node per action the loop took, in order.
+   Node shape/colour = outcome. Rule length between nodes = wall-clock time the
+   step took, drawn to scale, so a long scan is visibly long and a burst of fast
+   failures is visibly tight. #}
+{% if spine %}
+<ol class="spine">
+  {% for step in spine %}
+  <li class="spine-step {{ step.css }}" style="padding-bottom: {{ step.gap_px }}px;">
+    <span class="spine-node" aria-hidden="true"></span>
+    <div class="spine-head">
+      <span class="spine-index">{{ "%02d" | format(step.index) }}</span>
+      <span class="spine-tool">{{ step.tool }}.{{ step.action }}</span>
+      {{ badge(step.outcome) }}
+      {% if step.duration %}<span class="spine-index">{{ step.duration }}</span>{% endif %}
+    </div>
+    {% if step.reason %}
+    <p class="spine-reason">{{ step.reason }}</p>
+    {% endif %}
+    {% if step.args %}
+    <pre class="spine-args">{{ step.args }}</pre>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ol>
+{% else %}
+<div class="empty">
+  <strong>The loop has not acted yet</strong>
+  Each decision it makes lands here in order — the tool it chose, the arguments it used,
+  and whether the attempt worked.
+</div>
+{% endif %}

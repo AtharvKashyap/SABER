@@ -10,6 +10,166 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="ghidra_headless",
+    category="reverse_engineering",
+    phase="recon",
+    description=(
+        "Headless Ghidra analysis of a local binary: import + auto-analyze, run "
+        "an operator-authored post-script against an existing project, or analyze "
+        "and export a decompiled-summary highlight report."
+    ),
+    parser="ghidra_headless",
+    aliases=("ghidra",),
+    actions=(
+        ActionContract(
+            action="analyze_binary",
+            description="Import a binary into a Ghidra project and run auto-analysis.",
+            args=(
+                ArgSpec(
+                    "binary_path",
+                    "str",
+                    required=True,
+                    description="Path to the binary inside the sandbox.",
+                ),
+                ArgSpec(
+                    "project_dir",
+                    "str",
+                    required=True,
+                    description="Ghidra project directory inside the sandbox.",
+                ),
+                ArgSpec(
+                    "project_name",
+                    "str",
+                    required=True,
+                    description="Ghidra project name.",
+                ),
+                ArgSpec(
+                    "script_path",
+                    "str",
+                    required=False,
+                    default=None,
+                    description="Optional -postScript to run after import.",
+                ),
+                ArgSpec(
+                    "script_args",
+                    "list[str]",
+                    required=False,
+                    default=[],
+                    description="Arguments passed to script_path.",
+                ),
+                ArgSpec(
+                    "analysis_timeout_seconds",
+                    "int",
+                    required=False,
+                    default=1800,
+                    description="Per-file analysis timeout.",
+                ),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("note",),
+            example_args={
+                "binary_path": "/tmp/challenge.bin",
+                "project_dir": "/tmp/ghidra_proj",
+                "project_name": "saber_analysis",
+            },
+        ),
+        ActionContract(
+            action="run_script",
+            description=(
+                "Run an operator-authored Ghidra script against an existing "
+                "project. Arbitrary script execution, so this is approval-gated."
+            ),
+            args=(
+                ArgSpec(
+                    "project_dir",
+                    "str",
+                    required=True,
+                    description="Ghidra project directory inside the sandbox.",
+                ),
+                ArgSpec(
+                    "project_name",
+                    "str",
+                    required=True,
+                    description="Ghidra project name.",
+                ),
+                ArgSpec(
+                    "script_path",
+                    "str",
+                    required=True,
+                    description="Ghidra script to run against the existing project.",
+                ),
+                ArgSpec(
+                    "script_args",
+                    "list[str]",
+                    required=False,
+                    default=[],
+                    description="Arguments passed to script_path.",
+                ),
+            ),
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=("note",),
+            example_args={
+                "project_dir": "/tmp/ghidra_proj",
+                "project_name": "saber_analysis",
+                "script_path": "/opt/ghidra_scripts/DecompileSummary.java",
+            },
+        ),
+        ActionContract(
+            action="export_analysis",
+            description=(
+                "Import + analyze a binary and export a decompiled-summary "
+                "highlight report via an operator-supplied export script."
+            ),
+            args=(
+                ArgSpec(
+                    "binary_path",
+                    "str",
+                    required=True,
+                    description="Path to the binary inside the sandbox.",
+                ),
+                ArgSpec(
+                    "project_dir",
+                    "str",
+                    required=True,
+                    description="Ghidra project directory inside the sandbox.",
+                ),
+                ArgSpec(
+                    "project_name",
+                    "str",
+                    required=True,
+                    description="Ghidra project name.",
+                ),
+                ArgSpec(
+                    "export_script",
+                    "str",
+                    required=True,
+                    description="Ghidra post-script that writes the export report.",
+                ),
+                ArgSpec(
+                    "output_file",
+                    "str",
+                    required=True,
+                    description="Path the export script should write its report to.",
+                ),
+            ),
+            risk="low",
+            requires_approval=False,
+            emits_kinds=("note",),
+            example_args={
+                "binary_path": "/tmp/challenge.bin",
+                "project_dir": "/tmp/ghidra_proj",
+                "project_name": "saber_analysis",
+                "export_script": "/opt/ghidra_scripts/ExportDecompiled.java",
+                "output_file": "/tmp/decompiled_summary.txt",
+            },
+        ),
+    ),
+)
 
 
 class GhidraHeadlessWrapper(BaseToolWrapper):

@@ -17,7 +17,7 @@ class DummyParser(BaseParser):
     
     source_tool = "dummy"
 
-    def parse_text(self, text: str) -> ParserResult:
+    def parse_text(self, text: str, metadata: dict | None = None) -> ParserResult:
         """Parse text."""
 
         return ParserResult(
@@ -32,7 +32,7 @@ class DummyParser(BaseParser):
             ],
         )
 
-    def parse_json(self, data: dict | list) -> ParserResult:
+    def parse_json(self, data: dict | list, metadata: dict | None = None) -> ParserResult:
         """Parse JSON."""
 
         return ParserResult(
@@ -304,3 +304,24 @@ class TestBaseParser:
 
         assert result.success is True
         assert result.metadata["data"] == [{"a": 1}, {"b": 2}]
+
+class _P(BaseParser):
+    source_tool = "x"
+
+    def parse_text(self, text, metadata=None):
+        return ParserResult(source_tool="x", success=True)
+
+
+def test_parse_text_accepts_metadata_kwarg():
+    """A subclass overriding parse_text with metadata should accept the kwarg."""
+
+    assert _P().parse_text("hi", metadata={"target": "127.0.0.1"}).success
+
+
+def test_existing_parsers_accept_metadata_kwarg():
+    """The registry always passes metadata=..., so real parsers must accept it."""
+
+    from saber.parsers.nmap import NmapParser
+
+    result = NmapParser().parse_text("", metadata={"target": "127.0.0.1"})
+    assert isinstance(result, ParserResult)

@@ -1,16 +1,43 @@
-.PHONY: test unit e2e e2e-one smoke preflight launch final
+.PHONY: test unit e2e e2e-one llm-e2e smoke preflight launch final lab-up lab-down \
+	sandbox-build sandbox-verify
+
+SANDBOX_TAG ?= saber-sandbox:local
 
 test:
 	pytest -q
 
+# Build context is the REPO ROOT, not docker/: the Dockerfile does
+# `COPY requirements.txt`, which lives at the root. A `docker/` context fails.
+sandbox-build:
+	docker build -f docker/Dockerfile.sandbox -t $(SANDBOX_TAG) .
+
+# Ground truth for the arsenal: asks the built image whether every executable a tool
+# CONTRACT invokes is actually on PATH. tests/tools_tests/test_sandbox_image_manifest.py
+# is only a static proxy for this — it reads the Dockerfile, it cannot run it.
+sandbox-verify:
+	SABER_RUN_DOCKER_E2E=1 SABER_SANDBOX_IMAGE=$(SANDBOX_TAG) \
+		pytest tests/e2e_tests/test_image_manifest.py -q --tb=short
+
+# Every offline suite. This deliberately lists all non-gated directories rather
+# than three of them: an earlier version ran only unit/agent_tests/
+# orchestration_tests, so a breaking change to the report adapter shipped green
+# because tests/reporting_tests was never executed. tests/e2e_tests is the only
+# excluded directory (it is Docker/model gated — see `make e2e` / `make llm-e2e`).
 unit:
-	pytest tests/unit tests/agent_tests tests/orchestration_tests -q --tb=short -x
+	pytest tests/unit tests/agent_tests tests/orchestration_tests tests/parser_tests \
+		tests/tools_tests tests/reporting_tests tests/model_tests tests/storage_tests \
+		tests/integration -q --tb=short -x
 
 e2e:
 	SABER_RUN_DOCKER_E2E=1 pytest tests/e2e_tests -q --tb=short -x
 
 e2e-one:
 	SABER_RUN_DOCKER_E2E=1 pytest tests/e2e_tests/test_planner_orchestrator_report_e2e.py -q --tb=short
+
+# Gated live-model acceptance tests: needs a live model (SABER_MODEL /
+# SABER_MODEL_API_KEY) AND Docker. Makes real API calls; skipped in CI.
+llm-e2e:
+	SABER_RUN_LLM_E2E=1 SABER_RUN_DOCKER_E2E=1 pytest tests/e2e_tests/test_mission_loop_live_llm_e2e.py -q --tb=short
 
 smoke:
 	python -m py_compile scripts/launch_saber.py saber/core/runtime.py saber/core/docker_runner.py saber/orchestration/mission_orchestrator.py saber/agents/planner_agent.py saber/reporting/finalizer.py
@@ -29,3 +56,13 @@ final:
 	$(MAKE) unit
 	$(MAKE) e2e
 	$(MAKE) preflight
+
+lab-up:
+	docker network inspect saber-lab >/dev/null 2>&1 || docker network create saber-lab
+	docker compose -f docker/lab/docker-compose.yml up -d --build
+	python3 scripts/lab_scope.py
+	@echo "Lab up. Set SABER_DOCKER_NETWORK=saber-lab in .env, then run missions with --scope runs/lab_scope.yaml"
+
+lab-down:
+	docker compose -f docker/lab/docker-compose.yml down -v
+	-docker network rm saber-lab

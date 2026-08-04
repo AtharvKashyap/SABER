@@ -10,6 +10,55 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="snmpwalk",
+    category="network",
+    phase="network",
+    description="SNMP MIB enumeration: system info, running processes, and installed software.",
+    parser="snmpwalk",
+    actions=(
+        ActionContract(
+            action="enumerate",
+            description=(
+                "Walk an SNMP MIB subtree against a target to enumerate system "
+                "information, users, running processes, and installed software."
+            ),
+            args=(
+                ArgSpec(
+                    "community",
+                    "str",
+                    required=False,
+                    default="public",
+                    description="SNMP community string.",
+                    example="public",
+                ),
+                ArgSpec(
+                    "oid",
+                    "str",
+                    required=False,
+                    default="1.3.6.1.2.1",
+                    description="Base OID to walk (default: MIB-2 system subtree).",
+                    example="1.3.6.1.2.1",
+                ),
+                ArgSpec(
+                    "version",
+                    "str",
+                    required=False,
+                    default="2c",
+                    description="SNMP protocol version.",
+                    choices=("1", "2c", "3"),
+                    example="2c",
+                ),
+            ),
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=("note", "account"),
+            example_args={"community": "public"},
+        ),
+    ),
+)
 
 
 class SnmpwalkWrapper(BaseToolWrapper):
@@ -32,7 +81,7 @@ class SnmpwalkWrapper(BaseToolWrapper):
             ),
         )
 
-    def walk(
+    def enumerate(
         self,
         target: Target,
         session: MissionSession,
@@ -42,6 +91,27 @@ class SnmpwalkWrapper(BaseToolWrapper):
         metadata: dict[str, Any] | None = None,
     ) -> SandboxExecutionResult:
         """Run SNMP walk against a target."""
+
+        return self.run(
+            target=target,
+            session=session,
+            action="enumerate",
+            community=community,
+            oid=oid,
+            version=version,
+            metadata=metadata,
+        )
+
+    def walk(
+        self,
+        target: Target,
+        session: MissionSession,
+        community: str = "public",
+        oid: str = "1.3.6.1.2.1",
+        version: str = "2c",
+        metadata: dict[str, Any] | None = None,
+    ) -> SandboxExecutionResult:
+        """Run SNMP walk against a target (original name; delegates to enumerate)."""
 
         return self.run(
             target=target,
@@ -62,7 +132,7 @@ class SnmpwalkWrapper(BaseToolWrapper):
     ) -> SandboxExecutionResult:
         """Enumerate SNMP system information."""
 
-        return self.walk(
+        return self.enumerate(
             target=target,
             session=session,
             community=community,
@@ -83,17 +153,24 @@ class SnmpwalkWrapper(BaseToolWrapper):
             target = None
         if action is None:
             raise ValueError("action is required")
-        if action != "walk":
+        # "walk" is the original dispatch name and is still used by
+        # network_agent/tool_selection_agent; "enumerate" is the name the
+        # CONTRACT advertises. Both build an identical command.
+        if action not in ("enumerate", "walk"):
             raise ValueError(f"Unsupported SNMPWalk action: {action}")
 
-        destination = target.tool_value() if isinstance(target, Target) else self._required_string(kwargs, "destination")
-        community = self._required_string(kwargs, "community")
-        oid = self._required_string(kwargs, "oid")
-        version = self._required_string(kwargs, "version")
+        destination = (
+            target.tool_value()
+            if isinstance(target, Target)
+            else self._required_string(kwargs, "destination")
+        )
+        community = str(kwargs.get("community") or "public").strip() or "public"
+        oid = str(kwargs.get("oid") or "1.3.6.1.2.1").strip() or "1.3.6.1.2.1"
+        version = str(kwargs.get("version") or "2c").strip() or "2c"
 
         return ToolCommand(
             command=["snmpwalk", "-v", version, "-c", community, destination, oid],
-            action="walk",
+            action=action,
             evidence_title=f"SNMP walk: {destination}",
             evidence_relative_dir="network/snmpwalk",
             timeout_seconds=kwargs.get("timeout_seconds"),

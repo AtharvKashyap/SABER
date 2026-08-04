@@ -10,6 +10,76 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="openvas",
+    category="network",
+    phase="network",
+    description="OpenVAS/GVM vulnerability scanning via the GVM API/CLI.",
+    parser="openvas",
+    actions=(
+        ActionContract(
+            action="create_target",
+            description="Register a scan target in GVM.",
+            args=(ArgSpec("name", "str", required=True, description="Target name in GVM."),),
+            risk="high",
+            requires_approval=True,
+            emits_kinds=(),
+            example_args={"name": "saber-target"},
+        ),
+        ActionContract(
+            action="create_task",
+            description="Create a GVM scan task bound to a target and scan config.",
+            args=(
+                ArgSpec("name", "str", required=True, description="Task name in GVM."),
+                ArgSpec("target_id", "str", required=True, description="GVM target UUID."),
+                ArgSpec(
+                    "scan_config_id",
+                    "str",
+                    required=True,
+                    description="GVM scan config UUID.",
+                ),
+            ),
+            risk="high",
+            requires_approval=True,
+            emits_kinds=(),
+            example_args={
+                "name": "saber-task",
+                "target_id": "11111111-1111-1111-1111-111111111111",
+                "scan_config_id": "22222222-2222-2222-2222-222222222222",
+            },
+        ),
+        ActionContract(
+            action="start_task",
+            description="Start a previously created GVM scan task. Intrusive vulnerability scan.",
+            args=(ArgSpec("task_id", "str", required=True, description="GVM task UUID."),),
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("vuln",),
+            example_args={"task_id": "33333333-3333-3333-3333-333333333333"},
+        ),
+        ActionContract(
+            action="get_report",
+            description="Download a completed GVM scan report and extract findings.",
+            args=(
+                ArgSpec("report_id", "str", required=True, description="GVM report UUID."),
+                ArgSpec(
+                    "output_format",
+                    "str",
+                    required=False,
+                    default="xml",
+                    choices=("xml", "json", "pdf"),
+                    description="Report download format.",
+                ),
+            ),
+            risk="high",
+            requires_approval=True,
+            emits_kinds=("vuln",),
+            example_args={"report_id": "44444444-4444-4444-4444-444444444444"},
+        ),
+    ),
+)
 
 
 class OpenVASApiWrapper(BaseToolWrapper):
@@ -146,7 +216,7 @@ class OpenVASApiWrapper(BaseToolWrapper):
 
         elif action == "get_report":
             report_id = self._required_string(kwargs, "report_id")
-            output_format = self._required_string(kwargs, "output_format").lower()
+            output_format = str(kwargs.get("output_format") or "xml").lower()
             if output_format not in {"xml", "json", "pdf"}:
                 raise ValueError("output_format must be one of: xml, json, pdf")
             command = ["openvas-cli", "report-get", "--report-id", report_id, "--format", output_format]

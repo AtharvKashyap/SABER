@@ -1,0 +1,14 @@
+SNMPv2-MIB::sysDescr.0 = STRING: "Linux dc01 5.10.0-19-amd64 #1 SMP Debian 5.10.149-2 x86_64"
+SNMPv2-MIB::sysObjectID.0 = OID: SNMPv2-SMI::enterprises.8072.3.2.10
+SNMPv2-MIB::sysUpTime.0 = Timeticks: (118801748) 13 days, 18:13:37.48
+SNMPv2-MIB::sysContact.0 = STRING: "admin@example.com"
+SNMPv2-MIB::sysName.0 = STRING: "dc01.example.com"
+SNMPv2-MIB::sysLocation.0 = STRING: "HQ Datacenter Rack 4"
+HOST-RESOURCES-MIB::hrSWRunName.1 = STRING: "init"
+HOST-RESOURCES-MIB::hrSWRunName.2 = STRING: "sshd"
+HOST-RESOURCES-MIB::hrSWRunName.3 = STRING: "cron"
+HOST-RESOURCES-MIB::hrSWInstalledName.1 = STRING: "OpenSSH Server"
+HOST-RESOURCES-MIB::hrSWInstalledName.2 = STRING: "Samba"
+SNMPv2-SMI::enterprises.77.1.2.25.1.1.5.65.100.109.105.110 = STRING: "Administrator"
+SNMPv2-SMI::enterprises.77.1.2.25.1.1.5.71.117.101.115.116 = STRING: "Guest"
+SNMPv2-SMI::enterprises.77.1.2.25.1.1.5.115.118.99.95.98.107.117.112 = STRING: "svc_backup"

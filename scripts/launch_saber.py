@@ -31,7 +31,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 DEFAULT_UI_PATH = "/ui"
-DEFAULT_IMAGE = "ghcr.io/atharvkashyap/saber-sandbox:kali-last-release"
+# Kept as a literal, not imported from saber.core: this launcher runs before the
+# package is guaranteed importable (it is what checks the venv). Must stay in step
+# with DEFAULT_SHARED_IMAGE in saber/core/docker_runner.py — a test pins that.
+DEFAULT_IMAGE = "saber-sandbox:local"
 LOCAL_BUILD_IMAGE = "saber/sandbox:kali-last-release"
 
 

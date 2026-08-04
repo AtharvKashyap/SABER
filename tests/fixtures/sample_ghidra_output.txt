@@ -1,0 +1,8 @@
+INFO  Loading project: /tmp/ghidra_proj/saber_analysis (HeadlessAnalyzer)
+INFO  Import complete for file: /tmp/challenge.bin (HeadlessAnalyzer)
+INFO  ANALYZING changes made by post scripts (AutoAnalysisManager)
+DECOMPILE SUMMARY: main @ 0x00401136 -- calls system() with an unsanitized argv[1] argument
+DECOMPILE SUMMARY: read_input @ 0x00401200 -- fixed 64-byte stack buffer overflowed by a 256-byte read()
+DECOMPILE SUMMARY: print_banner @ 0x00401300 -- no user input handled, informational only
+ERROR: Could not resolve external reference for symbol 'sym.imp.unknown_thunk'
+INFO  Analysis succeeded for file: /tmp/challenge.bin

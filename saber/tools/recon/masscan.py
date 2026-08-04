@@ -10,6 +10,48 @@ from saber.models.session import MissionSession
 from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
+from saber.tools.contract import ActionContract, ArgSpec, ToolContract
+
+CONTRACT = ToolContract(
+    tool_name="masscan",
+    category="recon",
+    phase="recon",
+    description="High-speed port discovery.",
+    parser="masscan",
+    actions=(
+        ActionContract(
+            action="scan_ports",
+            description="Masscan port scan (wrapper's real dispatch name; `top_ports` "
+            "is a higher-level convenience method that calls this action).",
+            args=(
+                ArgSpec("ports", "str", required=True, example="80,443,445,3389,22"),
+                ArgSpec("rate", "int", required=False, default=1000),
+            ),
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=("host", "service"),
+            example_args={"ports": "80,443,445,3389,22", "rate": 1000},
+        ),
+        ActionContract(
+            action="exclude_file_scan",
+            description="Masscan port scan that skips every address listed in an exclude file.",
+            args=(
+                ArgSpec("ports", "str", required=True, example="80,443,445,3389,22"),
+                ArgSpec(
+                    "exclude_file",
+                    "str",
+                    required=True,
+                    description="Path to a masscan --excludefile of out-of-scope addresses.",
+                ),
+                ArgSpec("rate", "int", required=False, default=1000),
+            ),
+            risk="medium",
+            requires_approval=True,
+            emits_kinds=("host", "service"),
+            example_args={"ports": "80,443", "exclude_file": "/tmp/exclude.txt", "rate": 1000},
+        ),
+    ),
+)
 
 
 class MasscanWrapper(BaseToolWrapper):

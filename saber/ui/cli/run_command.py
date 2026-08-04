@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ipaddress
+import os
 import time
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -11,6 +13,8 @@ from uuid import uuid4
 
 from saber.agents.base_agent import AgentObservation
 from saber.agents.llm_decision_engine import LlmDecisionEngine
+from saber.core.docker_runner import DEFAULT_SHARED_IMAGE
+from saber.core.env_loader import load_env_file
 from saber.core.prompt_loader import PromptLoader
 from saber.core.runtime import SaberConfig, SaberRuntime, build_saber_runtime
 from saber.models.session import MissionSession
@@ -52,12 +56,21 @@ def run_cli_mission(
     dry_run: bool = False,
     agent_mode: str = "deterministic",
     session_id: str | None = None,
+    strategy: str = "auto",
+    lab: bool = False,
+    scope_path: str | None = None,
+    scope: Any = None,
 ) -> dict[str, Any]:
     """Run a SABER mission from the CLI and persist the result."""
 
     normalized_profile = profile.strip().lower()
     if normalized_profile not in PROFILE_AGENTS:
         raise ValueError(f"Unsupported profile: {profile}. Expected one of: {', '.join(sorted(PROFILE_AGENTS))}")
+
+    # Load .env so env-driven sandbox settings (network/image/backend) are visible
+    # before we build SaberConfig by hand — otherwise they silently default and
+    # SABER_DOCKER_NETWORK (e.g. saber-lab) is ignored for CLI missions.
+    load_env_file()
 
     session_id = session_id or f"session_{uuid4().hex[:12]}"
     resolved_mission_name = mission_name or f"SABER {normalized_profile} mission for {target_value}"
@@ -71,6 +84,10 @@ def run_cli_mission(
         require_approval=require_approval,
         max_steps=max_steps,
         agent_mode=agent_mode,
+        sandbox_backend=os.environ.get("SABER_SANDBOX_BACKEND", "docker"),
+        sandbox_image=os.environ.get("SABER_SANDBOX_IMAGE", DEFAULT_SHARED_IMAGE),
+        docker_network=os.environ.get("SABER_DOCKER_NETWORK", "host"),
+        docker_user=os.environ.get("SABER_DOCKER_USER", ""),
         metadata={"source": "cli_run"},
     )
 
@@ -80,6 +97,14 @@ def run_cli_mission(
 
     try:
         session = _make_session(session_id, resolved_mission_name, target_value, normalized_profile, dry_run)
+        # A file wins over a pre-built scope object; the web console has no way to
+        # name a file, so it passes the scope it derived from the target instead.
+        if scope_path:
+            from saber.core.scope_loader import load_scope
+
+            session = session.model_copy(update={"scope": load_scope(scope_path)})
+        elif scope is not None:
+            session = session.model_copy(update={"scope": scope})
         target = _make_target(target_value)
 
         runtime.session_store.create_session(
@@ -93,7 +118,6 @@ def run_cli_mission(
                     "objective": resolved_objective,
                     "dry_run": dry_run,
                     "require_approval": require_approval,
-                    "agent_mode": agent_mode,
                     "agent_mode": agent_mode,
                     "started_at": datetime.now(UTC).isoformat(),
                 },
@@ -114,112 +138,45 @@ def run_cli_mission(
 
         runtime.session_store.save_plan(session_id, plan)
 
-        pre_report_plan, report_plan = split_plan_for_reporting(plan)
+        # Single pass: the state-first MissionLoop drives recon -> ... -> report
+        # and finalizes the report itself (via the shared ReportFinalizer), so
+        # the CLI calls run_mission exactly once. It previously ran the whole
+        # mission a second time for a separate reporting phase, which re-scanned
+        # the target, rewrote the report artifacts, and (in LLM mode) could
+        # overwrite the good report with an empty one built from a fresh state.
+        mission_metadata: dict[str, Any] = {
+            "source": "cli_run",
+            "profile": normalized_profile,
+            "dry_run": dry_run,
+        }
+        if strategy and strategy.strip().lower() != "auto":
+            mission_metadata["strategy_override"] = strategy.strip().lower()
+        if lab:
+            mission_metadata["lab"] = True
 
-        total_records = 0
-        final_status = "completed"
+        result = runtime.orchestrator.run_mission(
+            session=session,
+            target=target,
+            objective=resolved_objective,
+            plan=plan,
+            constraints={
+                "profile": normalized_profile,
+                "dry_run": dry_run,
+                "require_approval": require_approval,
+                "agent_mode": agent_mode,
+            },
+            metadata=mission_metadata,
+        )
 
-        if report_plan is None:
-            result = runtime.orchestrator.run_mission(
-                session=session,
-                target=target,
-                objective=resolved_objective,
-                plan=pre_report_plan,
-                constraints={
-                    "profile": normalized_profile,
-                    "dry_run": dry_run,
-                    "require_approval": require_approval,
-                    "agent_mode": agent_mode,
-                },
-                metadata={
-                    "source": "cli_run",
-                    "profile": normalized_profile,
-                    "dry_run": dry_run,
-                },
-            )
-
-            persist_mission_result(
-                runtime,
-                result,
-                mission_started_at=mission_started_at,
-                process_evidence=True,
-                save_plan=True,
-            )
-            total_records += len(result.records)
-            final_status = str(result.status.value if hasattr(result.status, "value") else result.status)
-        else:
-            pre_result = runtime.orchestrator.run_mission(
-                session=session,
-                target=target,
-                objective=resolved_objective,
-                plan=pre_report_plan,
-                constraints={
-                    "profile": normalized_profile,
-                    "dry_run": dry_run,
-                    "require_approval": require_approval,
-                    "agent_mode": agent_mode,
-                    "phase": "pre_report",
-                },
-                metadata={
-                    "source": "cli_run",
-                    "profile": normalized_profile,
-                    "dry_run": dry_run,
-                    "phase": "pre_report",
-                },
-            )
-
-            # This is the important ordering change:
-            # persist pre-report observations/evidence, then parse evidence,
-            # then run the reporter with the parsed observations included.
-            persist_mission_result(
-                runtime,
-                pre_result,
-                mission_started_at=mission_started_at,
-                process_evidence=True,
-                save_plan=True,
-            )
-            total_records += len(pre_result.records)
-
-            report_observations = _load_observations_for_reporter(
-                runtime,
-                session_id,
-                fallback_observations=pre_result.observations,
-            )
-
-            report_result = runtime.orchestrator.run_mission(
-                session=session,
-                target=target,
-                objective="Generate evidence-backed assessment report from parsed observations.",
-                plan=report_plan,
-                initial_observations=report_observations,
-                constraints={
-                    "profile": normalized_profile,
-                    "dry_run": dry_run,
-                    "require_approval": require_approval,
-                    "agent_mode": agent_mode,
-                    "phase": "report",
-                },
-                metadata={
-                    "source": "cli_run",
-                    "profile": normalized_profile,
-                    "dry_run": dry_run,
-                    "phase": "report",
-                    "parsed_observation_count": len(report_observations),
-                },
-            )
-
-            persist_mission_result(
-                runtime,
-                report_result,
-                mission_started_at=mission_started_at,
-                process_evidence=False,
-                save_plan=False,
-                save_observations=False,
-            )
-            total_records += len(report_result.records)
-            final_status = str(
-                report_result.status.value if hasattr(report_result.status, "value") else report_result.status
-            )
+        persist_mission_result(
+            runtime,
+            result,
+            mission_started_at=mission_started_at,
+            process_evidence=True,
+            save_plan=True,
+        )
+        total_records = len(result.records)
+        final_status = str(result.status.value if hasattr(result.status, "value") else result.status)
 
         stored_observations = _safe_count(lambda: runtime.finding_store.list_observations(session_id))
         stored_evidence = _safe_count(lambda: runtime.evidence_index.list_evidence(session_id))
@@ -367,106 +324,6 @@ def _configure_llm_agents(runtime: SaberRuntime, agent_mode: str) -> None:
         setter = getattr(agent, "set_llm_decision_engine", None)
         if callable(setter):
             setter(engine)
-
-def split_plan_for_reporting(plan: ExecutionPlan) -> tuple[ExecutionPlan, ExecutionPlan | None]:
-    """Split a plan into pre-report steps and report-only steps.
-
-    This lets SABER parse evidence before the reporter agent runs.
-    """
-
-    reporter_steps = [step for step in plan.steps if step.agent_name == "reporter_agent"]
-    if not reporter_steps:
-        return plan, None
-
-    pre_report_steps = [step for step in plan.steps if step.agent_name != "reporter_agent"]
-
-    adjusted_reporter_steps = []
-    for step in reporter_steps:
-        try:
-            adjusted_reporter_steps.append(replace(step, depends_on=[]))
-        except TypeError:
-            step.depends_on = []
-            adjusted_reporter_steps.append(step)
-
-    return _replace_plan_steps(plan, pre_report_steps), _replace_plan_steps(plan, adjusted_reporter_steps)
-
-
-def _replace_plan_steps(plan: ExecutionPlan, steps: list) -> ExecutionPlan:
-    """Return a copy of an ExecutionPlan with different steps."""
-
-    try:
-        return replace(plan, steps=steps)
-    except TypeError:
-        plan.steps = steps
-        return plan
-
-
-def _load_observations_for_reporter(
-    runtime: SaberRuntime,
-    session_id: str,
-    fallback_observations: list[AgentObservation] | None = None,
-) -> list[AgentObservation]:
-    """Load stored observations and convert them back to AgentObservation objects."""
-
-    observations: list[AgentObservation] = []
-
-    try:
-        rows = runtime.finding_store.list_observations(session_id)
-    except Exception:
-        rows = []
-
-    for row in rows:
-        observation = _row_to_agent_observation(row)
-        if observation is not None:
-            observations.append(observation)
-
-    if observations:
-        return observations
-
-    return list(fallback_observations or [])
-
-
-def _row_to_agent_observation(row: object) -> AgentObservation | None:
-    """Convert a stored observation row/dict into an AgentObservation."""
-
-    if not isinstance(row, dict):
-        if hasattr(row, "to_dict"):
-            try:
-                row = row.to_dict()
-            except Exception:
-                return None
-        elif hasattr(row, "model_dump"):
-            try:
-                row = row.model_dump(mode="json")
-            except Exception:
-                return None
-        else:
-            return None
-
-    raw = row.get("observation") if isinstance(row.get("observation"), dict) else row
-
-    summary = (
-        raw.get("summary")
-        or raw.get("description")
-        or raw.get("title")
-        or row.get("summary")
-        or "Stored observation"
-    )
-
-    metadata = raw.get("metadata") or row.get("metadata") or {}
-    if not isinstance(metadata, dict):
-        metadata = {"raw_metadata": metadata}
-
-    try:
-        return AgentObservation(
-            summary=str(summary),
-            success=bool(raw.get("success", True)),
-            tool_name=raw.get("tool_name") or row.get("tool_name"),
-            action=raw.get("action") or row.get("action"),
-            metadata=metadata,
-        )
-    except Exception:
-        return None
 
 
 def _safe_count(loader) -> int:
@@ -778,15 +635,41 @@ def _make_session(
     raise RuntimeError("Could not construct MissionSession.")
 
 
+def _infer_target_type(value: str) -> TargetType:
+    """Infer the TargetType from a bare target string.
+
+    Everything used to be typed HOST regardless of what it was, which broke two
+    things quietly. `select_strategy` picks the web strategy on
+    `target.type == URL`, so `--strategy auto` could never choose it for a URL;
+    and a HOST-typed Target holding "http://host:3000" fails MissionScope
+    validation outright ("host targets must not include a URL scheme or path").
+    """
+
+    text = (value or "").strip()
+    if "://" in text:
+        return TargetType.URL
+    try:
+        ipaddress.ip_network(text, strict=False)
+    except ValueError:
+        pass
+    else:
+        return TargetType.CIDR if "/" in text else TargetType.IP
+    if "-" in text and text.count(".") >= 3:
+        return TargetType.IP_RANGE
+    return TargetType.DOMAIN if "." in text else TargetType.HOST
+
+
 def _make_target(target_value: str) -> Target:
     """Create Target with tolerant constructor handling."""
 
+    inferred = _infer_target_type(target_value)
     attempts = (
+        {"type": inferred, "value": target_value},
+        {"target_type": inferred, "value": target_value},
+        {"kind": inferred, "value": target_value},
+        {"type": inferred.value, "value": target_value},
+        {"target_type": inferred.value, "value": target_value},
         {"type": TargetType.HOST, "value": target_value},
-        {"target_type": TargetType.HOST, "value": target_value},
-        {"kind": TargetType.HOST, "value": target_value},
-        {"type": "host", "value": target_value},
-        {"target_type": "host", "value": target_value},
         {"value": target_value},
     )
 

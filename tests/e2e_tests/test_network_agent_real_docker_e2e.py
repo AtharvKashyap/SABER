@@ -17,10 +17,15 @@ import os
 from pathlib import Path
 
 import pytest
-
 from saber.agents.base_agent import AgentObservation
 from saber.agents.network_agent import NetworkAgent
-from saber.core.docker_runner import DockerSubprocessRunner, docker_available, docker_info, image_exists
+from saber.core.docker_runner import (
+    DEFAULT_SHARED_IMAGE,
+    DockerSubprocessRunner,
+    docker_available,
+    docker_info,
+    image_exists,
+)
 from saber.core.evidence_store import EvidenceStore
 from saber.core.sandbox import Sandbox
 from saber.models.scope import AssessmentPhase
@@ -29,7 +34,7 @@ from saber.models.target import Target, TargetType
 from saber.orchestration.execution_plan import ExecutionStep, ExecutionStepStatus
 from saber.orchestration.step_runner import StepRunner
 from saber.tools.registry import ToolRegistry, default_tool_entries
-
+from tests.support.docker_host import sandbox_host_address
 
 pytestmark = pytest.mark.e2e
 
@@ -53,16 +58,17 @@ def _all_files(root: Path) -> list[Path]:
     reason="Docker daemon or SABER sandbox image is not available.",
 )
 def test_real_network_agent_runs_real_enum4linux_through_step_runner(tmp_path) -> None:
+    docker_network = os.getenv("SABER_DOCKER_NETWORK", "host")
     evidence_root = tmp_path / "evidence"
 
     runner = DockerSubprocessRunner(
         image=os.getenv(
             "SABER_SANDBOX_IMAGE",
-            "ghcr.io/atharvkashyap/saber-sandbox:kali-last-release",
+            DEFAULT_SHARED_IMAGE,
         ),
         repo_dir=tmp_path,
         default_timeout_seconds=180,
-        network=os.getenv("SABER_DOCKER_NETWORK", "host"),
+        network=docker_network,
         user=os.getenv("SABER_DOCKER_USER", ""),
     )
 
@@ -81,9 +87,16 @@ def test_real_network_agent_runs_real_enum4linux_through_step_runner(tmp_path) -
         mission_name="Real NetworkAgent Docker E2E",
     )
 
-    # On Docker Desktop for Mac, host.docker.internal is the correct route to
-    # the host. enum4linux can still produce evidence even if SMB is closed.
-    target = Target(type=TargetType.HOST, value="host.docker.internal")
+    # The route from the container to this machine is platform-specific; see
+    # tests/support/docker_host.py. enum4linux still produces evidence even if SMB
+    # is closed, so what matters is that the address resolves at all.
+    host_address = sandbox_host_address(docker_network)
+    if host_address is None:
+        pytest.skip(f"no route from the sandbox to this host on network {docker_network!r}")
+    target = Target(
+        type=TargetType.IP if host_address[0].isdigit() else TargetType.HOST,
+        value=host_address,
+    )
 
     step = ExecutionStep(
         step_id="real_network_agent_enum4linux",

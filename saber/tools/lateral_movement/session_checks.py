@@ -15,6 +15,22 @@ from saber.models.target import Target
 from saber.tools.base_wrapper import BaseToolWrapper, ToolCommand, ToolWrapperConfig
 from saber.tools.capability import RequestedActionCategory
 
+# NO CONTRACT — deliberately not exposed to the decider.
+#
+# These actions build ["python", "-m", "saber.tools.lateral_movement.<mod>", ...],
+# which cannot run: Kali has no `python` alias, the saber package is not installed in
+# the sandbox image, and this module has no __main__ (it prints nothing). The parsers
+# that existed for it round-tripped an INVENTED JSON schema that no producer emits.
+#
+# Rather than advertise three tools that always fail — burning mission steps and
+# tripping the repeated-failure guard — the CONTRACT is withheld, so ToolCatalog skips
+# the wrapper (F0.4 behaviour for contractless wrappers). The class and its
+# build_command are retained for whoever wants to finish the job properly: that needs a
+# real __main__ emitting documented JSON, the saber package present in the image, and
+# python3 rather than python. Lateral-movement *reasoning* is now the decider's job
+# (F8), which reads MissionState directly instead of shelling out to a stateless
+# container.
+
 
 class SessionChecksWrapper(BaseToolWrapper):
     """Wrapper for validating session and access context."""

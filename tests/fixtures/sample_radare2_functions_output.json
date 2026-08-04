@@ -1,0 +1,12 @@
+[
+  {"offset": 4198432, "name": "entry0", "size": 46, "nbbs": 1, "cc": 1, "type": "fcn"},
+  {"offset": 4198496, "name": "main", "size": 210, "nbbs": 6, "cc": 3, "type": "fcn"},
+  {"offset": 4198864, "name": "sym.imp.strcpy", "size": 6, "nbbs": 1, "cc": 1, "type": "imp"},
+  {"offset": 4198880, "name": "sym.imp.gets", "size": 6, "nbbs": 1, "cc": 1, "type": "imp"},
+  {"offset": 4198896, "name": "sym.imp.system", "size": 6, "nbbs": 1, "cc": 1, "type": "imp"},
+  {"offset": 4198912, "name": "sym.imp.memcpy", "size": 6, "nbbs": 1, "cc": 1, "type": "imp"},
+  {"offset": 4198928, "name": "sym.imp.puts", "size": 6, "nbbs": 1, "cc": 1, "type": "imp"},
+  {"offset": 4198944, "name": "sym.imp.__libc_start_main", "size": 6, "nbbs": 1, "cc": 1, "type": "imp"},
+  {"offset": 4199040, "name": "fcn.00401060", "size": 32, "nbbs": 2, "cc": 1, "type": "fcn"},
+  {"offset": 4199120, "name": "sym.deregister_tm_clones", "size": 41, "nbbs": 4, "cc": 3, "type": "fcn"}
+]

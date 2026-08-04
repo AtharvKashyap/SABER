@@ -1,0 +1,100 @@
+{% extends "base.html.j2" %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Mission</p>
+    <h1 class="page-title">{{ session.mission_name or "Untitled mission" }}</h1>
+    <p class="page-note">
+      <span class="mono">{{ session.session_id }}</span>
+      {% if session.target %} · target <span class="mono">{{ session.target }}</span>{% endif %}
+    </p>
+  </div>
+</div>
+
+{% include "partials/mission_status.html.j2" %}
+
+{% if approvals %}
+<section class="panel gap-top">
+  <div class="panel-head"><h2 class="panel-title">Waiting on you</h2></div>
+  {% for item in approvals %}
+  <div class="notice notice-hold">
+    <div class="mono"><b>{{ item.requested_action.action or item.step_id }}</b></div>
+    <div>{{ item.reason }}</div>
+    <div class="check-row" style="margin-top: 0.6rem;">
+      <button class="btn btn-sm" hx-target="closest .notice" hx-swap="outerHTML"
+              hx-post="/sessions/{{ session.session_id }}/approvals/{{ item.approval_id }}/approved">
+        Approve
+      </button>
+      <button class="btn btn-ghost btn-sm" hx-target="closest .notice" hx-swap="outerHTML"
+              hx-post="/sessions/{{ session.session_id }}/approvals/{{ item.approval_id }}/denied">
+        Deny
+      </button>
+    </div>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<div class="grid grid-mission gap-top">
+
+  <div class="stack">
+    <section class="panel">
+      <div class="panel-head">
+        <h2 class="panel-title">What it did</h2>
+        <span class="field-hint">
+          Rule length is time spent. Dotted means the step was refused and never ran.
+        </span>
+      </div>
+      {% include "partials/spine.html.j2" %}
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2 class="panel-title">Findings</h2>
+        <span class="rail-count">{{ findings | length }}</span>
+      </div>
+      {% include "partials/findings_table.html.j2" %}
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2 class="panel-title">Evidence</h2>
+        <span class="field-hint">Raw tool output, kept for the report and for audit.</span>
+      </div>
+      {% if evidence %}
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>Tool</th><th>What it is</th><th>File</th><th>Recorded</th></tr></thead>
+          <tbody>
+          {% for row in evidence %}
+            <tr>
+              <td class="num">{{ row.tool_name or "—" }}{% if row.action %}.{{ row.action }}{% endif %}</td>
+              <td class="wrap">{{ row.title }}</td>
+              <td class="num wrap">{{ row.path or row.evidence_id }}</td>
+              <td class="num">{{ row.created_at | shortdate }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="empty">No evidence recorded yet.</p>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2 class="panel-title">Reports</h2>
+        <span class="field-hint">Written when the mission reaches a terminal state.</span>
+      </div>
+      {% include "partials/reports_table.html.j2" %}
+    </section>
+  </div>
+
+  <div class="sticky-col">
+    {% include "partials/state_panel.html.j2" %}
+  </div>
+</div>
+
+{% endblock %}

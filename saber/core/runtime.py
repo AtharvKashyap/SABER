@@ -21,14 +21,13 @@ from saber.agents.recon_agent import ReconAgent
 from saber.agents.reporter_agent import ReporterAgent
 from saber.agents.reverse_engineering_agent import ReverseEngineerAgent
 from saber.agents.web_agent import WebAgent
-from saber.core.docker_runner import DockerSubprocessRunner
+from saber.core.docker_runner import DEFAULT_SHARED_IMAGE, DockerSubprocessRunner
 from saber.core.env_loader import load_env_file
 from saber.core.evidence_store import EvidenceStore
 from saber.core.llm_client import LlmClient, LlmConfig
 from saber.core.result_processor import ResultProcessor
-from saber.core.tool_catalog import ToolCatalog
 from saber.core.sandbox import Sandbox
-from saber.orchestration.chain_runner import ChainRunner
+from saber.core.tool_catalog import ToolCatalog
 from saber.orchestration.mission_orchestrator import MissionOrchestrator
 from saber.orchestration.step_runner import StepRunner
 from saber.parsers.registry import ParserRegistry, build_default_parser_registry
@@ -50,7 +49,7 @@ class SaberConfig:
     profile: str = "recon"
     require_approval: bool = True
     sandbox_backend: str = "docker"
-    sandbox_image: str = "ghcr.io/atharvkashyap/saber-sandbox:kali-last-release"
+    sandbox_image: str = DEFAULT_SHARED_IMAGE
     docker_network: str = "host"
     docker_user: str = ""
     default_timeout_seconds: int = 300
@@ -75,10 +74,7 @@ class SaberConfig:
             profile=os.environ.get("SABER_PROFILE", "recon"),
             require_approval=_env_bool("SABER_REQUIRE_APPROVAL", default=True),
             sandbox_backend=os.environ.get("SABER_SANDBOX_BACKEND", "docker"),
-            sandbox_image=os.environ.get(
-                "SABER_SANDBOX_IMAGE",
-                "ghcr.io/atharvkashyap/saber-sandbox:kali-last-release",
-            ),
+            sandbox_image=os.environ.get("SABER_SANDBOX_IMAGE", DEFAULT_SHARED_IMAGE),
             docker_network=os.environ.get("SABER_DOCKER_NETWORK", "host"),
             docker_user=os.environ.get("SABER_DOCKER_USER", ""),
             default_timeout_seconds=int(os.environ.get("SABER_DEFAULT_TIMEOUT_SECONDS", "300")),
@@ -115,7 +111,6 @@ class SaberRuntime:
     sandbox: Sandbox
     agents: dict[str, Any]
     step_runner: StepRunner
-    chain_runner: ChainRunner
     orchestrator: MissionOrchestrator
 
     def close(self) -> None:
@@ -147,7 +142,6 @@ class SaberRuntime:
             "agents": sorted(self.agents.keys()),
             "sandbox": self.sandbox.__class__.__name__,
             "step_runner": self.step_runner.__class__.__name__,
-            "chain_runner": self.chain_runner.__class__.__name__,
             "orchestrator": self.orchestrator.__class__.__name__,
         }
 
@@ -196,16 +190,62 @@ def build_saber_runtime(
         tool_registry=tools,
         sandbox=runtime_sandbox,
     )
-    chain_runner = ChainRunner(max_chain_depth=runtime_config.max_chain_depth)
+    from saber.agents.deciders.deterministic import DeterministicDecider
+    from saber.agents.deciders.llm import LlmDecider
+    from saber.core.state_merger import StateMerger
+    from saber.core.state_summary import StateSummarizer
+    from saber.orchestration.action_executor import ActionExecutor
+    from saber.orchestration.mission_loop import MissionLoop
+    from saber.orchestration.risk_gate import RiskGate
+    from saber.orchestration.stop_conditions import StopEvaluator
+    from saber.reporting.finalizer import ReportFinalizer
+    from saber.storage.mission_state_store import MissionStateStore
+
+    if runtime_config.agent_mode == "llm" and llm_client is not None and llm_client.enabled:
+        # Scope the catalog the MODEL sees to the mission profile. The full catalog
+        # is ~10.6k tokens and was sent on every decision regardless of profile —
+        # 76% of a 14,091-token prompt on a live web mission, which the provider
+        # refused with HTTP 402 for exceeding the key's prompt ceiling. A web
+        # profile is ~3k tokens. RiskGate below deliberately keeps the FULL catalog:
+        # it classifies whatever is proposed, including tools this profile did not
+        # offer, so gating must not have blind spots.
+        decider = LlmDecider(
+            llm_client=llm_client,
+            tool_catalog=tool_catalog.for_profile(runtime_config.profile),
+        )
+    else:
+        decider = DeterministicDecider()
+
+    report_finalizer = ReportFinalizer(
+        finding_store=finding_store,
+        output_dir=runtime_config.reports_dir,
+        connection=connection,
+    )
+
+    mission_loop = MissionLoop(
+        decider=decider,
+        summarizer=StateSummarizer(),
+        risk_gate=RiskGate(tool_catalog=tool_catalog),
+        stop_evaluator=StopEvaluator(max_steps=runtime_config.max_steps),
+        executor=ActionExecutor(agents=agents, tool_registry=tools, sandbox=runtime_sandbox),
+        merger=StateMerger(),
+        state_store=MissionStateStore(connection),
+        result_processor=result_processor,
+        session_store=session_store,
+        max_steps=runtime_config.max_steps,
+        report_finalizer=report_finalizer,
+    )
+
     orchestrator = MissionOrchestrator(
         agents=agents,
         tool_registry=tools,
         sandbox=runtime_sandbox,
         step_runner=step_runner,
-        chain_runner=chain_runner,
         result_processor=result_processor,
+        report_finalizer=report_finalizer,
         reports_dir=runtime_config.reports_dir,
         max_steps=runtime_config.max_steps,
+        mission_loop=mission_loop,
     )
 
     return SaberRuntime(
@@ -223,7 +263,6 @@ def build_saber_runtime(
         sandbox=runtime_sandbox,
         agents=agents,
         step_runner=step_runner,
-        chain_runner=chain_runner,
         orchestrator=orchestrator,
     )
 

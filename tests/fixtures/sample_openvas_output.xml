@@ -1,0 +1,44 @@
+<get_reports_response status="200" status_text="OK">
+  <report id="55555555-5555-5555-5555-555555555555">
+    <report>
+      <results>
+        <result id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa">
+          <name>OpenSSL Heartbleed Vulnerability</name>
+          <host>10.0.0.5</host>
+          <port>443/tcp</port>
+          <threat>High</threat>
+          <severity>7.5</severity>
+          <nvt oid="1.3.6.1.4.1.25623.1.0.103692">
+            <name>OpenSSL Heartbleed Vulnerability (Detection)</name>
+            <cve>CVE-2014-0160</cve>
+          </nvt>
+          <description>The remote host is affected by the Heartbleed bug.</description>
+        </result>
+        <result id="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb">
+          <name>Weak SSH Key Exchange Algorithms Enabled</name>
+          <host>10.0.0.5</host>
+          <port>22/tcp</port>
+          <threat>Medium</threat>
+          <severity>5.3</severity>
+          <nvt oid="1.3.6.1.4.1.25623.1.0.105611">
+            <name>Weak SSH Key Exchange Algorithms Enabled</name>
+            <cve>NOCVE</cve>
+          </nvt>
+          <description>The remote SSH server supports weak key exchange algorithms.</description>
+        </result>
+        <result id="cccccccc-cccc-cccc-cccc-cccccccccccc">
+          <name>NVT: Ping Host</name>
+          <host>10.0.0.5</host>
+          <port>general/icmp</port>
+          <threat>Log</threat>
+          <severity>0.0</severity>
+          <nvt oid="1.3.6.1.4.1.25623.1.0.100315">
+            <name>Ping Host</name>
+            <cve>NOCVE</cve>
+          </nvt>
+          <description>The host is alive.</description>
+        </result>
+      </results>
+    </report>
+  </report>
+</get_reports_response>

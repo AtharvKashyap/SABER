@@ -1,8 +1,56 @@
-"""Base parser models and interfaces for SABER."""
+"""Base parser models and interfaces for SABER.
+
+Canonical observation schema (single source of truth)
+-----------------------------------------------------
+Every ``ParsedObservation.kind`` a parser emits MUST be one of the fixed
+canonical kinds below, and each kind carries a fixed ``data`` schema. This is
+the vocabulary ``StateMerger`` folds into ``MissionState`` (one merger per
+kind). Required fields are marked ``(req)``. ``kind -> MissionState list``:
+
+- host -> hosts (KnownHost):
+    address (req), hostnames: list[str], os, metadata
+- service -> services (KnownService):
+    host (req), port (req, int), protocol, service, product, version, state
+- technology -> technologies (KnownTechnology):
+    host (req), name (req), version, metadata
+- credential -> credentials (KnownCredential):
+    username (req), secret, kind (password|hash|key|token), host, service,
+    validated: bool
+- vuln -> vulns (KnownVuln):
+    title (req), host, port, severity, identifier (CVE/template id),
+    confirmed: bool
+- share -> shares (KnownShare):
+    host (req), name (req), type (smb|nfs|...), access (read|write|none),
+    metadata
+- account -> accounts (KnownAccount):
+    username (req), domain, host, source, enabled: bool, metadata
+- session -> sessions (KnownSession):
+    host (req), kind (shell|meterpreter|winrm|ssh|smb), user,
+    privilege (user|root|system|admin), ref, metadata
+    ``smb``/``admin`` cover proven administrative access over a protocol that is not
+    itself an interactive shell (netexec "Pwn3d!"), which is a real foothold and can
+    be turned into a shell. Do NOT record mere reachability as a session — see
+    saber/parsers/chisel.py for the counter-example.
+- loot -> loot (KnownLoot):
+    host, path, kind (file|hash|key|config), description (req), evidence_ref,
+    metadata
+- flag -> flags (KnownFlag):
+    value (req), host, location, metadata
+- note -> notes (list[MissionNote]):
+    title (req), detail, severity, refs: list[str], metadata
+
+Note on ``finding``/``note``: the observation-level ``kind`` string is always
+``"note"`` (title+detail+refs); a parser MAY set ``data["kind"]`` sub-fields.
+
+All parser entry points (``parse_text``/``parse_json``/``parse_file``) accept an
+optional ``metadata`` kwarg carrying target/url context so parsers can derive a
+``host`` when tool output omits it.
+"""
 
 from __future__ import annotations
 
 import json
+import re
 from abc import ABC
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -124,23 +172,52 @@ class ParserResult:
         }
 
 
+# Terminal colouring, in both the form tools emit and the form that survives a
+# round trip through storage. Several CLI tools colour stdout by default and
+# interleave the escapes with the data, so leaving them in does not just look
+# untidy — it corrupts the parse. whatweb produced a technology named "0m", and
+# nuclei produced findings whose severity could not be read at all.
+_ANSI_RE = re.compile(r"(?:\x1b|\033)\[[0-9;]*[A-Za-z]|(?<!\w)\[[0-9;]{1,6}m")
+
+
 class BaseParser(ABC):
     """Base parser interface."""
 
     source_tool: str = "unknown"
 
-    def parse_text(self, text: str) -> ParserResult:
-        """Parse text output."""
+    @staticmethod
+    def strip_ansi(text: str) -> str:
+        """Remove terminal colouring from tool output.
+
+        Handles the real escape sequence and the bare "[92m" residue left behind
+        when the ESC byte is lost in transit. Parsers that read human-facing
+        stdout should call this before anything else; passing --no-color to the
+        tool is the other half, and both are needed because stored evidence
+        predates the flag.
+        """
+
+        return _ANSI_RE.sub("", text or "")
+
+    def parse_text(self, text: str, metadata: dict[str, Any] | None = None) -> ParserResult:
+        """Parse text output. `metadata` may carry target/url context for host derivation."""
 
         raise NotImplementedError(f"{type(self).__name__}.parse_text is not implemented.")
 
-    def parse_json(self, data: dict[str, Any] | list[Any]) -> ParserResult:
-        """Parse JSON-compatible data."""
+    def parse_json(
+        self,
+        data: dict[str, Any] | list[Any],
+        metadata: dict[str, Any] | None = None,
+    ) -> ParserResult:
+        """Parse JSON-compatible data. `metadata` may carry target/url context."""
 
         raise NotImplementedError(f"{type(self).__name__}.parse_json is not implemented.")
 
-    def parse_file(self, path: str | Path) -> ParserResult:
-        """Parse file by extension/content."""
+    def parse_file(
+        self,
+        path: str | Path,
+        metadata: dict[str, Any] | None = None,
+    ) -> ParserResult:
+        """Parse file by extension/content. `metadata` threads through to parse_*."""
 
         file_path = Path(path)
         if not file_path.exists():
@@ -156,12 +233,15 @@ class BaseParser(ABC):
         if suffix in {".json", ".jsonl"}:
             try:
                 if suffix == ".jsonl":
-                    return self.parse_json([json.loads(line) for line in text.splitlines() if line.strip()])
-                return self.parse_json(json.loads(text))
+                    return self.parse_json(
+                        [json.loads(line) for line in text.splitlines() if line.strip()],
+                        metadata=metadata,
+                    )
+                return self.parse_json(json.loads(text), metadata=metadata)
             except json.JSONDecodeError:
-                return self.parse_text(text)
+                return self.parse_text(text, metadata=metadata)
 
-        return self.parse_text(text)
+        return self.parse_text(text, metadata=metadata)
 
     @staticmethod
     def severity_from_string(value: str | None) -> ParserSeverity:

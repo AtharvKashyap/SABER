@@ -1,0 +1,30 @@
+
+               ((,.,/(((((((((((((((((,
+        winPEAS - Windows local Privilege Escalation Awesome Script
+
+[1;36m╔══════════╣ Basic System Information[0m
+    Hostname: LAB-WS01
+    OS Name: Microsoft Windows 10 Pro
+
+[1;36m╔══════════╣ Current Token privileges[0m
+    SeChangeNotifyPrivilege: ENABLED
+    SeImpersonatePrivilege: ENABLED
+
+[1;36m╔══════════╣ Checking AlwaysInstallElevated[0m
+[1;31m    AlwaysInstallElevated is set to 1 in both HKLM and HKCU[0m
+
+[1;36m╔══════════╣ Services Information[0m
+[1;31m    No quotes and Space detected: C:\Program Files\Lab Backup\backup service.exe[0m
+    You can modify C:\Program Files\Lab Vuln\service.exe
+
+[1;36m╔══════════╣ Looking for AutoLogon credentials[0m
+    DefaultUserName: labadmin
+    DefaultPassword: FakeLabPassw0rd
+
+[1;36m╔══════════╣ Searching interesting files[0m
+    C:\Windows\Panther\unattend.xml
+    C:\inetpub\wwwroot\web.config
+
+[1;36m╔══════════╣ Installed Applications[0m
+    Notepad++ 8.5.4
+    A perfectly ordinary line with nothing of interest

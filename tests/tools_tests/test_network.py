@@ -132,13 +132,21 @@ class TestSnmpwalkWrapper:
 
         assert sandbox.requests[0].command[-1] == "1.3.6.1.2.1.1"
 
-    def test_missing_community_raises(self) -> None:
-        """Missing community should raise."""
+    def test_missing_community_falls_back_to_public(self) -> None:
+        """An empty community falls back to "public" rather than raising.
+
+        F2: the CONTRACT declares community as optional with default "public",
+        so the wrapper must apply that default — a contract that advertises a
+        default while the wrapper raises is exactly the drift this workstream
+        removes. "public" is also the right first guess for an autonomous run.
+        """
 
         wrapper = SnmpwalkWrapper(FakeSandbox())
+        command = wrapper.build_command(
+            target=make_target(), action="walk", community="", oid="1.3.6.1", version="2c"
+        )
 
-        with pytest.raises(ValueError, match="community is required"):
-            wrapper.build_command(target=make_target(), action="walk", community="", oid="1.3.6.1", version="2c")
+        assert command.command == ["snmpwalk", "-v", "2c", "-c", "public", "192.0.2.10", "1.3.6.1"]
 
 
 class TestEnum4LinuxWrapper:

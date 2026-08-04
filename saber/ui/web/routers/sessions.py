@@ -8,14 +8,15 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import HTMLResponse
+from markupsafe import escape
 from pydantic import BaseModel, Field
-
 from saber.storage.evidence_index import EvidenceIndex
 from saber.storage.finding_store import FindingStore
 from saber.storage.graph_store import GraphStore
 from saber.storage.session_store import SessionStore
-from saber.ui.cli.run_command import PROFILE_AGENTS, run_cli_mission
-
+from saber.models.scope import MissionScope
+from saber.ui.cli.run_command import PROFILE_AGENTS, _make_target, run_cli_mission
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -31,6 +32,8 @@ class MissionRunRequest(BaseModel):
     require_approval: bool = True
     dry_run: bool = False
     agent_mode: str = Field(default="deterministic", pattern="^(deterministic|llm)$")
+    strategy: str = Field(default="auto", pattern="^(auto|network|web|ctf)$")
+    lab: bool = False
 
 
 
@@ -96,9 +99,24 @@ def run_mission_from_web(request: Request, run_request: MissionRunRequest) -> di
     reports_dir = str(getattr(request.app.state, "reports_dir", "runs/reports"))
     evidence_dir = str(getattr(request.app.state, "evidence_dir", "runs/evidence"))
 
+    target_value = run_request.target.strip()
+
+    # Scope the mission to its target. The launch form tells the operator that the
+    # target "becomes the mission scope — anything outside it is refused", but the
+    # console has no field for a scope file, so nothing was ever set and
+    # MissionSession.scope stayed None — which RiskGate treats as "allow every
+    # host". The form's promise is now enforced. Operators who need a richer scope
+    # (extra hosts, exclusions, prohibited actions) still use the CLI --scope file,
+    # which takes precedence over this.
+    scope = MissionScope(
+        mission_name=run_request.mission_name or f"SABER mission for {target_value}",
+        targets=[_make_target(target_value)],
+    )
+
     kwargs = {
         "session_id": session_id,
-        "target_value": run_request.target.strip(),
+        "target_value": target_value,
+        "scope": scope,
         "profile": profile,
         "mission_name": run_request.mission_name,
         "objective": run_request.objective,
@@ -109,6 +127,8 @@ def run_mission_from_web(request: Request, run_request: MissionRunRequest) -> di
         "max_steps": run_request.max_steps,
         "dry_run": run_request.dry_run,
         "agent_mode": run_request.agent_mode,
+        "strategy": run_request.strategy,
+        "lab": run_request.lab,
     }
 
     thread = Thread(target=run_cli_mission, kwargs=kwargs, daemon=True)
@@ -117,7 +137,7 @@ def run_mission_from_web(request: Request, run_request: MissionRunRequest) -> di
     return {
         "session_id": session_id,
         "status": "started",
-        "target": run_request.target.strip(),
+        "target": target_value,
         "profile": profile,
         "detail_url": f"/ui/sessions/{session_id}",
         "api_url": f"/sessions/{session_id}",
@@ -288,6 +308,40 @@ def list_session_approvals(request: Request, session_id: str) -> dict[str, Any]:
         "pending_approvals": approvals,
         "count": len(approvals),
     }
+
+
+@router.post("/{session_id}/approvals/{approval_id}/{decision}", response_class=HTMLResponse)
+def resolve_session_approval(
+    request: Request,
+    session_id: str,
+    approval_id: str,
+    decision: str,
+) -> HTMLResponse:
+    """Record the operator's decision on a held action.
+
+    Returns an HTML fragment so the console can swap the pending card in place.
+    Recording the decision does not itself resume the mission loop; the loop
+    returns control on a hold, so the run has to be started again to act on it.
+    """
+
+    if decision not in {"approved", "denied"}:
+        raise HTTPException(status_code=400, detail="decision must be 'approved' or 'denied'")
+
+    _ensure_session(request, session_id)
+
+    try:
+        _session_store(request).resolve_approval(
+            approval_id, decision, resolved_by="web-console"
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    label = "Approved" if decision == "approved" else "Denied"
+    css = "notice-verified" if decision == "approved" else "notice-breach"
+    return HTMLResponse(
+        f'<div class="notice {css}">{label}. Recorded against '
+        f'<span class="mono">{escape(approval_id)}</span>.</div>'
+    )
 
 
 @router.get("/{session_id}/evidence")
