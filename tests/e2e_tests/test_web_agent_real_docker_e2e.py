@@ -19,10 +19,15 @@ import threading
 from pathlib import Path
 
 import pytest
-
 from saber.agents.base_agent import AgentObservation
 from saber.agents.web_agent import WebAgent
-from saber.core.docker_runner import DockerSubprocessRunner, docker_available, docker_info, image_exists
+from saber.core.docker_runner import (
+    DEFAULT_SHARED_IMAGE,
+    DockerSubprocessRunner,
+    docker_available,
+    docker_info,
+    image_exists,
+)
 from saber.core.evidence_store import EvidenceStore
 from saber.core.sandbox import Sandbox
 from saber.models.scope import AssessmentPhase
@@ -31,8 +36,7 @@ from saber.models.target import Target, TargetType
 from saber.orchestration.execution_plan import ExecutionStep, ExecutionStepStatus
 from saber.orchestration.step_runner import StepRunner
 from saber.tools.registry import ToolRegistry, default_tool_entries
-from saber.core.docker_runner import DEFAULT_SHARED_IMAGE
-
+from tests.support.docker_host import sandbox_host_url
 
 pytestmark = pytest.mark.e2e
 
@@ -89,6 +93,7 @@ def _all_files(root: Path) -> list[Path]:
     reason="Docker daemon or SABER sandbox image is not available.",
 )
 def test_real_web_agent_runs_real_whatweb_through_step_runner(tmp_path) -> None:
+    docker_network = os.getenv("SABER_DOCKER_NETWORK", "host")
     web_root = tmp_path / "webroot"
     server, thread, port = _start_test_http_server(web_root)
 
@@ -102,7 +107,7 @@ def test_real_web_agent_runs_real_whatweb_through_step_runner(tmp_path) -> None:
             ),
             repo_dir=tmp_path,
             default_timeout_seconds=180,
-            network=os.getenv("SABER_DOCKER_NETWORK", "host"),
+            network=docker_network,
             user=os.getenv("SABER_DOCKER_USER", ""),
         )
 
@@ -116,8 +121,14 @@ def test_real_web_agent_runs_real_whatweb_through_step_runner(tmp_path) -> None:
             sandbox=sandbox,
         )
 
-        # Docker Desktop on macOS reaches the host through host.docker.internal.
-        target_url = f"http://host.docker.internal:{port}"
+        # The route from the container to this machine differs per platform; see
+        # tests/support/docker_host.py. Hardcoding host.docker.internal made this
+        # pass on macOS and fail on Linux CI with "no address for host.docker.internal".
+        target_url = sandbox_host_url(port, network=docker_network)
+        if target_url is None:
+            pytest.skip(
+                f"no route from the sandbox to this host on network {docker_network!r}"
+            )
 
         session = MissionSession(
             session_id="real_web_agent_session",
