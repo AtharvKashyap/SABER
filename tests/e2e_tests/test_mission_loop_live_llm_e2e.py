@@ -105,9 +105,9 @@ def _build_live_runtime(tmp_path, *, profile: str, agent_mode: str = "llm"):
         max_steps=MAX_STEPS,
         agent_mode=agent_mode,
         # Honour the sandbox env vars. Constructing SaberConfig explicitly bypasses
-        # SaberConfig.from_env(), so these previously fell back to their DEFAULTS: the
-        # PUBLISHED ghcr image (which predates F7 and lacks radare2/pwntools/tshark/...)
-        # and network "host", where a lab hostname like "dvwa" does not resolve at all.
+        # SaberConfig.from_env(), so these previously fell back to their DEFAULTS: a
+        # stale published image that lacked radare2/pwntools/tshark, and network
+        # "host", where a lab hostname like "dvwa" does not resolve at all.
         # The mission therefore executed tools that could not reach the target, and the
         # "MissionState grew" assertion failed for an environmental reason that looked
         # exactly like a product defect.

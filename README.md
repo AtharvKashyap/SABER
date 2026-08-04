@@ -556,8 +556,7 @@ CI includes:
 - macOS tests
 - Windows tests
 - Linux full non-Docker test suite
-- Optional Linux Docker E2E workflow
-- Sandbox image publishing workflow
+- Optional Linux Docker E2E workflow, which builds the sandbox image from `docker/Dockerfile.sandbox` rather than pulling one
 
 Live-model acceptance tests (`SABER_RUN_LLM_E2E`) are never run in CI; they are for local acceptance only.
 

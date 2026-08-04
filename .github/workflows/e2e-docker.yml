@@ -13,8 +13,6 @@ permissions:
 
   contents: read
 
-  packages: read
-
 jobs:
 
   docker-e2e:
