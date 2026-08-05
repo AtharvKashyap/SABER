@@ -106,14 +106,44 @@ SABER currently supports the full local operator path:
 - The browser mission form and the CLI both start real missions through the same loop.
 - The mission is driven by a **state-first agentic loop** over `MissionState`, not a static plan.
 - `MissionState` accumulates hosts, services, technologies, credentials, vulns, hypotheses, and the attempted/failed-action trace; it is persisted and snapshotted every step.
-- Two deciders are available: an **LLM-primary decider** and a **deterministic rule-based decider** for offline/CI runs.
+- Two decision modes: **LLM-primary** (a hybrid that answers forced moves from a rule ladder and reasons about everything else) and **deterministic rule-based** for offline/CI runs.
 - **Risk-gated autonomy**: SABER runs autonomously by default and pauses only for high-risk/destructive actions; out-of-scope targets are always refused.
-- The mission detail page shows a **live Mission State panel** in addition to steps, findings, evidence, and reports.
+- The mission page shows the loop's own timeline — each action, its arguments, its outcome — beside live working memory, findings, evidence and reports.
 - Reports (JSON, XLSX, Markdown, PDF) are finalized from the final `MissionState` and are downloadable from the GUI.
 - Local-first storage: SQLite database, evidence files, and reports all live under `runs/`.
 - CI runs on Linux, macOS, and Windows. Docker-backed and live-model tests are gated and opt-in.
 
-The unit, agent, and orchestration suites run fully offline (no Docker, no model). Docker-backed end-to-end tests are gated behind `SABER_RUN_DOCKER_E2E`, and live-model acceptance tests behind `SABER_RUN_LLM_E2E` (see [Development](#development)).
+The offline suites run with no Docker and no model. Docker-backed end-to-end tests are
+gated behind `SABER_RUN_DOCKER_E2E`, and live-model acceptance tests behind
+`SABER_RUN_LLM_E2E` (see [Development](#development)).
+
+### What is built but not yet demonstrated
+
+Stated plainly, because "implemented and unit-tested" is not the same as "shown to work":
+
+- **Lateral movement** — the agent and its tooling (impacket, netexec, bloodhound, chisel)
+  are wired and tested, but have not been run against a live multi-host target.
+- **Long missions and attack chaining** — the loop is designed to keep going until the
+  objective is met or a stop condition fires. The longest *live* LLM run so far was
+  2 steps, ended by a provider credit limit rather than by the loop.
+- **Model-authored custom scripts** — `custom_cli` exists as the escape hatch, but a model
+  writing and running its own script has not been observed end to end.
+- **Reverse engineering inside a mission** — the tools are present and verified in the
+  image (radare2, ghidra, gdb, checksec); driving them from the loop has not been shown.
+
+Binary exploitation *has* been demonstrated: a real pwntools exploit produced a flag that
+landed in mission state.
+
+### Known limitations
+
+- **A paused mission cannot resume.** The loop hands control back when the risk gate holds
+  an action. The console can record approve/deny, but there is no path back into the loop —
+  leave **Pause on high-risk actions** off for autonomous runs.
+- **Tool success is judged by exit code.** Some tools exit 0 while failing (whatweb returns
+  0 when it cannot resolve a host), so a step can be recorded as successful with no
+  observations.
+- **`autonomy_level`** (`recon_only` / `assisted` / `autonomous`) is carried in mission
+  constraints and honoured by the risk gate, but is not yet exposed as a CLI or GUI flag.
 
 ---
 
@@ -254,23 +284,45 @@ is used for reproducible offline/CI runs. Targets: `dvwa`, `juiceshop`,
 
 ---
 
-## GUI Workflow
+## Operator console
 
-From `/ui`, use **Start Mission**.
+`/ui` is a server-rendered console: FastAPI + Jinja + HTMX, no Node and no build step,
+with every asset self-hosted so it works air-gapped next to the sandbox.
 
-Mission fields:
+The launch page is the mission form. Fields:
 
-- Target
-- Profile
-- Strategy (`auto`, `network`, `web`, or `ctf`)
-- Lab (marks the target as an owned lab and selects the CTF strategy; does not currently change risk-gating)
-- Mode (deterministic or LLM)
-- Max steps
-- Require approval
-- Dry run
-- Objective
+| Field | Notes |
+|---|---|
+| **Target** | IP, hostname, CIDR or URL. This becomes the mission scope — anything outside it is refused, not queued for approval. |
+| **Profile** | Which capability agents the loop may dispatch to. |
+| **Strategy** | `auto`, `network`, `web`, `ctf`. Sets the objective and the stop condition. |
+| **Decision mode** | `deterministic` or `llm`. |
+| **Step budget** | Hard ceiling on loop iterations. |
+| **Objective** | Optional; left blank the strategy supplies one. |
+| **Mission name** | Optional; appears on the report and in the mission list. |
+| **Pause on high-risk actions** | See the caveat below. |
+| **Dry run** | Plan only, execute nothing. |
+| **Lab target** | Marks the target as an owned lab. |
 
-> Note: Pausing for approval is governed by the risk gate and the mission's autonomy level, not the **Require approval** toggle — the mission loop's `RiskGate` does not currently consume it.
+> **`auto` is rarely what you want for a specific assessment.** With **Lab target** checked
+> it selects the CTF strategy; with a bare hostname and no lab flag it selects the network
+> strategy. For a web application, choose `web` explicitly.
+
+> **Leave "Pause on high-risk actions" off for autonomous runs.** A paused mission cannot
+> currently resume: the loop hands control back, and while the console can record
+> approve/deny, there is no path back into the loop.
+
+The mission page is built around the loop:
+
+- **What it did** — every action in order, with the arguments it ran with, its outcome
+  (completed / failed / refused by the scope gate), and how long it took. Rule length
+  between entries is drawn to elapsed time, so a long scan is visibly long.
+- **What it knows** — live working memory: PTES phase, the state tally, and the flags,
+  credentials and services found. Polls while the mission runs and stops at a terminal
+  state.
+- Findings, evidence, and report links.
+- Status and outcome, polled on the same cadence, so a mission that fails mid-run says so
+  and says why instead of showing a frozen `RUNNING`.
 
 Profiles select which capability agents the loop may dispatch to:
 
@@ -316,10 +368,43 @@ The nine agents are **capability lenses** the loop dispatches execution through 
 
 The decider is the loop's brain. SABER ships two, selected per mission by mode:
 
-- **`LlmDecider`** (`--mode llm`, or the GUI Mode field): asks the configured model for the next action, using the `prompts/next_action.txt` system prompt. Every proposed action is validated against the tool catalog and the scope before it can run. Requires an enabled `SABER_MODEL`.
-- **`DeterministicDecider`** (`--mode deterministic`, the default): a rule ladder over normalized state (recon first, then fingerprint web services, then vuln-scan, then exploit intel, then report). It needs no model and is used for offline runs and CI.
+- **`--mode llm`**: a **`HybridDecider`** wrapping `LlmDecider`. The model is asked for the
+  next action using the `prompts/next_action.txt` system prompt, and every proposed action
+  is validated against the tool catalog and the scope before it can run. Requires an
+  enabled `SABER_MODEL`.
+- **`--mode deterministic`** (the default): a rule ladder over normalized state (recon
+  first, then fingerprint web services, then vuln-scan, then exploit intel, then report).
+  No model; used for offline runs and CI.
 
 If LLM mode is requested but no model is enabled, SABER uses the deterministic decider.
+
+### Why LLM mode is hybrid
+
+Some loop iterations are not decisions. With no services known, the only sensible action is
+to scan — every later choice depends on what it returns. `HybridDecider` answers those
+**forced** moves from the rule ladder and sends everything with more than one defensible
+answer to the model.
+
+The delegation is one-directional by design: the ladder never overrides the model on a real
+decision. Which vulnerability scanner, which exploit query, whether to pivot — all reach
+the model. Each action records whether it was decided by the model or forced, so the
+timeline shows where the reasoning happened.
+
+### Token cost
+
+Measured on a 20-step mission state with a web profile, effective billed tokens per
+decision fell from **17,467 to ~2,591** — about 85% — with no reduction in what the model
+sees:
+
+- The tool catalog moved into the cacheable system prefix instead of being re-sent, whole,
+  on every call.
+- The catalog is scoped to the mission profile, so a web mission is not offered mimikatz or
+  ghidra. The risk gate keeps the full catalog, because it must classify anything proposed.
+- The payload is compact JSON; `indent=2` was costing ~1,350 tokens per call in whitespace.
+- Forced moves cost no model call at all.
+
+Prompt caching is requested only from model families that support it, with
+`SABER_PROMPT_CACHE=0` as a kill switch.
 
 ---
 
@@ -437,7 +522,7 @@ Reports are linked in the GUI and downloadable from the session page.
 saber/
   agents/              # Capability agents (recon, web, network, exploit,
                        #   post_exploit, lateral_movement, reverse_engineering,
-                       #   reporter, planner) + deciders/ (llm, deterministic)
+                       #   reporter, planner) + deciders/ (hybrid, llm, deterministic)
   core/                # Runtime, Docker runner, sandbox, result processing,
                        #   state summarizer/merger, LLM client, tool catalog
   models/              # Targets, findings, sessions, scope, credentials,
@@ -445,13 +530,16 @@ saber/
   orchestration/       # mission_loop, mission_orchestrator, action_executor,
                        #   risk_gate, stop_conditions, strategies/,
                        #   execution_plan + step_runner (seed/exec helpers)
-  tools/               # Python wrappers around real security tools
+  tools/               # Python wrappers around real security tools, tool
+                       #   contracts, and image_manifest (what the sandbox
+                       #   image must contain, derived from those contracts)
   parsers/             # Tool output parsers
   storage/             # SQLite, sessions, evidence, findings, graph,
                        #   mission_state_store, migrations/
   reporting/           # JSON/XLSX/PDF/Markdown exporters, finalizer,
                        #   state_report_adapter, templates
-  ui/                  # CLI and FastAPI web UI
+  ui/                  # CLI, and the FastAPI + Jinja + HTMX operator console
+                       #   (web/templating.py, web/templates/, web/static/)
 
 prompts/               # Decider prompts (next_action.txt)
 scripts/               # Launcher and preflight utilities
