@@ -103,7 +103,12 @@ def test_runtime_gives_the_decider_a_scoped_catalog_and_the_gate_the_full_one(
         )
     )
     try:
-        decider = runtime.orchestrator.mission_loop.decider
+        # In llm mode the decider is a HybridDecider wrapping the LlmDecider, so the
+        # scoped catalog lives one level down. Forced moves are answered by the rule
+        # ladder and never reach a model at all.
+        hybrid = runtime.orchestrator.mission_loop.decider
+        assert type(hybrid).__name__ == "HybridDecider"
+        decider = hybrid.llm_decider
         gate = runtime.orchestrator.mission_loop.risk_gate
 
         if not getattr(runtime.llm_client, "enabled", False):

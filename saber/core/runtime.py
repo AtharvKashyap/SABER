@@ -194,6 +194,7 @@ def build_saber_runtime(
     from saber.agents.deciders.llm import LlmDecider
     from saber.core.state_merger import StateMerger
     from saber.core.state_summary import StateSummarizer
+    from saber.agents.deciders.hybrid import HybridDecider
     from saber.orchestration.action_executor import ActionExecutor
     from saber.orchestration.mission_loop import MissionLoop
     from saber.orchestration.risk_gate import RiskGate
@@ -209,9 +210,16 @@ def build_saber_runtime(
         # profile is ~3k tokens. RiskGate below deliberately keeps the FULL catalog:
         # it classifies whatever is proposed, including tools this profile did not
         # offer, so gating must not have blind spots.
-        decider = LlmDecider(
-            llm_client=llm_client,
-            tool_catalog=tool_catalog.for_profile(runtime_config.profile),
+        # Wrapped in HybridDecider so forced moves never cost a model call. With no
+        # services known the only sensible action is to scan, and an unfingerprinted
+        # web port has one obvious next step; paying ~8k prompt tokens for the model
+        # to restate either buys nothing. Everything with more than one defensible
+        # answer still goes to the model — see saber/agents/deciders/hybrid.py.
+        decider = HybridDecider(
+            llm_decider=LlmDecider(
+                llm_client=llm_client,
+                tool_catalog=tool_catalog.for_profile(runtime_config.profile),
+            )
         )
     else:
         decider = DeterministicDecider()
