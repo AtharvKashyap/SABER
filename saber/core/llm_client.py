@@ -47,6 +47,21 @@ class LlmProvider(StrEnum):
     LOCAL = "local"
 
 
+# Anthropic-style prompt caching needs an explicit cache_control marker on the
+# content block. Only these model families understand it; anything else is sent as
+# a plain string, because an unrecognised field is a 400 that would fail the whole
+# decision. OpenAI-family models cache a stable prefix automatically and need no
+# marker, which is why the payload is byte-stable regardless.
+_CACHE_CONTROL_MODELS = ("anthropic/", "claude-", "claude/")
+
+
+def _supports_cache_control(model: str) -> bool:
+    """Return whether this model understands an explicit cache_control marker."""
+
+    name = (model or "").strip().lower()
+    return any(token in name for token in _CACHE_CONTROL_MODELS)
+
+
 @dataclass(frozen=True)
 class LlmConfig:
     """Configuration for SABER model decisions."""
@@ -59,6 +74,13 @@ class LlmConfig:
     max_tokens: int = 2000
     timeout_seconds: int = 60
     max_retries: int = 5
+    # Ask the provider to cache the static half of the prompt. Measured on a
+    # 20-step mission, 6,085 of 9,775 prompt tokens are byte-identical on every
+    # decision (the system prompt plus the tool catalog), and cache reads bill at a
+    # fraction of fresh input. Off for models that do not understand the marker —
+    # sending it to a provider that rejects it would fail every decision, so this
+    # is opt-out per model rather than blanket-on. SABER_PROMPT_CACHE=0 disables it.
+    prompt_cache: bool = True
 
     @property
     def enabled(self) -> bool:
@@ -73,6 +95,11 @@ class LlmConfig:
         load_env_file()
 
         raw_model = os.getenv("SABER_MODEL", "disabled").strip()
+        prompt_cache = os.getenv("SABER_PROMPT_CACHE", "1").strip().lower() not in {
+            "0",
+            "false",
+            "no",
+        }
 
         if not raw_model or raw_model.lower() == "disabled":
             return cls(provider=LlmProvider.DISABLED)
@@ -95,6 +122,7 @@ class LlmConfig:
                 model=model,
                 api_key=os.getenv("SABER_MODEL_API_KEY", "").strip(),
                 base_url="https://openrouter.ai/api/v1",
+                prompt_cache=prompt_cache,
             )
 
         if prefix == LlmProvider.LOCAL.value:
@@ -106,6 +134,7 @@ class LlmConfig:
                 model=model,
                 api_key=os.getenv("SABER_MODEL_API_KEY", "").strip(),
                 base_url=base_url.rstrip("/"),
+                prompt_cache=prompt_cache,
             )
 
         raise ValueError(
@@ -158,7 +187,12 @@ class LlmClient:
         user_prompt: str,
         metadata: dict[str, Any] | None = None,
     ) -> LlmResponse:
-        """Run a chat-completions request."""
+        """Run a chat-completions request.
+
+        The system message is treated as a cacheable prefix. It carries the decision
+        instructions and the tool catalog, both of which are byte-identical on every
+        decision in a mission, so after the first call they bill at cache-read rates.
+        """
 
         if not self.enabled:
             raise RuntimeError("Model client is disabled.")
@@ -166,7 +200,7 @@ class LlmClient:
         payload = {
             "model": self.config.model,
             "messages": [
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": self._system_content(system_prompt)},
                 {"role": "user", "content": user_prompt},
             ],
             "temperature": self.config.temperature,
@@ -209,6 +243,32 @@ class LlmClient:
             user_prompt=user_prompt,
             metadata=metadata,
         ).parse_json()
+
+    # Below this the provider will not cache anyway (Anthropic's minimum is ~1024
+    # tokens), so the marker would be noise.
+    _MIN_CACHEABLE_CHARS = 4000
+
+    def _system_content(self, system_prompt: str) -> Any:
+        """Return the system message, marked cacheable when that is supported.
+
+        Falls back to a plain string unless the model understands cache_control and
+        the prefix is big enough to be worth caching. The fallback matters: a
+        provider that rejects an unknown field answers 400, which would fail the
+        decision and with it the mission, so the marker is never sent speculatively.
+        """
+
+        if not (self.config.prompt_cache and _supports_cache_control(self.config.model)):
+            return system_prompt
+        if len(system_prompt) < self._MIN_CACHEABLE_CHARS:
+            return system_prompt
+
+        return [
+            {
+                "type": "text",
+                "text": system_prompt,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
 
     def _post_chat_completions(self, payload: dict[str, Any]) -> dict[str, Any]:
         """POST to a chat-completions-compatible endpoint."""

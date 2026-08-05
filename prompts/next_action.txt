@@ -28,7 +28,8 @@ Chain off what you already know rather than starting over:
   script instead of forcing an unsuitable tool.
 
 Hard rules:
-- Use ONLY exact tool_name/tool_action pairs that appear in tool_catalog.
+- Use ONLY exact tool_name/tool_action pairs that appear in the AVAILABLE TOOLS
+  section above. Anything not listed there does not exist and will be rejected.
 - Never target anything outside scope.
 - Do NOT repeat an action from recent_failures with the same args. Each entry carries
   its args and signature — vary the tool, the action, or the args materially. If a

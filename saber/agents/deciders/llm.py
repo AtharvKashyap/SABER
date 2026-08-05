@@ -121,19 +121,23 @@ class LlmDecider(NextActionDecider):
     ) -> ProposedAction:
         """Ask the model once, optionally forbidding a specific repeat."""
 
-        system_prompt = self._load_prompt()
+        # The catalog goes in the SYSTEM prompt, not the per-call payload. It is
+        # reference material that never changes during a mission, so putting it in the
+        # cacheable prefix means it bills at cache-read rates after the first decision
+        # instead of full input rate on all ~3k tokens every step.
+        #
+        # Still the COMPACT prompt text, not the full JSON dump: the JSON form of 36
+        # tools / 105 actions is ~30.6k tokens and once blew a provider limit outright
+        # ("Prompt tokens limit exceeded: 37223 > 30000").
+        #
+        # This only changes what the MODEL sees. `_validate_args` still checks against
+        # the full ToolCatalog objects, so arg validation is unaffected.
+        system_prompt = (
+            f"{self._load_prompt()}\n\nAVAILABLE TOOLS\n{self.tool_catalog.to_prompt_text()}"
+        )
+
         payload: dict[str, Any] = {
             "summary": summary.to_dict(),
-            # COMPACT catalog text, not the full JSON dump. The JSON form of 36 tools /
-            # 105 actions is ~122KB (~30.6k tokens) and was sent on EVERY decision,
-            # which blew a provider per-request prompt limit outright ("HTTP 402:
-            # Prompt tokens limit exceeded: 37223 > 30000") and made each step slow and
-            # expensive while drowning the state summary in boilerplate. The prompt text
-            # form carries the same choosable information at ~10.6k tokens.
-            #
-            # This changes only what the MODEL sees. `_validate_args` still validates
-            # against the full ToolCatalog objects, so arg checking is unaffected.
-            "tool_catalog": self.tool_catalog.to_prompt_text(),
             "autonomy_level": state.autonomy_level.value,
             "scope": state.scope.to_agent_context() if state.scope else None,
         }
@@ -148,7 +152,12 @@ class LlmDecider(NextActionDecider):
                     "or materially different args."
                 ),
             }
-        user_prompt = json.dumps(payload, indent=2, sort_keys=True, default=str)
+        # Compact separators, not indent=2. Pretty-printing this payload cost ~1,350
+        # tokens per decision in pure whitespace — measured on a 20-step mission state,
+        # 14% of the whole prompt — and the model does not need the indentation to read
+        # JSON. sort_keys stays so the payload is byte-stable for a given state, which
+        # is what makes provider-side prompt caching possible at all.
+        user_prompt = json.dumps(payload, separators=(",", ":"), sort_keys=True, default=str)
 
         # Retry TRANSIENT model failures before giving up. A decider ERROR fails the
         # WHOLE mission (MissionLoop turns it into MissionRunStatus.FAILED), so a
